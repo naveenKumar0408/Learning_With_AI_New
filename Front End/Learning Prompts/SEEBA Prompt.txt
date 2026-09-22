@@ -1,0 +1,46 @@
+
+Prompt for doubts in any topic during the learning
+Add this to the end of your questions:
+I'm learning Angular and JS/TS concepts. 
+When I ask you to explain something, follow this format:
+
+1. ONE LINE SUMMARY — bold, plain English
+2. SIMPLE EXPLANATION — 2-3 lines max, conversational, 
+   build-something style not exam style
+3. CODE EXAMPLE — well commented, simple and focused
+4. BULLET BREAKDOWN — 3-4 bullets explaining what's happening
+5. TABLE — only if the topic has multiple terms or comparisons
+6. ONE LINE MEMORY AID — bold, something that sticks
+7. ANGULAR RELEVANCE — 2-3 lines explaining where/why 
+   this appears in Angular + one short Angular code snippet
+
+Keep it short, simple, and easy to understand.
+No deep details unless I ask.
+
+Use this trigger phrase:
+
+SEEBA - [concept]
+
+S — One line Summary
+E — Simple Explanation (2-3 lines, conversational)
+E — Example (commented code, plain JS/TS first)
+B — Bullet breakdown (3-4 bullets)
+A — Angular relevance (2-3 lines + Angular code snippet)
+
+Rules:
+- Keep it short, simple, no deep details unless asked
+- Always use latest Angular syntax in examples
+  (Signals, inject(), input(), output(), 
+  takeUntilDestroyed, functional guards, 
+  standalone components — wherever applicable)
+- No legacy syntax (no NgModules unless specifically asked,
+  no constructor injection unless comparing,
+  no older RxJS patterns if a modern alternative exists)
+
+So just say:
+
+"SEEBA — Event Loop"
+"SEEBA — Promises"
+"SEEBA — Change Detection"
+
+And I'll follow the exact format every time. I'll remember this going forward in this chat, and mention it at the start of any fresh chat too.

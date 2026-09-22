@@ -1,0 +1,968 @@
+Topic 37 — HTTP Interceptors
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — The concept is straightforward once you understand middleware pipelines, but the Angular-specific setup (functional vs class-based, provideHttpClient configuration, cloning requests) has enough nuance to trip up developers who learn the pattern without understanding the immutability requirement.
+Angular Relevance: Critical — Interceptors are the production solution for cross-cutting HTTP concerns: auth tokens, logging, error handling, loading indicators, and request retries. Without them, these concerns get duplicated across every service. Every professional Angular app uses at least one interceptor.
+
+Section 1 — Explanation
+The Airport Security Analogy
+Imagine every HTTP request your app makes is a passenger trying to board a flight, and every response is a passenger returning from a trip.
+Without an interceptor: Each passenger handles their own security check, their own customs declaration, their own baggage tagging — separately, every single time.
+With an interceptor: You install a security checkpoint that every passenger passes through automatically. The checkpoint can:
+
+Add something to every outbound bag (attach an auth token to every request)
+Inspect every inbound bag (log every response)
+Stop a bag and reroute it (retry on 401, redirect to login on 403)
+Count bags passing through (show a global loading spinner)
+
+The passengers (your services) don't know the checkpoint exists. They just hand their bag to the airline (HttpClient) and trust it arrives. The interceptor is invisible middleware that every request and response passes through.
+This is the Airport Security Analogy — interceptors are checkpoints in the HTTP pipeline that every request/response traverses, invisibly, automatically.
+
+Technical Explanation:
+An interceptor sits between HttpClient and the actual network. When http.get(url) is called, Angular passes the request through the interceptor chain before sending it. When the response arrives, it passes back through the chain in reverse.
+The chain works like this:
+HttpClient call
+    ↓
+Interceptor 1 (outbound)
+    ↓
+Interceptor 2 (outbound)
+    ↓
+    Network (actual HTTP request)
+    ↓
+Interceptor 2 (inbound — response)
+    ↓
+Interceptor 1 (inbound — response)
+    ↓
+Subscriber (your component/service)
+Modern Angular (v15+) uses functional interceptors — plain functions that are simpler, tree-shakeable, and easier to test than the older class-based HttpInterceptor interface. Both exist; functional is the current standard.
+Functional Interceptor (modern)Class-based Interceptor (legacy)SyntaxHttpInterceptorFn — a plain functionimplements HttpInterceptor classRegistrationprovideHttpClient(withInterceptors([...]))HTTP_INTERCEPTORS multi-provider tokenTree-shaking✅ Yes❌ NoDI inside interceptorinject() at call timeConstructor injectionAngular versionv15+ preferredAll versions
+The immutability rule: HttpRequest objects are immutable. You cannot modify them directly. To change a request (add a header, change a URL), you must call request.clone({ ... }) to get a new request with your modifications, then pass the cloned version to next.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 36 — HttpClient & API Integration — interceptors are a layer on top of HttpClient; you need to understand the base request/response flow first
+Topic 20 — RxJS Subscription Management — interceptors return Observables and can pipe RxJS operators onto the response stream
+Topic 27 — Services & Dependency Injection — interceptors use inject() to access services (auth tokens, loading state, router)
+Topic 18 — Error Handling — catchError inside interceptors is how global HTTP error handling works
+Topic 23 — Angular Signals — a loading signal in a service can be toggled by an interceptor to drive a global spinner
+
+Bridging note: Topic 36 showed that catchError in individual services handles per-service errors. Interceptors move that concern one level higher — a single interceptor handles 401 responses for every HTTP call in the app, regardless of which service made it. The same RxJS operators (catchError, tap, switchMap) apply — they're just used at the pipeline level rather than the per-call level.
+Extends most directly: Topic 36 — HttpClient & API Integration, because interceptors are the cross-cutting infrastructure layer that completes the HTTP architecture.
+
+Section 3 — Code Example
+Plain concept — the interceptor contract
+typescriptimport { HttpInterceptorFn, HttpRequest, HttpHandlerFn, HttpEvent } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+// The functional interceptor signature — a function matching HttpInterceptorFn
+// req:  the outbound request
+// next: a function that passes the request to the next interceptor (or the network)
+// Returns: Observable<HttpEvent<unknown>> — the response stream
+
+const myInterceptor: HttpInterceptorFn = (
+  req: HttpRequest<unknown>,
+  next: HttpHandlerFn
+): Observable<HttpEvent<unknown>> => {
+
+  // 1. Inspect or modify the request (must clone — requests are immutable)
+  const modifiedReq = req.clone({
+    headers: req.headers.set('X-Custom-Header', 'hello')
+  });
+
+  // 2. Pass to the next interceptor (or network) and return the response Observable
+  return next(modifiedReq);
+
+  // 3. Optionally pipe operators onto the response Observable
+  // return next(modifiedReq).pipe(
+  //   tap(event => console.log('Response event:', event))
+  // );
+};
+
+Real Angular — Four production interceptors
+typescript// interceptors/auth.interceptor.ts
+// Attaches a Bearer token to every outbound request
+
+import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { AuthService } from '../services/auth.service';
+
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const authService = inject(AuthService); // inject() works inside interceptor functions
+  const token       = authService.getToken();
+
+  // Skip if no token (user is not logged in)
+  if (!token) return next(req);
+
+  // Clone the request — HttpRequest is immutable, never mutate directly
+  const authenticatedReq = req.clone({
+    headers: req.headers.set('Authorization', `Bearer ${token}`)
+  });
+
+  return next(authenticatedReq);
+};
+typescript// interceptors/error.interceptor.ts
+// Handles 401 (redirect to login) and 500 (show toast) globally
+
+import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { inject }    from '@angular/core';
+import { catchError, throwError } from 'rxjs';
+import { Router }    from '@angular/router';
+import { ToastService } from '../services/toast.service';
+
+export const errorInterceptor: HttpInterceptorFn = (req, next) => {
+  const router       = inject(Router);
+  const toastService = inject(ToastService);
+
+  return next(req).pipe(
+    catchError((error: HttpErrorResponse) => {
+
+      if (error.status === 401) {
+        // Token expired or invalid — redirect to login
+        router.navigate(['/login'], {
+          queryParams: { returnUrl: router.url }
+        });
+      }
+
+      if (error.status >= 500) {
+        // Server error — show a global toast notification
+        toastService.show('Server error — please try again later', 'error');
+      }
+
+      // Re-throw so individual services can also handle the error if needed
+      return throwError(() => error);
+    })
+  );
+};
+typescript// interceptors/loading.interceptor.ts
+// Increments/decrements a request counter to drive a global loading spinner
+
+import { HttpInterceptorFn, HttpEvent } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { tap, finalize } from 'rxjs/operators';
+import { LoadingService } from '../services/loading.service';
+
+export const loadingInterceptor: HttpInterceptorFn = (req, next) => {
+  const loadingService = inject(LoadingService);
+
+  loadingService.increment(); // add one to the in-flight request count
+
+  return next(req).pipe(
+    finalize(() => {
+      // finalize runs on complete AND on error — always decrements
+      loadingService.decrement();
+    })
+  );
+};
+typescript// services/loading.service.ts — the signal-based counter behind the spinner
+import { Injectable, signal, computed } from '@angular/core';
+
+@Injectable({ providedIn: 'root' })
+export class LoadingService {
+  private requestCount = signal(0);
+
+  // Derived signal — true when any request is in flight
+  isLoading = computed(() => this.requestCount() > 0);
+
+  increment() { this.requestCount.update(n => n + 1); }
+  decrement() { this.requestCount.update(n => Math.max(0, n - 1)); }
+}
+typescript// interceptors/logging.interceptor.ts
+// Logs request method, URL, and response time for every HTTP call
+
+import { HttpInterceptorFn, HttpResponse } from '@angular/common/http';
+import { tap } from 'rxjs/operators';
+
+export const loggingInterceptor: HttpInterceptorFn = (req, next) => {
+  const startTime = Date.now();
+
+  return next(req).pipe(
+    tap({
+      next: event => {
+        if (event instanceof HttpResponse) {
+          const elapsed = Date.now() - startTime;
+          console.log(`[HTTP] ${req.method} ${req.url} → ${event.status} (${elapsed}ms)`);
+        }
+      },
+      error: error => {
+        const elapsed = Date.now() - startTime;
+        console.error(`[HTTP ERROR] ${req.method} ${req.url} → ${error.status} (${elapsed}ms)`);
+      }
+    })
+  );
+};
+
+Registering interceptors in app.config.ts
+typescript// app.config.ts
+import { ApplicationConfig }     from '@angular/core';
+import { provideRouter }         from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { authInterceptor }    from './interceptors/auth.interceptor';
+import { errorInterceptor }   from './interceptors/error.interceptor';
+import { loadingInterceptor } from './interceptors/loading.interceptor';
+import { loggingInterceptor } from './interceptors/logging.interceptor';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideHttpClient(
+      withInterceptors([
+        // Order matters — interceptors run top to bottom on request,
+        // bottom to top on response
+        loggingInterceptor,   // outermost — sees everything
+        loadingInterceptor,   // second
+        authInterceptor,      // third — attaches token before sending
+        errorInterceptor,     // innermost — closest to the actual response
+      ])
+    )
+  ]
+};
+
+Section 4 — Before & After Refactor
+❌ Before — Auth token added manually in every service
+typescript// WRONG: auth header duplicated in every service method
+// If the token key changes, you update 50 places
+
+@Injectable({ providedIn: 'root' })
+export class UserService {
+  getUsers() {
+    const token   = localStorage.getItem('auth_token');
+    const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
+    return this.http.get<User[]>('/api/users', { headers }); // ❌ duplicated
+  }
+
+  deleteUser(id: number) {
+    const token   = localStorage.getItem('auth_token');
+    const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
+    return this.http.delete(`/api/users/${id}`, { headers }); // ❌ duplicated again
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class OrderService {
+  getOrders() {
+    const token   = localStorage.getItem('auth_token');
+    const headers = new HttpHeaders({ Authorization: `Bearer ${token}` });
+    return this.http.get<Order[]>('/api/orders', { headers }); // ❌ and again
+  }
+}
+What breaks:
+
+Token retrieval logic is duplicated across every service method
+If the auth scheme changes (Bearer → API-Key), you update dozens of files
+If you forget to add the header in one place, that endpoint silently fails auth
+Impossible to add retry logic, logging, or error handling uniformly
+
+
+✅ After — Auth handled once in an interceptor
+typescript// ✅ authInterceptor handles all requests automatically
+// Services are clean — zero auth logic
+
+@Injectable({ providedIn: 'root' })
+export class UserService {
+  getUsers()            { return this.http.get<User[]>('/api/users'); }
+  deleteUser(id:number) { return this.http.delete(`/api/users/${id}`); }
+}
+
+@Injectable({ providedIn: 'root' })
+export class OrderService {
+  getOrders() { return this.http.get<Order[]>('/api/orders'); }
+}
+// Token is attached by authInterceptor — invisible to every service
+Why this matters in Angular: The interceptor is a single point of change. Update the auth scheme in one file — every request in the entire app is updated instantly.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Mutating the request instead of cloning it
+What the mistake is:
+typescript// ❌ HttpRequest objects are immutable — this throws or silently does nothing
+export const badInterceptor: HttpInterceptorFn = (req, next) => {
+  req.headers.set('Authorization', 'Bearer token'); // ❌ returns a new Headers — not applied
+  return next(req); // original unmodified req is passed
+};
+Why developers make it: req.headers looks like a mutable object. req.headers.set(...) is a method, so it feels like a mutation. But HttpHeaders is immutable — .set() returns a new HttpHeaders object, it doesn't modify the existing one.
+How to avoid it: Always use req.clone({ headers: req.headers.set(...) }). The .clone() method is the only correct way to produce a modified request.
+Angular-specific consequence: The header is silently not added. The API returns 401. The developer spends time debugging the auth service when the bug is in the interceptor.
+
+Mistake 2 — Intercepting requests that should be excluded (e.g. third-party APIs)
+What the mistake is:
+typescript// ❌ Auth token sent to a third-party CDN, public API, or analytics endpoint
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const token = inject(AuthService).getToken();
+  const authReq = req.clone({
+    headers: req.headers.set('Authorization', `Bearer ${token}`)
+  });
+  return next(authReq); // ❌ sends your private token to every URL including CDNs
+};
+Why developers make it: The interceptor is meant to be universal — it feels like it should apply everywhere. Developers don't consider that the app might call third-party services.
+How to avoid it: Add a URL check to only attach auth headers to your own API:
+typescriptexport const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const isOwnApi = req.url.startsWith('https://api.myapp.com');
+  if (!isOwnApi) return next(req); // skip — don't attach token
+
+  const token = inject(AuthService).getToken();
+  if (!token)  return next(req);
+
+  return next(req.clone({
+    headers: req.headers.set('Authorization', `Bearer ${token}`)
+  }));
+};
+Angular-specific consequence: Your private auth token is leaked to third-party servers in request headers — a security vulnerability that is invisible in testing and only discoverable via network inspection.
+
+Mistake 3 — Registering interceptors in the wrong order
+What the mistake is: Registering the auth interceptor after the error interceptor, expecting it to run first on outbound requests.
+Why developers make it: The order isn't obvious. Developers assume the last-registered interceptor has "highest priority" (like middleware in some frameworks), or they add interceptors without understanding the pipeline direction.
+How to avoid it: Interceptors run top to bottom on outbound requests and bottom to top on inbound responses, in the order they appear in the withInterceptors([...]) array. The first interceptor in the array is the outermost wrapper — it runs first on requests and last on responses.
+Angular-specific consequence: Auth tokens not attached before error handling runs. Or a logging interceptor placed after auth sees the request without the token — logging incomplete data.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TAlways req.clone({...}) to modify a request — never mutate req directlyCall req.headers.set(...) and pass the original req to nextCheck the request URL before attaching auth tokensSend auth headers to every URL including third-party servicesUse finalize() for cleanup logic (loading state, metrics) — it runs on both complete and errorUse tap for cleanup — tap's complete callback doesn't run on errorUse inject() inside the interceptor function body to access servicesTry to add constructor injection to functional interceptorsRegister interceptors in provideHttpClient(withInterceptors([...]))Register functional interceptors using the legacy HTTP_INTERCEPTORS tokenHandle errors in the interceptor and re-throw with throwError() so services can also handle themSwallow errors in the interceptor without re-throwing — breaks per-service error handling
+
+Section 7 — Debugging Tips
+Bug 1 — Interceptor not running at all
+Symptom: Auth headers are missing from requests, loading spinner never shows — interceptor code is never reached.
+Plain English cause: One of three reasons: (a) withInterceptors([...]) is missing from provideHttpClient(), (b) the interceptor array contains the class instead of the function (e.g. AuthInterceptor instead of authInterceptor), or (c) the app uses the legacy NgModule setup and is missing HTTP_INTERCEPTORS provider.
+Fix:
+typescript// ✅ Ensure provideHttpClient includes withInterceptors
+provideHttpClient(
+  withInterceptors([authInterceptor, errorInterceptor])
+)
+
+// Common mistake: passing class reference instead of function reference
+withInterceptors([AuthInterceptor])   // ❌ class — won't work as functional interceptor
+withInterceptors([authInterceptor])   // ✅ function reference
+Angular-specific note: Add a console.log('interceptor running') as the first line of the interceptor function. If it never logs, the registration is the problem — not the interceptor logic.
+
+Bug 2 — Infinite redirect loop on 401
+Symptom: A 401 response triggers router.navigate(['/login']), but the login page itself makes an HTTP call that also returns 401, causing another redirect — infinite loop.
+Plain English cause: The error interceptor catches 401 on every request, including requests made from the login page itself (e.g. fetching login page config, or a failed login attempt returning 401).
+Fix:
+typescriptexport const errorInterceptor: HttpInterceptorFn = (req, next) => {
+  const router = inject(Router);
+
+  return next(req).pipe(
+    catchError((error: HttpErrorResponse) => {
+      // Only redirect on 401 if NOT already on the login page
+      // AND NOT a login attempt itself (which returns 401 on wrong password)
+      const isLoginRequest = req.url.includes('/auth/login');
+      const isLoginPage    = router.url.includes('/login');
+
+      if (error.status === 401 && !isLoginRequest && !isLoginPage) {
+        router.navigate(['/login']);
+      }
+
+      return throwError(() => error);
+    })
+  );
+};
+Angular-specific note: Always exclude auth endpoints from 401 redirect logic. A failed login legitimately returns 401 — that should show a "wrong password" message, not redirect to login again.
+
+Bug 3 — Loading spinner never hides after an HTTP error
+Symptom: The loading spinner appears when a request starts but stays on screen permanently after a failed request.
+Plain English cause: The loading interceptor uses tap and relies on the complete callback to decrement the counter. But when an Observable errors, it does not call complete — it calls error. The finalize operator is needed because it runs on both complete and error.
+Fix:
+typescript// ❌ tap's complete doesn't run on error
+return next(req).pipe(
+  tap({
+    next:     ()  => { /* response received */ },
+    complete: ()  => loadingService.decrement() // never called on error
+  })
+);
+
+// ✅ finalize runs on both complete AND error
+return next(req).pipe(
+  finalize(() => loadingService.decrement()) // always runs
+);
+Angular-specific note: This is the single most common loading-interceptor bug. finalize is the RxJS equivalent of finally in try/catch — always use it for cleanup that must run regardless of success or failure.
+
+Section 8 — Real-World Applications
+Scenario 1 — Token Refresh Interceptor
+When a request returns 401 (token expired), automatically refresh the token and retry the original request — transparent to the user.
+typescript// interceptors/token-refresh.interceptor.ts
+import { HttpInterceptorFn, HttpErrorResponse, HttpRequest } from '@angular/common/http';
+import { inject }        from '@angular/core';
+import { catchError, switchMap, throwError } from 'rxjs';
+import { AuthService }   from '../services/auth.service';
+
+export const tokenRefreshInterceptor: HttpInterceptorFn = (req, next) => {
+  const authService = inject(AuthService);
+
+  return next(req).pipe(
+    catchError((error: HttpErrorResponse) => {
+
+      // Only attempt refresh on 401 — and not for the refresh call itself
+      // (prevents infinite loop if refresh also fails)
+      const isRefreshRequest = req.url.includes('/auth/refresh');
+      if (error.status !== 401 || isRefreshRequest) {
+        return throwError(() => error);
+      }
+
+      // Attempt to refresh the token
+      return authService.refreshToken().pipe(
+        switchMap(newToken => {
+          // Retry the original request with the new token
+          const retryReq = req.clone({
+            headers: req.headers.set('Authorization', `Bearer ${newToken}`)
+          });
+          return next(retryReq);
+        }),
+        catchError(refreshError => {
+          // Refresh failed — log out and redirect
+          authService.logout();
+          return throwError(() => refreshError);
+        })
+      );
+    })
+  );
+};
+
+Scenario 2 — Environment-Aware Base URL Interceptor
+In large apps, the API base URL differs between environments (dev, staging, prod). An interceptor prepends the correct base URL to all relative API requests — services use clean relative paths, the interceptor handles the environment routing.
+typescript// interceptors/base-url.interceptor.ts
+import { HttpInterceptorFn } from '@angular/common/http';
+import { inject }            from '@angular/core';
+import { EnvironmentService } from '../services/environment.service';
+
+export const baseUrlInterceptor: HttpInterceptorFn = (req, next) => {
+  const envService = inject(EnvironmentService);
+
+  // Only modify relative URLs — leave absolute URLs (third-party) untouched
+  if (req.url.startsWith('http')) return next(req);
+
+  const apiReq = req.clone({
+    url: `${envService.apiBaseUrl}${req.url}`
+    // e.g. '/api/users' → 'https://api.myapp.com/api/users'
+  });
+
+  return next(apiReq);
+};
+
+// services/user.service.ts — stays clean, no environment awareness needed
+@Injectable({ providedIn: 'root' })
+export class UserService {
+  getUsers() {
+    return this.http.get<User[]>('/api/users'); // relative — interceptor adds base URL
+  }
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner:
+
+Write a functional interceptor called contentTypeInterceptor that adds a Content-Type: application/json header to every outbound POST and PUT request, but leaves GET and DELETE requests unchanged. Register it in app.config.ts. Verify by logging req.headers.get('Content-Type') inside the interceptor.
+Exercise 2 — Intermediate:
+
+Build a retryInterceptor that automatically retries any failed request up to 2 times if the error status is 503 (Service Unavailable), with a 1-second delay between retries. Requests that fail for any other reason (401, 404, 500) should not be retried — they should error immediately. Use the RxJS retry operator with a delay configuration. Log each retry attempt to the console.
+Exercise 3 — Advanced:
+
+Build a complete auth interceptor pipeline consisting of three interceptors working in concert: (1) authInterceptor — attaches a Bearer token from AuthService to all requests matching https://api.myapp.com/*; (2) tokenRefreshInterceptor — on 401, calls authService.refreshToken(), then retries the original request with the new token (with loop prevention for the refresh endpoint itself); (3) sessionExpiredInterceptor — if the refresh also fails with 401, calls authService.logout() and navigates to /session-expired. Register all three in the correct order and explain why the order matters.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+An interceptor is a function that sits between HttpClient and the network, running on every request and response
+Functional interceptors match HttpInterceptorFn — they receive (req, next) and return Observable<HttpEvent<unknown>>
+HttpRequest is immutable — always req.clone({...}) to modify a request, never mutate directly
+Interceptors are ordered: top-to-bottom on outbound requests, bottom-to-top on inbound responses
+inject() works inside functional interceptors — call it at the top of the function body
+finalize() is the correct operator for cleanup — it runs on both complete and error; tap(complete) does not
+
+Quick reference table:
+TaskHowAdd a request headerreq.clone({ headers: req.headers.set('key', 'value') })Replace the URLreq.clone({ url: newUrl })Add query paramsreq.clone({ params: req.params.set('key', 'value') })Inspect the responsenext(req).pipe(tap(event => ...))Handle errors globallynext(req).pipe(catchError(err => ...))Run cleanup alwaysnext(req).pipe(finalize(() => ...))Skip interceptor for a URLif (req.url.includes('skip')) return next(req)Retry a requestnext(req).pipe(retry({ count: 2, delay: 1000 }))
+Angular-specific rules:
+
+Register functional interceptors with provideHttpClient(withInterceptors([...])) — not the legacy HTTP_INTERCEPTORS token
+The interceptor array order is the execution order — auth must run before error handling on outbound
+Exclude your own auth/refresh endpoint from 401 redirect logic to prevent infinite loops
+Never send auth headers to third-party URLs — always check req.url before attaching credentials
+finalize not tap(complete) for loading state cleanup — HTTP errors don't trigger complete
+
+One-Line Memory Aid:
+
+An interceptor is invisible middleware for every HTTP call — clone the request to modify it, pipe operators to handle the response, and register in order because sequence is execution order.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If you have both a per-service catchError (in UserService) and a global errorInterceptor, which one runs first on a 500 response — and what happens if the interceptor swallows the error instead of re-throwing it?
+Answer:
+Conceptual explanation: The interceptor runs first. The response travels back through the interceptor chain (innermost to outermost) before it reaches the service's pipe(catchError(...)). So the execution order for a 500 error is:
+Network (500 response)
+    ↓
+errorInterceptor (catchError — innermost to outermost, bottom of chain)
+    ↓  [if re-thrown with throwError()]
+UserService pipe(catchError(...))
+    ↓  [if re-thrown again]
+Component .subscribe({ error })
+If the interceptor swallows the error (calls catchError but returns of(null) or EMPTY instead of throwError()), the error is consumed. The Observable switches to a success path emitting null or completing immediately. The service's catchError never runs. The component's error callback never runs. The component receives null as its response data — and if the component tries to access null.users, it throws a different error. The original 500 is invisible.
+Angular-specific implication: This is a real production debugging nightmare. The symptom is "TypeErrors on undefined" in the component, not HTTP errors — because the interceptor turned a 500 into a null emission. The fix is a firm team rule: interceptors must always re-throw errors they don't fully handle.
+Practical rule: An interceptor should do one of three things with an error:
+
+Re-throw as-is: return throwError(() => error) — passes it downstream unchanged
+Re-throw as a new error: return throwError(() => new Error(userMessage)) — transforms but doesn't swallow
+Fully handle and recover: Only return a non-error Observable (e.g. of(fallbackValue)) when you are certain the component can proceed without the real data — and document this explicitly
+
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Higher-order functions and function composition — interceptors are essentially composed middleware functions
+Closures — understanding how inject() inside a functional interceptor captures the DI context
+
+TypeScript Concepts:
+
+Function type aliases — HttpInterceptorFn is a type alias for a function signature; understanding this makes custom typing easier
+Generic constraints — HttpEvent<T> and HttpResponse<T> use generics to type the response body
+
+Angular-Specific Concepts:
+
+Topic 38 — Angular Router — interceptors often call the Router (for redirects on 401/403); understanding the Router's API is necessary
+Topic 39 — Route Guards — guards and interceptors often share auth service logic; understanding both avoids duplication
+Topic 46 — RxJS Operators in Depth — switchMap, catchError, retry, finalize are all used heavily in interceptors; deeper RxJS knowledge unlocks more sophisticated interceptor patterns
+HttpContext — Angular's mechanism for passing metadata into an interceptor from the call site (e.g. flagging a request to skip auth)
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 18 — Error Handling (catchError, throwError in the response pipeline)
+Topic 20 — RxJS Subscription Management (interceptors return and transform Observables)
+Topic 27 — Services & Dependency Injection (inject() inside interceptor functions)
+Topic 36 — HttpClient & API Integration (interceptors are a layer on top of HttpClient)
+
+This topic unlocks or makes significantly easier:
+
+Topic 38 — Angular Router (interceptors navigate programmatically — requires Router knowledge)
+Topic 39 — Route Guards (auth interceptors and auth guards share the same AuthService — understanding both avoids over-engineering)
+Topic 46 — RxJS Operators in Depth (token refresh, retry patterns, and conditional interception all use advanced RxJS)
+Topic 48 — Testing Services & HTTP (interceptors are testable via HttpClientTestingModule — understanding the base HTTP layer first is essential)
+
+Production readiness assessment: If you can write an auth interceptor that clones the request, attaches a token for your own API only, handles 401 with a redirect, uses finalize for loading state, and is registered in the correct order in provideHttpClient — you are production-ready for interceptors. The token refresh pattern (Section 8) is the advanced tier — aim for it once the fundamentals are solid.
+
+Section 14 — Common Interview Questions
+Question 1:
+
+"What is an HTTP interceptor in Angular, and what are the most common use cases for one?"
+Strong answer covers:
+
+Middleware that intercepts every HTTP request/response in the application
+Runs transparently — services and components are unaware
+Common uses: attaching auth tokens, global error handling (401 redirect), loading state management, logging request/response timing, base URL injection, response caching
+Modern Angular uses functional interceptors (HttpInterceptorFn) registered via withInterceptors()
+Requests are immutable — must use req.clone() to modify
+
+Weak answer misses: The immutability requirement — candidates who haven't used interceptors in production often don't know that req.headers.set() returns a new object and doesn't mutate req.
+Difficulty: Mid
+
+Question 2:
+
+"How would you implement a global loading spinner that activates during any HTTP request and deactivates when it completes or errors?"
+Strong answer covers:
+
+A LoadingService with a signal/BehaviorSubject tracking in-flight request count
+A loading interceptor that increments on request start and decrements in finalize()
+Why finalize is essential — it runs on both complete and error; tap(complete) does not run on error
+The counter approach (not a boolean) handles concurrent requests correctly — spinner stays until all are done
+The spinner component subscribes to loadingService.isLoading computed signal
+
+Weak answer misses: The counter vs boolean distinction — using a simple isLoading = true/false boolean breaks when two requests run simultaneously and the first finishes before the second.
+Difficulty: Mid
+
+Question 3:
+
+"Walk me through how you would implement silent token refresh — automatically refreshing an expired JWT and retrying the original request, without the user noticing."
+Strong answer covers:
+
+Intercept 401 responses in the error interceptor
+Call authService.refreshToken() to get a new token
+Use switchMap to take the new token and retry the original request with req.clone({ headers: ... })
+Loop prevention: check req.url.includes('/auth/refresh') before attempting refresh — a 401 on the refresh endpoint itself should trigger logout, not another refresh
+Handle concurrent requests during refresh (the "refresh race condition") — use a shared Observable or flag so only one refresh call is made even if multiple requests 401 simultaneously
+Fall back to authService.logout() if the refresh fails
+
+Weak answer misses: The concurrent refresh race condition — multiple in-flight requests can all 401 simultaneously, each independently triggering a refresh call. A production implementation uses a single shared refresh Observable (usually via shareReplay(1)) to prevent multiple refresh API calls.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Using a boolean instead of a counter for loading state
+typescript// ❌ Anti-pattern: boolean loading flag breaks with concurrent requests
+export const loadingInterceptor: HttpInterceptorFn = (req, next) => {
+  const loadingService = inject(LoadingService);
+
+  loadingService.setLoading(true); // set to true on start
+
+  return next(req).pipe(
+    finalize(() => loadingService.setLoading(false)) // set to false on finish
+  );
+};
+
+// If Request A and Request B fire simultaneously:
+// A starts  → isLoading = true
+// B starts  → isLoading = true (already true — no change)
+// A finishes → isLoading = false  ← ❌ spinner hides while B is still running
+// B finishes → isLoading = false
+Why it seems fine: Works correctly when only one request runs at a time — which is how most development testing happens.
+What breaks in production: Dashboard pages that fire 3–5 parallel requests (via forkJoin or component init) show the spinner flickering off as soon as the first request completes.
+Correct pattern:
+typescript// ✅ Counter — spinner stays until ALL requests are done
+increment() { this.requestCount.update(n => n + 1); }
+decrement() { this.requestCount.update(n => Math.max(0, n - 1)); }
+isLoading   = computed(() => this.requestCount() > 0);
+
+Anti-Pattern 2 — Swallowing errors in the interceptor
+typescript// ❌ Anti-pattern: catchError returns EMPTY — error is silently consumed
+export const errorInterceptor: HttpInterceptorFn = (req, next) => {
+  return next(req).pipe(
+    catchError((error: HttpErrorResponse) => {
+      console.error('HTTP error:', error.status);
+      return EMPTY; // ❌ Observable completes without emitting — error is gone
+    })
+  );
+};
+Why it seems fine: No uncaught Observable errors in the console. The app "doesn't crash." Feels defensive.
+What breaks in production: Every service's catchError and every component's error callback is now dead code — they never run. Components receive undefined as their data (because EMPTY completes without emitting). this.users = undefined causes template errors. The original HTTP error status is invisible to the developer and the user. Silent data failures are extremely hard to debug in production.
+Correct pattern:
+typescript// ✅ Always re-throw — let downstream handlers decide what to do
+catchError((error: HttpErrorResponse) => {
+  if (error.status === 401) router.navigate(['/login']);
+  return throwError(() => error); // re-throw — services and components still handle it
+})
+
+Anti-Pattern 3 — Performing expensive work synchronously in the interceptor for every request
+typescript// ❌ Anti-pattern: parsing a JWT on every single HTTP request
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const token = inject(AuthService).getToken();
+
+  // ❌ Full JWT decode on every request — CPU work on every keystroke's debounced API call
+  const decoded = JSON.parse(atob(token.split('.')[1]));
+  const isExpired = decoded.exp < Date.now() / 1000;
+
+  if (isExpired) {
+    // redirect to login...
+  }
+
+  return next(req.clone({
+    headers: req.headers.set('Authorization', `Bearer ${token}`)
+  }));
+};
+Why it seems fine: Works correctly. Intercepts expired tokens before requests go out.
+What breaks in production: Base64 decoding and JSON parsing run synchronously on every HTTP request. On a page with 10 concurrent requests, that's 10 synchronous parses. At scale (search debounce firing 5/second), this adds up. More importantly, the interceptor is now responsible for expiry logic that belongs in AuthService — a violation of single responsibility.
+Correct pattern:
+typescript// ✅ Delegate expiry logic to AuthService — cached, not recomputed per request
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const authService = inject(AuthService);
+  const token = authService.getToken(); // AuthService caches expiry internally
+  if (!token) return next(req);
+  return next(req.clone({
+    headers: req.headers.set('Authorization', `Bearer ${token}`)
+  }));
+};
+
+// AuthService computes and caches expiry — not recomputed per interceptor call
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private token = signal<string | null>(null);
+  isExpired     = computed(() => { /* computed once, cached */ });
+}
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+An HTTP interceptor is an invisible middleware checkpoint that every request and response passes through automatically — used to attach auth tokens, handle errors, track loading state, and log requests without touching a single service or component.
+Key rules:
+
+HttpRequest is immutable — always req.clone({...}) to modify; never mutate req directly.
+Interceptors are ordered: top-to-bottom on requests, bottom-to-top on responses.
+Use inject() inside the interceptor function body to access Angular services.
+Use finalize() for cleanup — it runs on both complete and error; tap(complete) does not.
+Always re-throw errors with throwError() unless you are certain the component can handle null data.
+Exclude your auth/refresh endpoint from 401 redirect logic to prevent infinite loops.
+
+The single most important Angular rule:
+
+Always req.clone() — never mutate the request — and always throwError() after handling an error — never swallow it silently.
+
+Interceptor order cheat sheet:
+withInterceptors([
+  loggingInterceptor,       ← runs 1st on request,  4th on response
+  loadingInterceptor,       ← runs 2nd on request,  3rd on response
+  baseUrlInterceptor,       ← runs 3rd on request,  2nd on response
+  authInterceptor,          ← runs 4th on request,  1st on response (closest to network)
+])
+Cross-cutting concernCorrect toolAttach auth token to all requestsauthInterceptor — clone + set headerGlobal error handling (401 redirect)errorInterceptor — catchError + throwErrorLoading spinnerloadingInterceptor — counter + finalizeRequest/response loggingloggingInterceptor — tap + Date.now()Token refresh on 401tokenRefreshInterceptor — catchError + switchMapPrepend environment base URLbaseUrlInterceptor — check relative URL + clone
+
+Say "next" for Topic 38 — Angular Router (routes, navigation, parameters), or "continue" if I stopped mid-topic.You said: Give me a one-paragraph summary of each topic we covered in this chat — just the key Angular rule from each oneGive me a one-paragraph summary of each topic we covered in this chat — just the key Angular rule from each oneMay 15Claude responded: Here are the one-paragraph summaries, one per topic, each anchored to its single most important Angular rule:Here are the one-paragraph summaries, one per topic, each anchored to its single most important Angular rule:
+
+Topic 33 — Reactive Forms
+
+Reactive Forms define your form as a TypeScript class tree of FormControl, FormGroup, and FormArray — the template simply binds to it. The single most important rule is to never subscribe to valueChanges without takeUntilDestroyed(destroyRef), because every unmanaged form subscription is a memory leak. Use FormBuilder to reduce boilerplate, patchValue for partial API updates, markAllAsTouched() in onSubmit to surface hidden errors, and always guard the submit handler with if (form.invalid) return — never trust [disabled] alone.
+
+Topic 34 — Form Validation
+
+Every validator — built-in, custom sync, or async — follows one contract: return null for valid, return { errorKey: true } for invalid. The single most important rule is that every async validator must end with catchError(() => of(null)) — a thrown error permanently locks the control in PENDING state and disables the form. Cross-field validators go on the FormGroup, not the control, so their errors live on form.errors not control.errors. Always debounce async validators with timer(400).pipe(switchMap(...)) to prevent API hammering on every keystroke.
+
+Topic 35 — Template-Driven Forms
+
+Template-Driven Forms let Angular build the form model implicitly from your HTML using ngModel and NgForm — you annotate the template, Angular constructs the FormControl/FormGroup tree behind the scenes. The single most important rule is that every [(ngModel)] inside a <form> must have a name attribute — it is the registration key, and without it the control is invisible to NgForm, making the form's validity and value permanently wrong. Use #ref="ngModel" (not just #ref) for per-field error access, access NgForm via @ViewChild only in ngAfterViewInit, and wrap pre-population calls in setTimeout() to avoid ExpressionChangedAfterItHasBeenChecked.
+
+Topic 36 — HttpClient & API Integration
+
+HttpClient is an injectable service that wraps every HTTP request as a cold Observable — nothing fires until subscription, and each subscription fires one independent request. The single most important rule is to always put HttpClient in a service (never a component), type every response with an interface, catch errors with catchError in the service layer, and clean up component subscriptions with takeUntilDestroyed(destroyRef) — every omission of these four is a production bug. Use switchMap for user-triggered searches to cancel stale in-flight requests, forkJoin for parallel independent calls, and HttpParams for query strings — never concatenate them manually.
+
+Topic 37 — HTTP Interceptors
+
+An HTTP interceptor is invisible middleware that every request and response passes through automatically, used to attach auth tokens, handle errors globally, track loading state, and log requests without touching a single service or component. The single most important rule is to always req.clone({...}) to modify a request — never mutate req directly — and always re-throw errors with throwError() after handling them — never swallow them silently with EMPTY or of(null), because doing so kills every downstream catchError and error callback in the entire app. Use finalize() not tap(complete) for loading state cleanup, register interceptors in withInterceptors([...]) in the correct order, and always exclude your auth endpoint from 401 redirect logic to prevent infinite loops.You said: Include this summary with the Master prompt I gave you at the beginning to start a new chat for the rest of the topics so that I get the response without losin…Include this summary with the Master prompt I gave you at the beginning to start a new chat for the rest of the topics so that I get the response without losing context in the chat and getting generic resultsMay 15Claude responded: Here is your updated Master Prompt — copy the entire thing into a new chat:Here is your updated Master Prompt — copy the entire thing into a new chat:
+
+ANGULAR LEARNING SERIES — CONTINUATION FROM TOPIC 38
+
+I am continuing my Angular learning series. Topics 1–37 are complete. I need to continue from Topic 38 in the same master prompt format, with additional depth added to each topic.
+MY PROFILE
+
+Role: Angular application developer (actively building Angular apps)
+Learning style: Analogy first → technical explanation → Angular code → practice
+I learn best when concepts connect to what I already know
+Topics 1–37 completed — comfortable with: closures, arrow functions, event loop, callbacks, promises/async-await, array methods, destructuring, spread, TypeScript interfaces, generics, decorators, readonly, access modifiers, error handling, optional chaining, RxJS subscription management, takeUntilDestroyed & DestroyRef, async pipe, Angular Signals (signal/computed/effect), OnPush change detection, component lifecycle hooks, @Input() & @Output(), services & dependency injection, template syntax, built-in control flow, built-in directives, content projection, ViewChild/ViewChildren/ContentChild, Reactive Forms, Form Validation, Template-Driven Forms, HttpClient & API Integration, HTTP Interceptors
+I want to understand the why behind every pattern, not just the how
+
+TOPICS 33–37 SUMMARY — KEY ANGULAR RULES (use these to maintain context and avoid repeating covered ground):
+Topic 33 — Reactive Forms: Reactive Forms define your form as a TypeScript class tree of FormControl, FormGroup, and FormArray — the template simply binds to it. Never subscribe to valueChanges without takeUntilDestroyed(destroyRef). Use FormBuilder to reduce boilerplate, patchValue for partial API updates, markAllAsTouched() in onSubmit to surface hidden errors, and always guard the submit handler with if (form.invalid) return — never trust [disabled] alone.
+Topic 34 — Form Validation: Every validator returns null for valid or { errorKey: true } for invalid. Every async validator must end with catchError(() => of(null)) — a thrown error permanently locks the control in PENDING state. Cross-field validators go on the FormGroup so their errors live on form.errors not control.errors. Always debounce async validators with timer(400).pipe(switchMap(...)).
+Topic 35 — Template-Driven Forms: Angular builds the form model implicitly from HTML using ngModel and NgForm. Every [(ngModel)] inside a form must have a name attribute — it is the registration key. Use #ref="ngModel" for per-field error access, access NgForm via @ViewChild only in ngAfterViewInit, and wrap pre-population calls in setTimeout() to avoid ExpressionChangedAfterItHasBeenChecked.
+Topic 36 — HttpClient & API Integration: HttpClient returns cold Observables — nothing fires until subscription. Always put HttpClient in a service, type every response with an interface, catch errors with catchError in the service layer, and clean up with takeUntilDestroyed(destroyRef). Use switchMap for user-triggered searches, forkJoin for parallel calls, and HttpParams for query strings.
+Topic 37 — HTTP Interceptors: Interceptors are invisible middleware for every HTTP call. Always req.clone({...}) to modify a request — never mutate req directly. Always re-throw errors with throwError() — never swallow them with EMPTY or of(null). Use finalize() not tap(complete) for loading state cleanup. Register in withInterceptors([...]) in the correct order. Exclude auth endpoints from 401 redirect logic to prevent infinite loops.
+RESPONSE RULES — READ THESE FIRST, FOLLOW THEM ALWAYS
+
+Give me one topic at a time — never combine two topics in one response
+Use all 16 sections for every topic — no shortcuts, no skipped sections, no compression
+If a topic is too long to complete in one response — stop cleanly at the end of whichever section you just finished, tell me: "Stopped after Section X — say 'continue' to get Sections Y onward", then wait. Never cut a section in half.
+Never compress or shorten any section to fit — two responses is always better than one cut-down response
+Wait for me to say "next" or "Topic X" or "continue" before proceeding
+Connect every topic back to specific earlier topics by number (e.g. "This builds directly on Topic 3 — Closures")
+Name every analogy (e.g. "The Backpack Analogy") — never give an unnamed analogy
+If I ask for a topic out of order, give it but note which earlier topics in the list it depends on
+
+THE COMPLETE 16-SECTION FORMAT
+
+Section 0 — Difficulty & Priority Rating
+
+Difficulty: [Beginner / Beginner-Intermediate / Intermediate / Advanced] — one sentence explaining why this level
+Angular Relevance: [High / Critical] — one sentence explaining why it matters specifically in Angular
+
+Section 1 — Explanation
+
+Start with a named analogy in plain English (name it clearly, e.g. "The Backpack Analogy")
+Then the technical explanation
+Then a quick reference table if the topic involves multiple concepts or a comparison
+
+Section 2 — Connection to Prior Concepts
+
+Which specific Topics 1–37 this directly builds on (reference by number and name)
+A bridging note: one short paragraph explaining the conceptual link
+Which single earlier topic it extends most directly
+
+Section 3 — Code Example
+
+A plain JS/TS example first showing the core concept in isolation
+Then a real Angular-specific example inside a component, service, or lifecycle hook
+Well-commented throughout — every non-obvious line gets a comment
+
+Section 4 — Before & After Refactor
+
+The wrong/old/naive way — with a plain English explanation of what breaks and why
+The correct way
+Why this specific refactor matters in Angular (change detection, memory, performance, etc.)
+
+Section 5 — Common Mistakes & Misconceptions
+
+Exactly 3 mistakes
+Each with: what the mistake is | why developers make it | how to avoid it | Angular-specific consequence if not fixed
+
+Section 6 — Do's and Don'ts
+
+Two-column format: DO (left) | DON'T (right)
+5–6 items per column
+Angular-specific where possible — not generic programming advice
+
+Section 7 — Debugging Tips
+
+Exactly 3 real bugs a developer would actually encounter
+Each with: the exact symptom or error message | plain English cause | the fix | Angular-specific note
+
+Section 8 — Real-World Applications
+
+2 real scenarios where this topic directly applies
+At least one must be Angular-specific
+Each includes a realistic code example — not a toy example
+
+Section 9 — Practice Exercises
+
+Exactly 3 exercises: Beginner → Intermediate → Advanced
+Problem statements only — no solutions, no hints
+At least one must be Angular-specific and require building something real
+
+Section 10 — Key Takeaways
+
+Core concepts defined in plain English (bullet points)
+A quick reference table capturing the most important comparisons or rules
+Angular-specific rules to remember (separate bullet list)
+One-Line Memory Aid at the very bottom — one sentence that captures the whole topic
+
+Section 11 — Thought-Provoking Question + Answer
+
+One deep question that goes beyond the basics
+Immediately followed by a full answer covering: the conceptual explanation | the Angular-specific implication | a practical rule to take away from it
+
+Section 12 — Related Topics to Learn Next
+
+Grouped into three categories:
+ES6/JS Concepts
+TypeScript Concepts
+Angular-Specific Concepts
+Each item has a one-line note on why it's relevant
+
+Section 13 — Study Plan Checkpoint
+
+Which Topics 1–37 this topic directly depends on (list by number and name)
+Which upcoming topics in the list this topic unlocks or makes significantly easier
+Production readiness assessment — one honest sentence: am I ready to use this confidently in a real Angular app, or do I need more practice first?
+
+Section 14 — Common Interview Questions
+
+Exactly 3 real interview questions Angular developers get asked on this topic
+Each with:
+The question (as an interviewer would actually ask it)
+What a strong answer covers (3–5 bullet points)
+What a weak answer typically misses (one line)
+Difficulty level: Junior / Mid / Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+
+Exactly 3 anti-patterns that real Angular developers use in real apps that cause problems at scale
+Each with:
+A short code snippet showing what it looks like
+Why it seems fine or even correct at first glance
+What actually breaks in production or at scale
+The correct pattern to replace it with (with code)
+
+Section 16 — Mental Model Summary
+
+A single structured cheat sheet capturing the entire topic — designed to be read in 30 seconds
+Core concept in exactly one sentence
+Key rules as a numbered list (maximum 6 rules)
+The single most important Angular rule in bold
+A side-by-side comparison table if the topic involves choosing between two approaches
+
+TOPICS COMPLETED — DO NOT REPEAT
+
+ES6/JS Foundations (Topics 1–11):
+
+Topic 1 — let / const / var
+
+Topic 2 — Block Scope & Hoisting
+
+Topic 3 — Closures & Lexical Scope
+
+Topic 4 — Arrow Functions & this Binding
+
+Topic 5 — The Event Loop & Call Stack
+
+Topic 6 — Callback Functions
+
+Topic 7 — Pass by Value vs Pass by Reference
+
+Topic 8 — Promises & async/await
+
+Topic 9 — Array Methods
+
+Topic 10 — Destructuring & Spread Operator
+
+Topic 11 — Template Literals
+TypeScript Foundations (Topics 12–19):
+
+Topic 12 — Modules & Imports/Exports
+
+Topic 13 — TypeScript Interfaces & Types
+
+Topic 14 — readonly & Immutability Patterns
+
+Topic 15 — Access Modifiers (private, protected, public)
+
+Topic 16 — TypeScript Generics
+
+Topic 17 — TypeScript Decorators
+
+Topic 18 — Error Handling
+
+Topic 19 — Optional Chaining & Nullish Coalescing
+Angular Core — RxJS & Reactivity (Topics 20–24):
+
+Topic 20 — RxJS Subscription Management
+
+Topic 21 — takeUntilDestroyed & DestroyRef
+
+Topic 22 — async Pipe
+
+Topic 23 — Angular Signals (signal, computed, effect)
+
+Topic 24 — OnPush Change Detection
+Angular Core — Components & Architecture (Topics 25–32):
+
+Topic 25 — Component Lifecycle Hooks
+
+Topic 26 — @Input() & @Output() in Depth
+
+Topic 27 — Services & Dependency Injection
+
+Topic 28 — Angular Template Syntax
+
+Topic 29 — Built-in Control Flow (@if, @for, @switch)
+
+Topic 30 — Built-in Directives (ngClass, ngStyle, ngTemplateOutlet)
+
+Topic 31 — Content Projection (ng-content)
+
+Topic 32 — ViewChild, ViewChildren, ContentChild
+Angular Core — Forms (Topics 33–35):
+
+Topic 33 — Reactive Forms
+
+Topic 34 — Form Validation
+
+Topic 35 — Template-Driven Forms
+Angular Core — HTTP & Routing (Topics 36–37 complete):
+
+Topic 36 — HttpClient & API Integration
+
+Topic 37 — HTTP Interceptors
+TOPICS TO COVER — IN THIS ORDER
+
+Angular Core — HTTP & Routing (remaining):
+
+Topic 38 — Angular Router (routes, navigation, parameters)
+
+Topic 39 — Route Guards (CanActivate, CanDeactivate, Resolve)
+
+Topic 40 — Lazy Loading & Route-Based Code Splitting
+Angular Advanced:
+
+Topic 41 — Custom Directives
+
+Topic 42 — Custom Pipes
+
+Topic 43 — Angular Animations
+
+Topic 44 — State Management Patterns (service with Signal / BehaviorSubject)
+
+Topic 45 — Performance Optimisation (trackBy, pure pipes, memoisation, deferrable views)
+
+Topic 46 — RxJS Operators in Depth (switchMap, mergeMap, concatMap, forkJoin, combineLatest, debounceTime)
+
+Topic 47 — Testing Angular Components (TestBed, ComponentFixture, fakeAsync)
+
+Topic 48 — Testing Services & HTTP (HttpClientTestingModule, spies)
+
+Topic 49 — Angular CDK (Overlay, DragDrop, VirtualScroll)
+
+Topic 50 — Angular Universal & SSR
+START NOW
+
+Give me Topic 38 — Angular Router (routes, navigation, parameters) using all 16 sections.
+
+If the response is too long to complete in one message, stop cleanly at the end of whichever section you finish last and tell me exactly where you stopped. I will say "continue" to get the rest.

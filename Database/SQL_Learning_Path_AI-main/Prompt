@@ -1,0 +1,58 @@
+
+//LEARNING ORDER PROMPT//
+
+
+You are generating a complete, dependency-ordered SQL learning order/roadmap for me, 
+in the same style as a prior .NET and DSA learning order you built: tiered by real 
+relevance, flat numbered sections with numbered subtopics, hands-on practice 
+checkpoints per topic, and a final audit pass before delivering.
+
+MY CONTEXT:
+- I'm comfortable with SQL basics (SELECT, WHERE, basic JOINs) but want to go 
+  deeper into joins, subqueries, and beyond.
+- I'm learning this for TWO purposes equally: (1) writing solid queries for 
+  real .NET application development (EF Core-adjacent, app-level data access), 
+  and (2) being interview-ready, including for questions related to my actual 
+  past project experience migrating stored procedures from SQL Server to GCP 
+  as part of a data lake migration.
+- Primary database engine: SQL Server / T-SQL. Examples and syntax should default 
+  to this unless a topic is GCP/BigQuery-specific (see below).
+- I can commit roughly 10-15 hours/week to this, alongside parallel .NET and DSA 
+  study \u2014 so don't pad the roadmap with redundant repetition across topics.
+
+STRUCTURE REQUIRED:
+1. Tier the topics by real relevance (e.g. "Must Master" / "Should Know" / "Aware 
+   Of Only"), the same way the DSA and .NET roadmaps were tiered \u2014 don't treat 
+   everything as equally important.
+2. Since I have real experience with stored procedures and data lake migration, 
+   make sure T-SQL programmability (stored procedures, functions, triggers, 
+   transactions, error handling) gets proper depth and isn't treated as a minor 
+   topic \u2014 this is part of my actual interview story.
+3. Cover core query fundamentals in dependency order: don't introduce subqueries 
+   before joins, don't introduce window functions before aggregation, etc.
+4. Include database design fundamentals (normalization, keys, indexing) at the 
+   right depth for someone writing app-level queries \u2014 not a full DBA-level 
+   treatment, but enough to reason about why a schema or index choice matters.
+5. Include query performance/optimization basics (execution plans, indexing 
+   impact, common anti-patterns) since this is a frequent interview topic and 
+   relevant to someone who has touched migrations.
+6. Add ONE dedicated section at the END specifically for GCP/BigQuery-related SQL 
+   concepts, kept light/conceptual (not deep), framed around what's relevant to 
+   discussing a SQL-Server-to-GCP data lake migration in an interview (e.g. key 
+   syntax/dialect differences, partitioning/clustering concepts, how BigQuery's 
+   architecture differs from a traditional RDBMS at a level relevant to migration 
+   discussions). This section should be clearly separated from the main T-SQL 
+   roadmap.
+7. For each topic, include a brief hands-on practice checkpoint: either a sample 
+   query/problem to write, or for conceptual topics, a small concrete task (e.g. 
+   "look at an execution plan for X query and identify the seek vs scan"). 
+   Reference real practice platforms where relevant (e.g. specific 
+   LeetCode/HackerRank SQL problems) the same way the DSA roadmap did.
+8. Flag any topic that is unusually high-value for interviews specifically tied 
+   to my data lake migration / stored procedure background, so I know where to 
+   over-invest relative to the rest.
+9. Before finalizing, do an explicit audit pass (the way you did for the .NET 
+   list) to confirm no core SQL topic was missed \u2014 state what you checked.
+
+Ask me any clarifying questions you need before generating this, then wait for me 
+to say "generate" before producing the actual roadmap.

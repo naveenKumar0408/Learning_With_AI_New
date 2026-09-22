@@ -1,0 +1,1253 @@
+Topic 47 — Testing Angular Components (TestBed, ComponentFixture, fakeAsync)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Advanced — The APIs (TestBed, ComponentFixture, fakeAsync) are learnable, but the difficulty is architectural: knowing what to test vs. what to mock, understanding Angular's test change detection cycle (which differs from production), and correctly handling async operations in a synchronous test runner without creating flaky tests.
+Angular Relevance: Critical — Component tests are the primary safety net for Angular UI logic; without them, refactoring components, upgrading Angular versions, or changing templates becomes a high-risk activity; every production Angular team requires component testing fluency.
+
+Section 1 — Explanation
+The Flight Simulator Analogy
+A flight simulator lets pilots practise in a controlled environment that behaves like a real aircraft — without the real aircraft, real passengers, or real consequences. The simulator can inject scenarios (engine failure, crosswind) that would be dangerous or impossible to test in production.
+TestBed is Angular's flight simulator. It creates a miniature Angular environment — a real (but sandboxed) Angular application — inside your test runner. Your component runs inside this environment with:
+
+Real Angular change detection
+Real template compilation
+Real dependency injection
+Controlled substitutes for external dependencies (services, HTTP, router)
+
+ComponentFixture is your control panel for the simulator — it gives you handles to trigger change detection, access the DOM, inspect the component instance, and observe outputs.
+fakeAsync / tick() is the simulator's time control — it lets you fast-forward through timers, debounce periods, and async operations without actually waiting for real time to pass.
+The Three Layers of an Angular Component Test:
+LayerToolWhat it doesSetupTestBed.configureTestingModule()Creates the isolated Angular environmentControlComponentFixture<T>Triggers CD, accesses DOM, reads component stateAsync controlfakeAsync + tick() / flushMicrotasks()Controls time and microtask queue without waiting
+The key mental model shift: Angular's test change detection does not run automatically the way production change detection does. In tests, you must call fixture.detectChanges() manually to trigger a CD cycle. This is intentional — it gives you precise control over exactly when the DOM updates, making assertions reliable.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 25 — Component Lifecycle Hooks — TestBed triggers ngOnInit on the first fixture.detectChanges() call; understanding this timing is essential for writing correct setup code
+Topic 27 — Services & Dependency Injection — providing mock services via TestBed.configureTestingModule({ providers: [...] }) is DI in action; the same injector rules apply
+Topic 33/34/35 — Forms — testing form components requires triggering input events, calling setValue(), and asserting on form.valid; the form knowledge from those topics is assumed
+Topic 43 — Angular Animations — provideNoopAnimations() in test providers (covered in Topic 43) is the standard pattern to prevent animation timing from breaking DOM-state assertions
+Topic 44 — State Management Patterns — the primary thing you mock in component tests is the store service; knowing the store shape makes writing mock stores straightforward
+Topic 46 — RxJS Operators — fakeAsync + tick() is the correct way to test debounceTime, switchMap, and other time-based operators inside components
+
+Bridging Note:
+
+In Topic 27 you learned that Angular's DI system resolves dependencies by looking up the injector tree. In TestBed, you configure a test injector that intercepts those lookups and returns controlled substitutes — mock services, stub HTTP clients, fake routers. The same DI resolution rules apply; TestBed is just a test-scoped injector sitting at the root of the test component tree.
+Most directly extends: Topic 27 — Services & Dependency Injection (TestBed is DI in a controlled test environment).
+
+Section 3 — Code Example
+Plain Concept — What TestBed Replaces
+typescript// Without TestBed: manually instantiating a component in isolation
+// This misses Angular's template compilation, CD, DI, and directive resolution
+const component = new MyComponent();
+component.title = 'Hello';
+// No template, no DOM, no change detection — barely useful for testing Angular components
+typescript// With TestBed: a real Angular environment in miniature
+// The component's template compiles, DI resolves, CD runs — just like production
+await TestBed.configureTestingModule({
+  imports: [MyComponent]  // standalone component — import directly
+}).compileComponents();
+
+const fixture = TestBed.createComponent(MyComponent);
+fixture.detectChanges();  // triggers ngOnInit + first render
+// Now fixture.nativeElement has real DOM matching the template
+
+Full Working Component Test — All Core Patterns
+typescript// counter.component.ts — the component under test
+@Component({
+  selector: 'app-counter',
+  standalone: true,
+  template: `
+    <h1>{{ title() }}</h1>
+    <p data-testid="count">{{ count() }}</p>
+    <button data-testid="increment" (click)="increment()">+</button>
+    <button data-testid="reset" (click)="reset()">Reset</button>
+    @if (count() >= 10) {
+      <span data-testid="warning">High count!</span>
+    }
+  `
+})
+export class CounterComponent {
+  title = input<string>('Counter');
+  count = signal(0);
+
+  increment() { this.count.update(n => n + 1); }
+  reset()     { this.count.set(0); }
+}
+typescript// counter.component.spec.ts
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { CounterComponent } from './counter.component';
+import { By } from '@angular/platform-browser';
+
+describe('CounterComponent', () => {
+  let fixture: ComponentFixture<CounterComponent>;
+  let component: CounterComponent;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CounterComponent]    // standalone component goes in imports, not declarations
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(CounterComponent);
+    component = fixture.componentInstance;
+
+    // First detectChanges() triggers ngOnInit and the first template render
+    fixture.detectChanges();
+  });
+
+  // ── Querying the DOM ────────────────────────────────────────────────────
+
+  it('should display the initial count as 0', () => {
+    // By.css() returns a DebugElement — Angular's wrapper around the native DOM node
+    const countEl = fixture.debugElement.query(By.css('[data-testid="count"]'));
+    expect(countEl.nativeElement.textContent.trim()).toBe('0');
+  });
+
+  it('should display the title input', () => {
+    // fixture.componentRef.setInput() is the correct way to set signal inputs in tests
+    fixture.componentRef.setInput('title', 'My Custom Counter');
+    fixture.detectChanges();      // re-render after input change
+
+    const h1 = fixture.debugElement.query(By.css('h1'));
+    expect(h1.nativeElement.textContent).toBe('My Custom Counter');
+  });
+
+  // ── Triggering Events ───────────────────────────────────────────────────
+
+  it('should increment count when + button is clicked', () => {
+    const btn = fixture.debugElement.query(By.css('[data-testid="increment"]'));
+
+    btn.nativeElement.click();    // trigger the click event
+    fixture.detectChanges();      // re-render after state change
+
+    const countEl = fixture.debugElement.query(By.css('[data-testid="count"]'));
+    expect(countEl.nativeElement.textContent.trim()).toBe('1');
+  });
+
+  it('should reset count to 0', () => {
+    component.count.set(5);       // set component state directly
+    fixture.detectChanges();
+
+    const resetBtn = fixture.debugElement.query(By.css('[data-testid="reset"]'));
+    resetBtn.nativeElement.click();
+    fixture.detectChanges();
+
+    expect(component.count()).toBe(0);
+  });
+
+  // ── Conditional DOM ─────────────────────────────────────────────────────
+
+  it('should not show warning below count 10', () => {
+    const warning = fixture.debugElement.query(By.css('[data-testid="warning"]'));
+    expect(warning).toBeNull();   // element doesn't exist in DOM
+  });
+
+  it('should show warning at count 10', () => {
+    component.count.set(10);
+    fixture.detectChanges();
+
+    const warning = fixture.debugElement.query(By.css('[data-testid="warning"]'));
+    expect(warning).not.toBeNull();
+    expect(warning.nativeElement.textContent).toBe('High count!');
+  });
+
+  // ── Output Events ───────────────────────────────────────────────────────
+
+  it('should emit countChanged output when incremented', () => {
+    // If the component had: countChanged = output<number>()
+    // const emitted: number[] = [];
+    // component.countChanged.subscribe(v => emitted.push(v));
+    // btn.nativeElement.click();
+    // fixture.detectChanges();
+    // expect(emitted).toEqual([1]);
+  });
+});
+
+Testing with a Mock Service
+typescript// user-profile.component.ts — depends on UserService
+@Component({
+  standalone: true,
+  imports: [AsyncPipe],
+  template: `
+    @if (user$ | async; as user) {
+      <h2 data-testid="name">{{ user.name }}</h2>
+      <p data-testid="email">{{ user.email }}</p>
+    }
+  `
+})
+export class UserProfileComponent implements OnInit {
+  private userService = inject(UserService);
+  user$!: Observable<User>;
+
+  ngOnInit() {
+    this.user$ = this.userService.getCurrentUser();
+  }
+}
+typescript// user-profile.component.spec.ts
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
+import { UserProfileComponent } from './user-profile.component';
+import { UserService } from './user.service';
+
+describe('UserProfileComponent', () => {
+  let fixture: ComponentFixture<UserProfileComponent>;
+
+  // Create a typed mock — only implements the methods this component uses
+  const mockUserService = {
+    getCurrentUser: jasmine.createSpy('getCurrentUser').and.returnValue(
+      of({ id: 1, name: 'Alice', email: 'alice@example.com' })
+    )
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [UserProfileComponent],
+      providers: [
+        // Override the real UserService with our mock
+        // The component's inject(UserService) now receives this mock object
+        { provide: UserService, useValue: mockUserService }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(UserProfileComponent);
+    fixture.detectChanges();    // triggers ngOnInit → calls mockUserService.getCurrentUser()
+  });
+
+  it('should display the user name', () => {
+    const nameEl = fixture.debugElement.query(By.css('[data-testid="name"]'));
+    expect(nameEl.nativeElement.textContent).toBe('Alice');
+  });
+
+  it('should call getCurrentUser once on init', () => {
+    expect(mockUserService.getCurrentUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('should display different user when service returns different data', () => {
+    mockUserService.getCurrentUser.and.returnValue(
+      of({ id: 2, name: 'Bob', email: 'bob@example.com' })
+    );
+    fixture.detectChanges();    // re-run ngOnInit equivalent — in this case
+                                // the component would need to re-call the service
+    // More commonly: directly update the observable the component is subscribed to
+  });
+});
+
+fakeAsync and tick() — Controlling Time
+typescript// search.component.ts — has a debounceTime in its search logic
+@Component({
+  standalone: true,
+  imports: [FormsModule, AsyncPipe],
+  template: `
+    <input data-testid="search-input"
+           [ngModel]="query"
+           (ngModelChange)="onQueryChange($event)" />
+    @for (result of results$ | async; track result.id) {
+      <p data-testid="result">{{ result.name }}</p>
+    }
+  `
+})
+export class SearchComponent {
+  query = '';
+  results$!: Observable<SearchResult[]>;
+  private query$ = new Subject<string>();
+  private searchService = inject(SearchService);
+
+  constructor() {
+    this.results$ = this.query$.pipe(
+      debounceTime(300),
+      switchMap(q => this.searchService.search(q))
+    );
+  }
+
+  onQueryChange(value: string) {
+    this.query = value;
+    this.query$.next(value);
+  }
+}
+typescript// search.component.spec.ts — testing debounceTime with fakeAsync
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { of } from 'rxjs';
+
+describe('SearchComponent', () => {
+  let fixture: ComponentFixture<SearchComponent>;
+  const mockSearchService = {
+    search: jasmine.createSpy('search').and.returnValue(
+      of([{ id: 1, name: 'Angular' }, { id: 2, name: 'Angular Material' }])
+    )
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [SearchComponent],
+      providers: [{ provide: SearchService, useValue: mockSearchService }]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(SearchComponent);
+    fixture.detectChanges();
+  });
+
+  it('should not call search before debounce period', fakeAsync(() => {
+    // fakeAsync wraps the test — all async operations (timers, promises) are controlled
+
+    const input = fixture.debugElement.query(By.css('[data-testid="search-input"]'));
+    input.nativeElement.value = 'ang';
+    input.nativeElement.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    // At this point, 0ms have passed in fake time — debounce hasn't fired
+    expect(mockSearchService.search).not.toHaveBeenCalled();
+
+    tick(200);    // advance fake time by 200ms — debounce needs 300ms, still waiting
+    expect(mockSearchService.search).not.toHaveBeenCalled();
+
+    tick(100);    // advance another 100ms — total 300ms — debounce fires now
+    expect(mockSearchService.search).toHaveBeenCalledWith('ang');
+  }));
+
+  it('should show results after debounce', fakeAsync(() => {
+    const input = fixture.debugElement.query(By.css('[data-testid="search-input"]'));
+    input.nativeElement.value = 'angular';
+    input.nativeElement.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    tick(300);              // advance past debounce period
+    fixture.detectChanges(); // re-render with results from mockSearchService
+
+    const results = fixture.debugElement.queryAll(By.css('[data-testid="result"]'));
+    expect(results.length).toBe(2);
+    expect(results[0].nativeElement.textContent).toBe('Angular');
+  }));
+
+  it('should only call search once for rapid typing', fakeAsync(() => {
+    const input = fixture.debugElement.query(By.css('[data-testid="search-input"]'));
+
+    // Simulate rapid typing — 5 keystrokes within 300ms
+    ['a', 'an', 'ang', 'angu', 'angul'].forEach(val => {
+      input.nativeElement.value = val;
+      input.nativeElement.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      tick(50);    // 50ms between keystrokes — total 250ms, debounce hasn't fired
+    });
+
+    tick(300);    // now the debounce fires for the last value 'angul'
+    // Only ONE search call despite 5 input events — debounce working correctly
+    expect(mockSearchService.search).toHaveBeenCalledTimes(1);
+    expect(mockSearchService.search).toHaveBeenCalledWith('angul');
+  }));
+});
+
+Section 4 — Before & After Refactor
+❌ Before — Testing Implementation Details
+typescript// WRONG: testing internal implementation details instead of user-visible behaviour
+it('should set this.isLoading to true during fetch', () => {
+  component.loadData();
+  // Testing a private implementation detail — isLoading is not in the template
+  expect(component['isLoading']).toBe(true);  // accessing private via bracket notation
+});
+
+it('should call ngOnInit', () => {
+  spyOn(component, 'ngOnInit');
+  // ngOnInit is an Angular lifecycle hook — testing that it was called
+  // tells you nothing about what it actually does
+  fixture.detectChanges();
+  expect(component.ngOnInit).toHaveBeenCalled(); // meaningless
+});
+
+it('should have 3 items in the array', () => {
+  // Testing the data structure, not the rendered output
+  expect(component.items.length).toBe(3);
+  // A broken template could render 0 items and this test still passes
+});
+What breaks: Tests pass even when the UI is broken because they're asserting on component internals, not on what the user sees. Refactoring the component's internal variable names breaks these tests for no user-visible reason.
+
+✅ After — Testing User-Visible Behaviour
+typescript// CORRECT: test what the user sees and interacts with
+it('should show a loading spinner while data is fetching', fakeAsync(() => {
+  // Trigger data load
+  fixture.detectChanges();
+
+  // Assert on the DOM — what the user actually sees
+  const spinner = fixture.debugElement.query(By.css('[data-testid="spinner"]'));
+  expect(spinner).not.toBeNull();    // spinner is visible during load
+
+  tick(500);                         // let the async operation complete
+  fixture.detectChanges();
+
+  const spinnerAfter = fixture.debugElement.query(By.css('[data-testid="spinner"]'));
+  expect(spinnerAfter).toBeNull();   // spinner is gone after load
+}));
+
+it('should render 3 item cards in the list', fakeAsync(() => {
+  tick(500);
+  fixture.detectChanges();
+
+  // Assert on rendered DOM elements, not array length
+  const cards = fixture.debugElement.queryAll(By.css('[data-testid="item-card"]'));
+  expect(cards.length).toBe(3);
+}));
+
+it('should show item name in each card', fakeAsync(() => {
+  tick(500);
+  fixture.detectChanges();
+
+  const firstCard = fixture.debugElement.query(By.css('[data-testid="item-card"]'));
+  expect(firstCard.nativeElement.textContent).toContain('Expected Item Name');
+}));
+Why this refactor matters in Angular:
+
+Tests that assert on DOM output survive component refactors — internal variable names, private methods, and data structure changes can all be rewritten freely as long as the rendered output stays correct. Tests that assert on implementation details break on every refactor, creating a false "tests are failing" signal that doesn't mean the UI is actually broken.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Forgetting fixture.detectChanges() After State Changes
+What the mistake looks like:
+typescriptit('should update the count display', () => {
+  component.count.set(5);
+  // Missing: fixture.detectChanges()
+  const countEl = fixture.debugElement.query(By.css('[data-testid="count"]'));
+  expect(countEl.nativeElement.textContent.trim()).toBe('5');  // FAILS — still shows '0'
+});
+Why developers make it: In production, Angular's change detection runs automatically after events and async operations. Developers assume tests work the same way.
+How to avoid it: In tests, Angular's change detection is manual. After any state change — signal.set(), component.someProperty = value, a button click, a timer tick — call fixture.detectChanges() before asserting on the DOM.
+Angular-specific consequence: The test asserts on stale DOM output and fails intermittently — or worse, passes because the previous state happened to match the expected value. This creates false confidence.
+
+Mistake 2 — Using async/await with Promises Inside Tests Instead of fakeAsync/tick()
+What the mistake looks like:
+typescriptit('should show results after search', async () => {
+  // Real async/await — actually waits in real time
+  await new Promise(resolve => setTimeout(resolve, 300));  // wait 300ms real time
+  fixture.detectChanges();
+  // This test takes 300ms of real wall-clock time on every run
+});
+Why developers make it: async/await is familiar from everyday TypeScript. fakeAsync feels like unfamiliar Angular magic.
+How to avoid it: Use fakeAsync(() => { ... tick(300); ... }) for timer-based async. Use waitForAsync (the Angular wrapper around real async) only when dealing with genuine Promise-based operations that can't be replaced by tick(). Real setTimeout waits in tests multiply: 50 tests each waiting 300ms = 15 seconds of test suite time.
+Angular-specific consequence: A test suite that uses real setTimeout waits becomes progressively slower as it grows — a suite that takes 30 seconds runs infrequently, defeating the purpose of fast feedback from tests.
+
+Mistake 3 — Declaring Components in declarations Instead of imports for Standalone Components
+What the mistake looks like:
+typescriptawait TestBed.configureTestingModule({
+  declarations: [MyStandaloneComponent],  // ← wrong for standalone
+  imports: [CommonModule]
+}).compileComponents();
+// Error: Component 'MyStandaloneComponent' is standalone, and cannot be declared in an NgModule
+Why developers make it: Pre-standalone Angular always used declarations. Old tutorials, Stack Overflow answers, and AI-generated code still use declarations.
+How to avoid it: Standalone components go in imports: [] in TestBed.configureTestingModule(). Non-standalone components go in declarations: []. When in doubt: if the component has standalone: true in its @Component decorator, it goes in imports.
+Angular-specific consequence: Compile-time error that blocks the test from running — but the error message (cannot be declared in an NgModule) is specific enough to diagnose quickly once you know the rule.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TAdd data-testid attributes to elements you need to query in testsSelect by CSS class or element tag — classes change with styling refactors, breaking tests for no functional reasonCall fixture.detectChanges() after every state change before asserting on the DOMAssert on DOM immediately after state changes without triggering CD — the DOM will be staleUse fakeAsync + tick() for all timer/debounce/delay testingUse real setTimeout waits in tests — they make the suite slow and fragileMock services with { provide: RealService, useValue: mockObject } in the test providersImport real services with real HTTP dependencies in component tests — unit tests should be isolatedTest user-visible behaviour (DOM output, emitted events) not implementation details (private variables, internal methods)Access private component members via component['privateProp'] — this couples tests to implementationUse fixture.componentRef.setInput() for signal inputsSet signal inputs via component.inputSignal.set() — signal inputs are read-only from outside
+
+Section 7 — Debugging Tips
+Bug 1 — Test Fails with "1 timer(s) still in the queue"
+Symptom: fakeAsync test throws: Error: 1 timer(s) still in the queue. at the end of the test.
+Plain English Cause: A setTimeout, setInterval, or debounceTime timer was scheduled inside fakeAsync but tick() was never called with enough time to drain it. fakeAsync enforces that all scheduled timers must complete before the test ends.
+Fix:
+typescriptit('should handle pending timers', fakeAsync(() => {
+  component.startSomeTimer();
+  fixture.detectChanges();
+
+  // Option 1: tick() the exact duration
+  tick(1000);
+
+  // Option 2: discardPeriodicTasks() for setInterval that runs indefinitely
+  discardPeriodicTasks();
+
+  // Option 3: flush() drains ALL pending timers at once
+  flush();
+
+  fixture.detectChanges();
+  // Now assert
+}));
+Angular-specific note: flush() is often the easiest fix — it runs all pending timers to completion in one call. Use discardPeriodicTasks() specifically for setInterval-based timers that would run forever.
+
+Bug 2 — NullInjectorError: No provider for SomeService
+Symptom: Test throws NullInjectorError: R3InjectorError... No provider for SomeService.
+Plain English Cause: The component injects SomeService but neither the real service nor a mock was provided in the TestBed configuration. The test injector has no way to resolve the dependency.
+Fix:
+typescriptawait TestBed.configureTestingModule({
+  imports: [MyComponent],
+  providers: [
+    // Option 1: provide a mock
+    { provide: SomeService, useValue: { getData: () => of([]) } },
+
+    // Option 2: provide the real service (if it has no further HTTP dependencies)
+    SomeService,
+
+    // Option 3: if SomeService depends on HttpClient, provide both
+    SomeService,
+    provideHttpClient()
+  ]
+}).compileComponents();
+Angular-specific note: Check the full injector error chain — NullInjectorError often lists multiple services. The real missing dependency is at the bottom of the chain, not always the service named at the top.
+
+Bug 3 — DOM Assertions Pass When They Should Fail (False Positive)
+Symptom: A test asserts that an element exists and passes — but the element isn't actually visible when running the app manually.
+Plain English Cause: The test is querying by a selector that matches a different element (e.g. the placeholder text in an @placeholder block, or a hidden element that CSS hides but Angular never removes from DOM). Also common: fixture.detectChanges() was never called, so the DOM reflects the component's initial compiled state rather than its post-ngOnInit state.
+Fix:
+typescript// Always call detectChanges() at least once before querying:
+fixture.detectChanges();
+
+// Verify the element is the one you expect:
+const el = fixture.debugElement.query(By.css('[data-testid="content"]'));
+console.log(el?.nativeElement?.outerHTML);  // inspect what was actually found
+
+// Use specific data-testid attributes to avoid ambiguous selectors:
+// FRAGILE: By.css('.card p')  — matches any <p> inside any .card
+// ROBUST:  By.css('[data-testid="card-description"]')  — matches exactly one element
+Angular-specific note: By.css() returns the first matching element. If your template has multiple elements matching the same selector (e.g. multiple <p> tags), assertions on the text content may pass against the wrong element. data-testid attributes eliminate this ambiguity entirely.
+
+Section 8 — Real-World Applications
+Scenario 1 — Testing a Login Form Component
+A login form with validation, a loading state, and a service call — one of the most common component test scenarios in production apps.
+typescript// login.component.ts (abbreviated)
+@Component({
+  standalone: true,
+  imports: [ReactiveFormsModule],
+  template: `
+    <form [formGroup]="form" (ngSubmit)="onSubmit()">
+      <input data-testid="email" formControlName="email" />
+      <input data-testid="password" type="password" formControlName="password" />
+      @if (form.get('email')?.touched && form.get('email')?.hasError('required')) {
+        <span data-testid="email-error">Email is required</span>
+      }
+      <button data-testid="submit" type="submit" [disabled]="isLoading()">
+        {{ isLoading() ? 'Logging in...' : 'Log in' }}
+      </button>
+      @if (errorMessage()) {
+        <p data-testid="error-message">{{ errorMessage() }}</p>
+      }
+    </form>
+  `
+})
+export class LoginComponent {
+  private authService = inject(AuthService);
+  form = inject(FormBuilder).group({
+    email:    ['', [Validators.required, Validators.email]],
+    password: ['', Validators.required]
+  });
+  isLoading  = signal(false);
+  errorMessage = signal('');
+
+  onSubmit() {
+    if (this.form.invalid) return;
+    this.isLoading.set(true);
+    this.authService.login(this.form.value).subscribe({
+      next:  () => this.isLoading.set(false),
+      error: (e) => { this.isLoading.set(false); this.errorMessage.set(e.message); }
+    });
+  }
+}
+typescript// login.component.spec.ts
+describe('LoginComponent', () => {
+  let fixture: ComponentFixture<LoginComponent>;
+  let component: LoginComponent;
+
+  const mockAuthService = {
+    login: jasmine.createSpy('login')
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [LoginComponent],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        provideNoopAnimations()
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(LoginComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('should show email error when email is touched and empty', () => {
+    const emailInput = fixture.debugElement.query(By.css('[data-testid="email"]'));
+    emailInput.nativeElement.dispatchEvent(new Event('focus'));
+    emailInput.nativeElement.dispatchEvent(new Event('blur'));  // marks as touched
+    fixture.detectChanges();
+
+    const error = fixture.debugElement.query(By.css('[data-testid="email-error"]'));
+    expect(error).not.toBeNull();
+    expect(error.nativeElement.textContent).toBe('Email is required');
+  });
+
+  it('should call authService.login with form values on valid submit', () => {
+    mockAuthService.login.and.returnValue(of({}));
+
+    component.form.setValue({ email: 'test@test.com', password: 'password123' });
+    fixture.detectChanges();
+
+    const submitBtn = fixture.debugElement.query(By.css('[data-testid="submit"]'));
+    submitBtn.nativeElement.click();
+    fixture.detectChanges();
+
+    expect(mockAuthService.login).toHaveBeenCalledWith({
+      email: 'test@test.com',
+      password: 'password123'
+    });
+  });
+
+  it('should display error message when login fails', () => {
+    mockAuthService.login.and.returnValue(
+      throwError(() => new Error('Invalid credentials'))
+    );
+
+    component.form.setValue({ email: 'test@test.com', password: 'wrongpassword' });
+    const submitBtn = fixture.debugElement.query(By.css('[data-testid="submit"]'));
+    submitBtn.nativeElement.click();
+    fixture.detectChanges();
+
+    const errorMsg = fixture.debugElement.query(By.css('[data-testid="error-message"]'));
+    expect(errorMsg).not.toBeNull();
+    expect(errorMsg.nativeElement.textContent).toBe('Invalid credentials');
+  });
+
+  it('should not call login when form is invalid', () => {
+    // form starts invalid (empty required fields)
+    const submitBtn = fixture.debugElement.query(By.css('[data-testid="submit"]'));
+    submitBtn.nativeElement.click();
+    fixture.detectChanges();
+
+    expect(mockAuthService.login).not.toHaveBeenCalled();
+  });
+});
+
+Scenario 2 — Testing an @defer Block with fakeAsync
+Testing that a deferred component loads correctly after its trigger fires.
+typescript// dashboard.component.ts (abbreviated)
+@Component({
+  standalone: true,
+  template: `
+    <app-header />
+    @defer (on idle) {
+      <app-analytics data-testid="analytics" />
+      @placeholder { <div data-testid="placeholder">Loading...</div> }
+    }
+  `
+})
+export class DashboardComponent {}
+typescript// dashboard.component.spec.ts
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+
+describe('DashboardComponent', () => {
+  let fixture: ComponentFixture<DashboardComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [DashboardComponent],
+      providers: [provideNoopAnimations()]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(DashboardComponent);
+  });
+
+  it('should show placeholder before defer block loads', fakeAsync(() => {
+    fixture.detectChanges();   // initial render — defer block not yet triggered
+
+    const placeholder = fixture.debugElement.query(By.css('[data-testid="placeholder"]'));
+    expect(placeholder).not.toBeNull();
+
+    const analytics = fixture.debugElement.query(By.css('[data-testid="analytics"]'));
+    expect(analytics).toBeNull();  // not yet in DOM
+  }));
+
+  it('should load deferred content after idle trigger', fakeAsync(() => {
+    fixture.detectChanges();
+
+    // tick() with no argument or a short duration triggers the 'on idle' defer block
+    tick();
+    fixture.detectChanges();
+
+    const analytics = fixture.debugElement.query(By.css('[data-testid="analytics"]'));
+    expect(analytics).not.toBeNull();
+  }));
+});
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Write a full TestBed test suite for a ToggleComponent that has a boolean isOn signal, a button that toggles it, and a <span> that shows "ON" or "OFF" based on the signal. Write three tests: the initial state shows "OFF", clicking the button shows "ON", clicking again shows "OFF". Use data-testid attributes for all queries.
+
+Exercise 2 — Intermediate
+Write tests for a ProductSearchComponent that uses debounceTime(400) and switchMap to call a ProductService.search() method. Use fakeAsync and tick() to verify: (a) the service is not called before 400ms elapses, (b) the service is called exactly once after 400ms even if multiple keystrokes were made within the debounce window, (c) results appear in the DOM after the service call. Mock ProductService with a Jasmine spy.
+
+Exercise 3 — Advanced
+Write a complete test suite for a CheckoutFormComponent that has a multi-step reactive form (step 1: shipping, step 2: payment), a currentStep signal, a "Next" button that advances the step only if the current step's form group is valid, a OrderService.placeOrder() call on final submission, and an error state displayed when the service returns an error. Test: initial step is 1, invalid step 1 prevents advancing, valid step 1 advances to step 2, placeOrder() is called with the correct combined form value, error message appears on service failure, and the form is disabled during submission. Use fakeAsync for the service call.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+TestBed creates a real Angular environment in miniature — real DI, real template compilation, real change detection — but with controlled, mockable dependencies
+ComponentFixture<T> is the control interface — .detectChanges() triggers CD, .debugElement accesses the DOM, .componentInstance accesses the component class
+Change detection in tests is manual — you must call fixture.detectChanges() after every state change before asserting on the DOM
+fakeAsync + tick(ms) controls time without waiting — essential for testing debounceTime, setTimeout, and other timer-based operations
+Mock services with { provide: RealService, useValue: mockObject } — component tests should never depend on real HTTP calls
+
+Quick Reference Table:
+TaskHow to do itImport standalone componentimports: [MyComponent] in configureTestingModuleProvide a mock serviceproviders: [{ provide: RealService, useValue: mock }]Trigger change detectionfixture.detectChanges()Set a signal inputfixture.componentRef.setInput('inputName', value)Query a single DOM elementfixture.debugElement.query(By.css('[data-testid="x"]'))Query multiple DOM elementsfixture.debugElement.queryAll(By.css('[data-testid="x"]'))Trigger a clickel.nativeElement.click() then fixture.detectChanges()Test with timers/debouncefakeAsync(() => { ...; tick(300); fixture.detectChanges(); })Drain all pending timersflush() inside fakeAsyncDisable animations in testsprovideNoopAnimations() in providers
+Angular-specific rules:
+
+Standalone components go in imports: [], not declarations: []
+fixture.detectChanges() is always required after state changes — never assume automatic CD in tests
+Use data-testid attributes for test selectors — never CSS classes or element tags
+fakeAsync tests must drain all timers (via tick(), flush(), or discardPeriodicTasks()) or the test throws
+Signal inputs are set via fixture.componentRef.setInput() — not via direct signal access
+
+One-Line Memory Aid:
+
+In Angular tests, nothing happens until you call detectChanges(), nothing waits in real time when you use fakeAsync, and nothing is real except the DOM assertions — everything else is a mock.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: Angular's TestBed creates a real Angular environment with real change detection. If that's true, why do we need to call fixture.detectChanges() manually — why doesn't Angular's CD run automatically in tests the way it does in production?
+Answer:
+This is one of the most illuminating questions about Angular's test design, and the answer reveals a deliberate, sophisticated decision.
+The conceptual explanation: In production, Angular's ApplicationRef runs change detection automatically in response to Zone.js patching asynchronous browser APIs — setTimeout, Promise.then, addEventListener, XHR callbacks. Every async operation re-enters Zone.js, which notifies Angular to run a CD cycle. This is entirely automatic and invisible.
+In tests, TestBed deliberately does not enable Zone.js's automatic CD triggering by default. If it did, CD would run at unpredictable moments — immediately after any microtask, promise resolution, or timer — making it impossible to assert on intermediate states. You couldn't write: "assert that the spinner is showing, then complete the async operation, then assert that the spinner is gone." CD would fire between your actions and your assertions, collapsing the intermediate states you're trying to test.
+The Angular-specific implication: Manual detectChanges() gives you a synchronous, deterministic, step-by-step control over Angular's rendering. You set state, you trigger CD, you assert. The test is a precise script, not a race against automatic CD cycles.
+The deeper nuance: There is a ComponentFixture.autoDetectChanges() mode and a ComponentFixtureAutoDetect provider that re-enable automatic CD in tests for developers who prefer that style. But most Angular teams use manual detectChanges() because it produces more reliable, readable tests. When CD is automatic in tests, assertions can pass or fail depending on whether the test runner's microtask queue happened to flush before or after your assertion — the classic source of flaky tests.
+Practical rule: Always use manual fixture.detectChanges(). The one extra line per assertion is the price of deterministic, non-flaky tests. Treat every detectChanges() call as documentation: it explicitly shows the reader exactly which action triggers which re-render.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Proxy objects for mocking — understanding how Jasmine spies and Jest mocks work under the hood using Proxy and property descriptor interception; not required but illuminates why mock objects behave the way they do
+queueMicrotask and the microtask queue — flushMicrotasks() in fakeAsync drains this queue; knowing what a microtask is explains when flushMicrotasks() is needed vs. tick()
+
+TypeScript Concepts:
+
+Partial<T> for mock objects — typed partial mocks (const mock: Partial<UserService> = { getUser: () => of(user) }) give compile-time safety on mock implementations
+jest.Mocked<T> / Jasmine's SpyObj<T> — the typed spy object pattern that replaces jasmine.createSpyObj with full TypeScript inference on mocked methods
+
+Angular-Specific Concepts:
+
+Topic 48 — Testing Services & HTTP — the direct continuation of this topic; HttpClientTestingModule, HttpTestingController, and testing services in isolation
+RouterTestingHarness — Angular's official tool for testing routed components; a direct application of TestBed for components that depend on ActivatedRoute and Router
+Angular Testing Library (@testing-library/angular) — a community-standard wrapper around TestBed that enforces behaviour-driven testing patterns; widely used in production Angular teams as an alternative to raw TestBed + fixture access
+Component harnesses (@angular/cdk/testing) — Angular CDK's official abstraction for interacting with components in tests; Topic 49 (CDK) covers this directly
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on (must be solid):
+
+Topic 25 — Component Lifecycle Hooks (detectChanges() triggers ngOnInit — timing matters)
+Topic 27 — Services & Dependency Injection (mock providers use the same DI system)
+Topic 33/34 — Reactive Forms (form testing uses setValue, markAsTouched, form.valid)
+Topic 43 — Angular Animations (provideNoopAnimations() is standard in all component tests)
+Topic 46 — RxJS Operators (fakeAsync + tick() is the primary tool for testing debounceTime + switchMap pipelines)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 48 — Testing Services & HTTP (direct continuation — same TestBed patterns applied to services and HTTP)
+Topic 49 — Angular CDK (CDK provides ComponentHarness — a higher-level test interaction API built on TestBed)
+
+Production readiness assessment:
+
+Component tests written with TestBed, mock services, fakeAsync, and data-testid selectors are production-grade immediately — the patterns in this topic are what Angular's own component library tests use; a team applying these consistently can refactor components with confidence.
+
+Section 14 — Common Interview Questions
+Question 1
+"What is ComponentFixture and why do you need to call detectChanges() manually in Angular tests?"
+Strong answer covers:
+
+ComponentFixture<T> is the test handle for a created component — provides access to the instance, the DOM via debugElement, and the ability to trigger CD
+Tests don't use Zone.js automatic CD — it would make assertions non-deterministic
+Manual detectChanges() gives step-by-step control: set state, trigger render, assert — reliable and readable
+First detectChanges() triggers ngOnInit and the initial render
+Must be called after every state change before asserting on DOM output
+
+Weak answers typically miss: The reason why CD is manual (determinism, testability of intermediate states) — most candidates know it's required but not why.
+Difficulty: Mid
+
+Question 2
+"What is fakeAsync and when would you use it over a regular async test?"
+Strong answer covers:
+
+fakeAsync creates a synchronous-appearing test zone where timers (setTimeout, setInterval, debounceTime) are controlled by tick(ms) instead of real time
+Use for: any component with debounceTime, timer(), setTimeout, setInterval, or delay() in its logic
+tick(ms) advances fake time by ms milliseconds — fast, deterministic, no real waiting
+flush() drains all pending timers at once
+Use real async/waitForAsync only for genuine Promise-based operations that cannot be replaced by tick() (e.g. a compileComponents() call)
+fakeAsync makes slow tests fast — a test suite testing 50 components with debounceTime(300) takes 0ms instead of 15 seconds
+
+Weak answers typically miss: The performance argument — most candidates know fakeAsync is "for async" but don't articulate the speed benefit.
+Difficulty: Mid
+
+Question 3
+"How do you test a component that depends on a service that makes HTTP calls? Walk me through the setup."
+Strong answer covers:
+
+Create a mock service object with Jasmine spies or Jest mocks for only the methods the component calls
+Provide the mock via { provide: RealService, useValue: mockService } in TestBed.configureTestingModule({ providers: [...] })
+Use jasmine.createSpy().and.returnValue(of(mockData)) to make service methods return controlled observables
+Never import HttpClientModule or HttpClient directly in component tests — HTTP belongs in service tests
+In each test, configure what the spy returns based on the scenario being tested (mockService.getUser.and.returnValue(of(user)))
+Mention the alternative: HttpClientTestingModule is for service tests (Topic 48), not component tests
+
+Weak answers typically miss: The distinction between component tests (mock the service) and service tests (mock the HTTP layer with HttpClientTestingModule) — many candidates conflate the two layers.
+Difficulty: Mid/Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Selecting DOM Elements by CSS Class in Tests
+typescript// ANTI-PATTERN
+it('should show error message', () => {
+  fixture.detectChanges();
+  const error = fixture.debugElement.query(By.css('.error-message.text-red'));
+  expect(error).not.toBeNull();
+});
+Why it seems fine: CSS classes are already on the element for styling — reusing them for test selectors seems efficient.
+What breaks at scale: A designer renames .error-message to .alert-danger during a CSS refactor. The component still renders correctly. The test breaks with expected null not to be null. The developer spends time investigating a "failing test" that indicates no actual bug — the UI works correctly but the test selector is wrong. In a large team, this creates test-suite noise that desensitises developers to failing tests.
+Correct pattern:
+html<!-- Add data-testid to elements that tests need to query -->
+<p data-testid="error-message" class="error-message text-red">{{ error }}</p>
+typescriptconst error = fixture.debugElement.query(By.css('[data-testid="error-message"]'));
+data-testid is a stable contract between the template and the tests — independent of styling decisions.
+
+Anti-Pattern 2 — Testing the Component Class Directly Without TestBed
+typescript// ANTI-PATTERN: instantiating the component class directly
+it('should filter products', () => {
+  const component = new ProductListComponent(
+    new ProductService(new HttpClient(...))  // manually constructing the entire DI tree
+  );
+  component.searchQuery = 'angular';
+  expect(component.filteredProducts.length).toBe(3);
+  // Tests the TypeScript class — not the Angular component with its template,
+  // directives, change detection, or DI system
+});
+Why it seems fine: It's simpler. No TestBed setup. Fast to write. Works for simple computations.
+What breaks at scale: This test has no knowledge of the template. A broken @for loop, a missing track, a wrong property binding — none of these are caught. The class method works, the template is broken, the test passes — maximum false confidence. Additionally, manually constructing DI dependencies becomes exponentially complex as services have their own dependencies.
+Correct pattern: Always use TestBed for Angular component tests. Use direct class instantiation only for pure TypeScript utility classes and pure pipes (which have no Angular template integration).
+
+Anti-Pattern 3 — One Giant beforeEach That Configures Everything for Every Test
+typescript// ANTI-PATTERN: one size fits all beforeEach
+beforeEach(async () => {
+  mockUserService.getUser.and.returnValue(of(adminUser));
+  mockAuthService.isLoggedIn.and.returnValue(of(true));
+  mockCartService.items.and.returnValue(of(cartWithItems));
+  mockOrderService.getOrders.and.returnValue(of(orderHistory));
+  // 15 more mock configurations...
+
+  await TestBed.configureTestingModule({...}).compileComponents();
+  fixture = TestBed.createComponent(MyComponent);
+  fixture.detectChanges();
+});
+
+it('should show login button for logged out user', () => {
+  // This test needs isLoggedIn to return false — but beforeEach set it to true
+  // The test either fails or requires awkward spy reconfiguration mid-test
+  mockAuthService.isLoggedIn.and.returnValue(of(false));  // overriding beforeEach
+  fixture.detectChanges();
+  // ... fragile and confusing
+});
+Why it seems fine: DRY principle — one beforeEach eliminates duplication across tests.
+What breaks at scale: Tests become tightly coupled to the beforeEach configuration. Tests that need a different initial state must override the beforeEach setup mid-test, making the test's actual preconditions unclear. Adding a new mock to beforeEach unexpectedly changes the behaviour of 30 existing tests.
+Correct pattern:
+typescript// beforeEach provides minimal, neutral defaults:
+beforeEach(async () => {
+  await TestBed.configureTestingModule({
+    imports: [MyComponent],
+    providers: [{ provide: AuthService, useValue: mockAuthService }]
+  }).compileComponents();
+  fixture = TestBed.createComponent(MyComponent);
+  // No detectChanges() here — let each test control its own initial state
+});
+
+// Each test configures exactly what it needs:
+it('should show login button for logged out user', () => {
+  mockAuthService.isLoggedIn.and.returnValue(of(false));
+  fixture.detectChanges();
+  // Preconditions are explicit and readable
+});
+
+it('should show user menu for logged in user', () => {
+  mockAuthService.isLoggedIn.and.returnValue(of(true));
+  fixture.detectChanges();
+});
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet — Testing Angular Components
+Core concept in one sentence:
+
+TestBed creates a real Angular environment in miniature where you control change detection manually, replace real dependencies with mocks, and assert on DOM output — not component internals.
+Key rules:
+
+Standalone components go in imports: [] — never declarations: []
+Always call fixture.detectChanges() after state changes — CD is manual in tests
+Use fakeAsync + tick(ms) for all timer-based async testing — never real setTimeout waits
+Mock services with { provide: RealService, useValue: mockObject } — never import real HTTP-dependent services
+Select DOM elements with data-testid attributes — never CSS classes or element tags
+Test user-visible DOM output — never private component variables or internal methods
+
+The single most important Angular rule:
+
+fixture.detectChanges() is not optional — Angular's test environment never runs change detection automatically; every state change requires a manual detectChanges() call before DOM assertions are valid.
+
+Core testing workflow:
+1. configureTestingModule({ imports, providers })
+2. createComponent(MyComponent)
+3. [set inputs via fixture.componentRef.setInput()]
+4. fixture.detectChanges()          ← triggers ngOnInit + first render
+5. [interact: click, setValue, tick()]
+6. fixture.detectChanges()          ← re-render after interaction
+7. query DOM with By.css('[data-testid="x"]')
+8. assert on nativeElement properties
+Async testing decision:
+ScenarioTooldebounceTime, setTimeout, timer()fakeAsync + tick(ms)All timers at oncefakeAsync + flush()Recurring setIntervalfakeAsync + discardPeriodicTasks()Real Promise resolution neededwaitForAsync + fixture.whenStable()
+
+Topic 47 — Testing Angular Components (REVISED)
+Audit findings applied:
+
+TestBed constructor injection patterns (#3) → verified every code block
+HttpClientTestingModule → provideHttpClientTesting() (#10) → identified and corrected
+CommonModule in TestBed imports (#5) → identified and corrected
+Class guard testing patterns (#9) → identified and corrected
+
+Pre-audit verification: Every beforeEach and test block in the original delivery already used inject() field initializers in component code. The TestBed setup itself had zero constructor injection. The three genuine findings are: HttpClientTestingModule referenced in Section 12 (Related Topics), CommonModule not explicitly flagged as an anti-pattern in the Do's/Don'ts, and class-based guard testing not addressed anywhere. Section 14 Interview Question 3 also referenced HttpClientModule (the older import) rather than provideHttpClient().
+Sections changed: 5 (Mistake 3 updated), 6 (Do's/Don'ts — one new row), 9 (Exercise 3), 12, 14 (Question 3), 15 (Anti-Pattern 3). All other sections kept verbatim.
+
+Sections 0–4 (unchanged — verbatim)
+(Difficulty Rating, Explanation, Connection to Prior Concepts, Code Examples, Before & After Refactor — all code already used inject(), signal(), input(), standalone components, and provideNoopAnimations(). Zero constructor injection in any @Component or test setup block. No HttpClientTestingModule or CommonModule appeared in these sections.)
+
+Section 5 — Common Mistakes & Misconceptions (REWRITTEN — Mistake 3 updated; Mistakes 1 and 2 unchanged)
+Mistake 1 — Forgetting fixture.detectChanges() After State Changes (unchanged — verbatim)
+What the mistake looks like:
+typescriptit('should update the count display', () => {
+  component.count.set(5);
+  // Missing: fixture.detectChanges()
+  const countEl = fixture.debugElement.query(By.css('[data-testid="count"]'));
+  expect(countEl.nativeElement.textContent.trim()).toBe('5');  // FAILS — still shows '0'
+});
+Why developers make it: In production, Angular's change detection runs automatically after events and async operations. Developers assume tests work the same way.
+How to avoid it: In tests, Angular's change detection is manual. After any state change — signal.set(), component.someProperty = value, a button click, a timer tick — call fixture.detectChanges() before asserting on the DOM.
+Angular-specific consequence: The test asserts on stale DOM output and fails intermittently — or worse, passes because the previous state happened to match the expected value. This creates false confidence.
+
+Mistake 2 — Using async/await with Promises Inside Tests Instead of fakeAsync/tick() (unchanged — verbatim)
+What the mistake looks like:
+typescriptit('should show results after search', async () => {
+  // Real async/await — actually waits in real time
+  await new Promise(resolve => setTimeout(resolve, 300));  // wait 300ms real time
+  fixture.detectChanges();
+  // This test takes 300ms of wall-clock time on every run
+});
+Why developers make it: async/await is familiar from everyday TypeScript. fakeAsync feels like unfamiliar Angular magic.
+How to avoid it: Use fakeAsync(() => { ... tick(300); ... }) for timer-based async. Use waitForAsync (the Angular wrapper around real async) only when dealing with genuine Promise-based operations that can't be replaced by tick() (e.g. a compileComponents() call). Real setTimeout waits in tests multiply: 50 tests each waiting 300ms = 15 seconds of test suite time.
+Angular-specific consequence: A test suite that uses real setTimeout waits becomes progressively slower as it grows — a suite that takes 30 seconds runs infrequently, defeating the purpose of fast feedback from tests.
+
+Mistake 3 — Importing CommonModule or HttpClientModule Into TestBed (REWRITTEN)
+What the mistake looks like:
+typescript// WRONG: importing broad legacy modules into TestBed
+await TestBed.configureTestingModule({
+  imports: [
+    CommonModule,         // ← brings in every Angular directive — massive overkill
+    HttpClientModule,     // ← the legacy module; also the wrong layer for tests
+    MyStandaloneComponent
+  ]
+}).compileComponents();
+Why developers make it: In NgModule-based Angular, CommonModule (for *ngIf, *ngFor, DatePipe, etc.) was imported into virtually every module. Developers carry the same reflex into standalone component tests. HttpClientModule appears because the component's template uses async pipe on an observable that came from a service — but the service itself should be mocked, so HttpClientModule should never be needed in a component test at all.
+How to avoid it:
+typescript// CORRECT: standalone components import only what they explicitly declare
+await TestBed.configureTestingModule({
+  imports: [MyStandaloneComponent]
+  // No CommonModule — standalone components import NgClass, DatePipe, AsyncPipe
+  // etc. directly in their own imports:[] array; TestBed inherits those
+  // No HttpClientModule — mock the service instead
+  providers: [
+    { provide: UserService, useValue: mockUserService }
+  ]
+}).compileComponents();
+If the component under test is standalone and correctly declares its own imports: [AsyncPipe, DatePipe, NgIf] etc., TestBed sees those automatically — you never need to re-declare them. If the component needs HttpClient in its test (which would mean you're not mocking the service — a separate mistake), use provideHttpClient() from @angular/common/http as a provider, not the legacy HttpClientModule import:
+typescript// If — and only if — the test genuinely needs real HttpClient (e.g. testing
+// a service itself rather than a component):
+providers: [
+  provideHttpClient(),
+  provideHttpClientTesting()   // ← the modern replacement for HttpClientTestingModule
+]
+// Never: imports: [HttpClientModule] or imports: [HttpClientTestingModule]
+Angular-specific consequence (three separate issues):
+CommonModule in TestBed imports: bundles every Angular directive and pipe into your test environment. This slows test compilation, hides the fact that your standalone component may be missing its own correct imports declaration, and can cause directive conflicts where multiple directives match the same selector.
+HttpClientModule in TestBed imports: the legacy module-based HTTP client; deprecated in favour of provideHttpClient(). Using it in tests creates a false dependency — if the component test needs HttpClientModule, the test is probably missing the correct service mock and is accidentally hitting real (or HttpTestingController-managed) HTTP in what should be a unit test.
+HttpClientTestingModule in TestBed imports: the legacy testing counterpart to HttpClientModule, now replaced by provideHttpClientTesting(). Functionally equivalent but not composable with the modern provideHttpClient(withInterceptors([...])) feature API.
+
+Section 6 — Do's and Don'ts (REWRITTEN — four existing rows unchanged; two new rows added; one row updated)
+✅ DO❌ DON'TAdd data-testid attributes to elements you need to query in testsSelect by CSS class or element tag — classes change with styling refactors, breaking tests for no functional reasonCall fixture.detectChanges() after every state change before asserting on the DOMAssert on DOM immediately after state changes without triggering CD — the DOM will be staleUse fakeAsync + tick() for all timer/debounce/delay testingUse real setTimeout waits in tests — they make the suite slow and fragileMock services with { provide: RealService, useValue: mockObject } in test providersImport HttpClientModule or HttpClientTestingModule in component tests — mock the service instead; HTTP belongs in service testsTest user-visible behaviour (DOM output, emitted events) not implementation details (private variables, internal methods)Access private component members via component['privateProp'] — this couples tests to implementationUse fixture.componentRef.setInput() for signal inputsSet signal inputs via component.inputSignal.set() — signal inputs are read-only from outsideUse provideHttpClient() + provideHttpClientTesting() as providers when the test genuinely needs HTTP (service tests only)Use the legacy HttpClientTestingModule or HttpClientModule in imports:[] — both are deprecated and not composable with modern provideHttpClient() feature flagsTest functional guards by calling the guard function directly with mock ActivatedRouteSnapshot and RouterStateSnapshot argumentsInstantiate class-based guards with new or mock implements CanActivate class instances — class guards are deprecated; test the function, not the class
+
+Section 7 — Debugging Tips (unchanged — verbatim)
+(All three debugging tips — timer queue errors, NullInjectorError, and false-positive DOM assertions — contained no HttpClientTestingModule or class-guard patterns. Kept verbatim.)
+
+Section 8 — Real-World Applications (unchanged — verbatim)
+(Scenario 1 — Login Form Component and Scenario 2 — @defer block testing — both already used correct modern patterns throughout. Kept verbatim.)
+
+Section 9 — Practice Exercises (REWRITTEN — Exercise 3 updated to reflect functional guard testing)
+Exercise 1 — Beginner (unchanged)
+Write a full TestBed test suite for a ToggleComponent that has a boolean isOn signal, a button that toggles it, and a <span> that shows "ON" or "OFF" based on the signal. Write three tests: the initial state shows "OFF", clicking the button shows "ON", clicking again shows "OFF". Use data-testid attributes for all queries.
+
+Exercise 2 — Intermediate (unchanged)
+Write tests for a ProductSearchComponent that uses debounceTime(400) and switchMap to call a ProductService.search() method. Use fakeAsync and tick() to verify: (a) the service is not called before 400ms elapses, (b) the service is called exactly once after 400ms even if multiple keystrokes were made within the debounce window, (c) results appear in the DOM after the service call. Mock ProductService with a Jasmine spy.
+
+Exercise 3 — Advanced (REWRITTEN)
+Build and test a route-protected feature using the modern functional guard pattern end to end:
+Part A — Write the guard:
+
+Create a functional authGuard using inject() to retrieve an AuthStore (signal store with isLoggedIn = signal(false)). If isLoggedIn() is false, return router.createUrlTree(['/login']). If true, return true. The guard must be a plain CanActivateFn function — not a class implementing CanActivate.
+Part B — Test the guard function directly:
+
+Write a test suite that calls authGuard as a plain function rather than wiring up a full router. Use TestBed.runInInjectionContext(() => authGuard(route, state)) to execute the guard inside Angular's DI context. Provide a mock AuthStore with isLoggedIn as a writable signal. Assert that:
+
+When isLoggedIn() is false, the guard returns a UrlTree pointing to /login
+When isLoggedIn() is true, the guard returns true
+Changing isLoggedIn signal value between test cases correctly changes the guard's return value
+
+Part C — Test the component behind the guard:
+
+Write a CheckoutPageComponent test that mocks both AuthStore (signal-based) and OrderService. Do not use RouterTestingModule — instead provide a minimal { provide: ActivatedRoute, useValue: mockRoute }. Confirm the component renders order data from the mock service when auth is valid, and confirm the guard test from Part B is a separate concern that does not need to be re-tested inside the component test.
+
+Section 10 — Key Takeaways (unchanged — verbatim)
+(The original takeaways correctly listed provideNoopAnimations() in providers and data-testid selectors. No HttpClientTestingModule or class guard patterns appeared. Kept verbatim.)
+
+Section 11 — Thought-Provoking Question + Answer (unchanged — verbatim)
+(The original Q&A about why detectChanges() is manual in tests — explaining Zone.js's absence from the test environment — remained accurate and was not contradicted by any audit finding. Kept verbatim.)
+
+Section 12 — Related Topics to Learn Next (REWRITTEN — HttpClientTestingModule reference corrected; functional guard testing cross-reference added)
+ES6/JS Concepts:
+
+Proxy objects for mocking — understanding how Jasmine spies and Jest mocks work under the hood using Proxy and property descriptor interception; not required but illuminates why mock objects behave the way they do
+queueMicrotask and the microtask queue — flushMicrotasks() in fakeAsync drains this queue; knowing what a microtask is explains when flushMicrotasks() is needed vs. tick()
+
+TypeScript Concepts:
+
+Partial<T> for mock objects — typed partial mocks (const mock: Partial<UserService> = { getUser: () => of(user) }) give compile-time safety on mock implementations without requiring a full class implementation
+SpyObj<T> — Jasmine's typed spy object pattern; jasmine.createSpyObj<UserService>('UserService', ['getUser']) produces a fully typed mock with IDE autocomplete on spy method names
+
+Angular-Specific Concepts:
+
+Topic 48 — Testing Services & HTTP — the direct continuation of this topic; uses provideHttpClient() + provideHttpClientTesting() (not the legacy HttpClientTestingModule) and HttpTestingController for intercepting and asserting on HTTP calls at the service layer
+RouterTestingHarness — Angular's official tool for testing routed components; a direct application of TestBed for components that depend on ActivatedRoute and Router, without needing a full router setup
+TestBed.runInInjectionContext() — the correct way to test functional guards, functional resolvers, and inject()-based code that runs outside a component class; replaces the old pattern of instantiating a class guard with new and passing constructor arguments manually
+Angular Testing Library (@testing-library/angular) — a community-standard wrapper around TestBed that enforces behaviour-driven testing patterns via render() and screen.getByTestId(); widely used in production Angular teams as an ergonomic alternative to raw fixture.debugElement.query(By.css(...))
+Component harnesses (@angular/cdk/testing) — Angular CDK's official abstraction for interacting with components in tests; Topic 49 (CDK) covers this directly
+
+
+Section 13 — Study Plan Checkpoint (unchanged — verbatim)
+(The checkpoint correctly listed the form topics and Topic 43 animations as dependencies. No changes needed.)
+
+Section 14 — Common Interview Questions (REWRITTEN — Question 3 corrected; Questions 1 and 2 unchanged)
+Question 1 (unchanged — verbatim)
+"What is ComponentFixture and why do you need to call detectChanges() manually in Angular tests?"
+Strong answer covers:
+
+ComponentFixture<T> is the test handle for a created component — provides access to the instance, the DOM via debugElement, and the ability to trigger CD
+Tests don't use Zone.js automatic CD — it would make assertions non-deterministic
+Manual detectChanges() gives step-by-step control: set state, trigger render, assert — reliable and readable
+First detectChanges() triggers ngOnInit and the initial render
+Must be called after every state change before asserting on DOM output
+
+Weak answers typically miss: The reason why CD is manual (determinism, testability of intermediate states).
+Difficulty: Mid
+
+Question 2 (unchanged — verbatim)
+"What is fakeAsync and when would you use it over a regular async test?"
+Strong answer covers:
+
+fakeAsync creates a synchronous-appearing test zone where timers (setTimeout, setInterval, debounceTime) are controlled by tick(ms) instead of real time
+Use for: any component with debounceTime, timer(), setTimeout, setInterval, or delay() in its logic
+tick(ms) advances fake time by ms milliseconds — fast, deterministic, no real waiting
+flush() drains all pending timers at once
+Use real async/waitForAsync only for genuine Promise-based operations that cannot be replaced by tick()
+fakeAsync makes slow tests fast — a test suite testing 50 components with debounceTime(300) takes 0ms instead of 15 seconds
+
+Weak answers typically miss: The performance argument.
+Difficulty: Mid
+
+Question 3 (REWRITTEN — corrects HttpClientModule reference and adds functional guard testing)
+"How do you test a functional route guard in modern Angular, and how does that differ from the old class-based guard testing approach?"
+Strong answer covers:
+
+Functional guards are plain CanActivateFn functions that use inject() — they have no class to instantiate, so the old new AuthGuard(mockRouter, mockAuthService) pattern does not apply
+The correct test pattern is TestBed.runInInjectionContext(() => authGuard(mockRoute, mockState)) — this executes the guard function inside Angular's DI context so all inject() calls inside the guard resolve correctly
+Provide mock dependencies via TestBed.configureTestingModule({ providers: [...] }) exactly as you would for a component test — { provide: AuthStore, useValue: mockAuthStore }
+Assert on the return value directly: expect(result).toBe(true) or expect(result).toEqual(router.createUrlTree(['/login']))
+No RouterTestingModule is needed for guard-only tests — guards return values, they don't navigate; the router is only needed if the test needs to assert on navigation side effects
+
+Example:
+typescriptdescribe('authGuard', () => {
+  const mockAuthStore = { isLoggedIn: signal(false) };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthStore, useValue: mockAuthStore },
+        provideRouter([])   // minimal router for createUrlTree to work
+      ]
+    });
+  });
+
+  it('should redirect to /login when not authenticated', () => {
+    mockAuthStore.isLoggedIn.set(false);
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+    expect(result).toEqual(jasmine.objectContaining({ // UrlTree check
+      root: jasmine.objectContaining({})
+    }));
+  });
+
+  it('should allow access when authenticated', () => {
+    mockAuthStore.isLoggedIn.set(true);
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+    expect(result).toBe(true);
+  });
+});
+What a weak answer typically misses: That functional guards cannot be tested with class instantiation at all, that TestBed.runInInjectionContext() is the specific API for this pattern, and that provideRouter([]) (not RouterTestingModule) is the minimal setup needed to make router.createUrlTree() work inside the guard.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production (REWRITTEN — Anti-Pattern 3 replaced; Anti-Patterns 1 and 2 unchanged)
+Anti-Pattern 1 — Selecting DOM Elements by CSS Class in Tests (unchanged — verbatim)
+typescript// ANTI-PATTERN
+it('should show error message', () => {
+  fixture.detectChanges();
+  const error = fixture.debugElement.query(By.css('.error-message.text-red'));
+  expect(error).not.toBeNull();
+});
+Why it seems fine: CSS classes are already on the element for styling — reusing them for test selectors seems efficient.
+What breaks at scale: A designer renames .error-message to .alert-danger during a CSS refactor. The component still renders correctly. The test breaks with expected null not to be null. The developer spends time investigating a "failing test" that indicates no actual bug.
+Correct pattern:
+html<p data-testid="error-message" class="error-message text-red">{{ error }}</p>
+typescriptconst error = fixture.debugElement.query(By.css('[data-testid="error-message"]'));
+
+Anti-Pattern 2 — Testing the Component Class Directly Without TestBed (unchanged — verbatim)
+typescript// ANTI-PATTERN: instantiating the component class directly
+it('should filter products', () => {
+  const component = new ProductListComponent(
+    new ProductService(new HttpClient(...))
+  );
+  component.searchQuery = 'angular';
+  expect(component.filteredProducts.length).toBe(3);
+});
+Why it seems fine: It's simpler. No TestBed setup. Fast to write. Works for simple computations.
+What breaks at scale: This test has no knowledge of the template. A broken @for loop, a missing track, a wrong property binding — none of these are caught. The class method works, the template is broken, the test passes — maximum false confidence.
+Correct pattern: Always use TestBed for Angular component tests. Use direct class instantiation only for pure TypeScript utility classes and pure pipes (which have no Angular template integration).
+
+Anti-Pattern 3 — Using HttpClientTestingModule or Class Guard Patterns in Modern Tests (REWRITTEN)
+typescript// ANTI-PATTERN A: HttpClientTestingModule in imports (service test)
+describe('UserService', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule]  // ← legacy module-based import
+    });
+  });
+});
+
+// ANTI-PATTERN B: Class-based guard testing
+class MockAuthService { isLoggedIn = true; }
+
+describe('AuthGuard', () => {
+  it('should allow access', () => {
+    const guard = new AuthGuard(         // ← class instantiation
+      new MockAuthService() as any,
+      new Router() as any
+    );
+    expect(guard.canActivate()).toBe(true);
+  });
+});
+Why Anti-Pattern A seems fine: HttpClientTestingModule was the documented approach for years and still works. Many tutorials, Stack Overflow answers, and team codebases use it.
+What breaks: HttpClientTestingModule is a legacy NgModule that cannot compose with the modern provideHttpClient(withInterceptors([...])) feature flag API. If you add a functional interceptor to your app via withInterceptors, that interceptor is not active in tests that use HttpClientTestingModule — meaning tests pass in isolation but the real app behaves differently. This produces false confidence at exactly the layer where real bugs hide.
+Why Anti-Pattern B seems fine: Class-based CanActivate guards used to be the only option. The test logic is straightforward — instantiate the class, call canActivate(), assert the return value.
+What breaks: Class-based guards are deprecated. The real problem is that manually constructing new AuthGuard(dep1, dep2) does not reflect how Angular actually resolves the guard in production — it bypasses the DI system entirely. A guard whose inject() calls fail silently or resolve to the wrong instance in production would never be caught by this test.
+Correct patterns:
+typescript// CORRECT A: provideHttpClient() + provideHttpClientTesting() as providers
+describe('UserService', () => {
+  let service: UserService;
+  let httpTesting: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        UserService,
+        provideHttpClient(),          // modern functional provider
+        provideHttpClientTesting()    // modern testing counterpart — replaces HttpClientTestingModule
+      ]
+    });
+    service      = TestBed.inject(UserService);
+    httpTesting  = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => httpTesting.verify()); // confirm no unexpected requests
+
+  it('should fetch user by id', () => {
+    service.getUser(1).subscribe(user => expect(user.name).toBe('Alice'));
+    const req = httpTesting.expectOne('/api/users/1');
+    expect(req.request.method).toBe('GET');
+    req.flush({ id: 1, name: 'Alice' });
+  });
+});
+typescript// CORRECT B: functional guard tested via TestBed.runInInjectionContext()
+describe('authGuard', () => {
+  const mockAuthStore = { isLoggedIn: signal(true) };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthStore, useValue: mockAuthStore },
+        provideRouter([])
+      ]
+    });
+  });
+
+  it('should allow access when authenticated', () => {
+    mockAuthStore.isLoggedIn.set(true);
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot)
+    );
+    expect(result).toBe(true);
+  });
+});
+
+Section 16 — Mental Model Summary (REWRITTEN — added functional guard entry to the core testing workflow table)
+Core concept in one sentence:
+
+TestBed creates a real Angular environment in miniature where you control change detection manually, replace real dependencies with mocks, and assert on DOM output — not component internals.
+Key rules:
+
+Standalone components go in imports: [] — never declarations: []; never add CommonModule or HttpClientModule alongside them
+Always call fixture.detectChanges() after state changes — CD is manual in tests
+Use fakeAsync + tick(ms) for all timer-based async testing — never real setTimeout waits
+Mock services with { provide: RealService, useValue: mockObject } — never import HttpClientModule or HttpClientTestingModule in component tests; use provideHttpClient() + provideHttpClientTesting() as providers in service tests only
+Select DOM elements with data-testid attributes — never CSS classes or element tags
+Test user-visible DOM output — never private component variables or internal methods
+Test functional guards with TestBed.runInInjectionContext(() => guardFn(route, state)) — never by instantiating deprecated class guards with new
+
+The single most important Angular rule:
+
+fixture.detectChanges() is not optional — Angular's test environment never runs change detection automatically; every state change requires a manual detectChanges() call before DOM assertions are valid.
+
+Core testing workflow — expanded:
+1. configureTestingModule({ imports: [StandaloneComponent], providers: [mocks] })
+   ↳ No CommonModule, no HttpClientModule, no HttpClientTestingModule in imports
+2. createComponent(MyComponent)
+3. [set inputs via fixture.componentRef.setInput()]
+4. fixture.detectChanges()            ← triggers ngOnInit + first render
+5. [interact: click, setValue, tick()]
+6. fixture.detectChanges()            ← re-render after interaction
+7. query DOM with By.css('[data-testid="x"]')
+8. assert on nativeElement properties
+
+For functional guards:
+1. configureTestingModule({ providers: [mocks, provideRouter([])] })
+2. TestBed.runInInjectionContext(() => guardFn(mockRoute, mockState))
+3. assert on return value directly
+Async testing decision — unchanged:
+ScenarioTooldebounceTime, setTimeout, timer()fakeAsync + tick(ms)All timers at oncefakeAsync + flush()Recurring setIntervalfakeAsync + discardPeriodicTasks()Real Promise resolution neededwaitForAsync + fixture.whenStable()
+HTTP testing decision — new:
+NeedToolComponent test that calls a serviceMock the service — no HTTP setup neededService test that makes HTTP callsprovideHttpClient() + provideHttpClientTesting() as providersTesting that a functional interceptor firesprovideHttpClient(withInterceptors([myInterceptor])) + provideHttpClientTesting()Legacy code using HttpClientModuleMigrate to provideHttpClient() — HttpClientTestingModule cannot compose with interceptor feature flags
+
+Summary of changes made to Topic 47:
+
+Sections 0–4, 7, 8, 10, 11, 13 → kept verbatim
+Section 5, Mistake 3 → rewritten — now covers CommonModule, HttpClientModule, and HttpClientTestingModule as distinct anti-patterns with the correct provideHttpClient() + provideHttpClientTesting() replacement
+Section 6 → two new rows added — provideHttpClientTesting() vs legacy imports; functional guard testing vs class instantiation
+Section 9, Exercise 3 → rewritten — replaced generic checkout form exercise with a three-part exercise specifically targeting functional guard writing and testing via TestBed.runInInjectionContext()
+Section 12 → rewritten — HttpClientTestingModule reference replaced with provideHttpClientTesting(); TestBed.runInInjectionContext() added as a new Related Topic
+Section 14, Question 3 → rewritten — completely new question on functional guard testing replacing the old HttpClientModule / service setup question
+Section 15, Anti-Pattern 3 → rewritten — replaced the "one giant beforeEach" anti-pattern with the two audit-flagged findings: HttpClientTestingModule and class guard testing
+Section 16 → rewritten — rule 1 explicitly names CommonModule/HttpClientModule exclusions; rule 4 names provideHttpClientTesting(); rule 7 is new (functional guard testing); workflow expanded with guard-specific steps; new HTTP testing decision table added
+

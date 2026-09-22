@@ -1,0 +1,328 @@
+The Updated Master Prompt
+Here it is — drop-in ready, designed to work for both programmer fundamentals topics and Angular-specific topics:
+
+FRONTEND MASTERY LEARNING SERIES — CONTINUATION FROM TOPIC 59
+
+I am continuing my Frontend Mastery learning series. 
+Topics 1–59 are complete. I need to continue from Topic 60 
+in the same master prompt format.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MY PROFILE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Role: Angular application developer (actively 
+  building Angular apps, 5 years experience)
+- Learning style: Analogy first → technical 
+  explanation → code → practice
+- I learn best when concepts connect to what I 
+  already know
+- Topics 1–59 completed — comfortable with the 
+  full Angular + NgRx ecosystem (see summary below)
+- I want to understand the WHY behind every 
+  pattern, not just the HOW
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOPICS 1–59 COMPLETED — KEY KNOWLEDGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+JS/TS Foundations (1–19): let/const/var, scope & 
+hoisting, closures, arrow functions, event loop, 
+callbacks, pass by value vs reference, promises & 
+async/await, array methods, destructuring & spread, 
+template literals, modules, TypeScript interfaces & 
+types, readonly & immutability, access modifiers, 
+generics, decorators, error handling, optional 
+chaining & nullish coalescing.
+
+RxJS & Reactive (20–22, 46): subscription 
+management, takeUntilDestroyed & DestroyRef, async 
+pipe, RxJS operators in depth (switchMap, mergeMap, 
+concatMap, exhaustMap, forkJoin, combineLatest, 
+debounceTime).
+
+Angular Core (23–32): Signals (signal/computed/
+effect), OnPush change detection, component 
+lifecycle hooks, @Input() & @Output(), services & 
+DI, template syntax, built-in control flow, 
+built-in directives, content projection, 
+ViewChild/ViewChildren/ContentChild.
+
+Forms, HTTP & Routing (33–40): Reactive Forms, 
+Form Validation, Template-Driven Forms, HttpClient 
+& API Integration, HTTP Interceptors, Angular 
+Router, Route Guards, Lazy Loading & Code Splitting.
+
+Advanced Angular (41–50): Custom Directives, Custom 
+Pipes, Angular Animations, State Management 
+Patterns, Performance Optimisation, RxJS Operators 
+in Depth, Testing Components, Testing Services & 
+HTTP, Angular CDK, Angular Universal & SSR.
+
+NgRx Ecosystem (51–59): NgRx Core Concepts, NgRx 
+Effects, NgRx Selectors In Depth, NgRx Entity, 
+NgRx Component Store, NgRx SignalStore, NgRx Router 
+Store, NgRx Testing, NgRx Best Practices & 
+Architecture Patterns.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IMPORTANT — HOW ANGULAR APPLIES TO ALL TOPICS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+From Topic 60 onward, topics include both 
+programmer fundamentals AND Angular-specific 
+topics. For ALL topics — including non-Angular ones 
+like SOLID, Clean Code, Big O, and Design Patterns:
+
+- Section 3 (Code Example) MUST include:
+  - A plain JS/TS example showing the concept 
+    in isolation
+  - A second Angular-specific example showing 
+    the concept inside a real component, service, 
+    effect, store, or reducer
+
+- Section 8 (Real-World Applications) MUST include:
+  - At least one scenario set inside a real 
+    Angular codebase
+
+This ensures every topic — even language-agnostic 
+ones — is immediately relevant to Angular work.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESPONSE RULES — READ THESE FIRST, FOLLOW ALWAYS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Give me one topic at a time — never combine 
+   two topics in one response
+2. Use all 16 sections for every topic — no 
+   shortcuts, no skipped sections, no compression
+3. If a topic is too long to complete in one 
+   response — stop cleanly at the end of whichever 
+   section you just finished, tell me: "Stopped 
+   after Section X — say 'continue' to get 
+   Sections Y onward", then wait. Never cut a 
+   section in half.
+4. Never compress or shorten any section to fit — 
+   two responses is always better than one 
+   cut-down response
+5. Wait for me to say "next" or "Topic X" or 
+   "continue" before proceeding
+6. Connect every topic back to specific earlier 
+   topics by number where relevant
+7. Name every analogy — never give an unnamed 
+   analogy
+8. If I ask for a topic out of order, give it 
+   but note which earlier topics it depends on
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+THE COMPLETE 16-SECTION FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Section 0 — Difficulty & Priority Rating
+- Difficulty: [Beginner / Beginner-Intermediate / 
+  Intermediate / Advanced] — one sentence explaining 
+  why this level
+- Relevance: [High / Critical] — one sentence on 
+  why it matters for a working Angular developer
+
+Section 1 — Explanation
+- Start with a named analogy in plain English
+- Then the technical explanation
+- Then a quick reference table if the topic 
+  involves multiple concepts or a comparison
+
+Section 2 — Connection to Prior Concepts
+- Which specific Topics 1–59 this directly 
+  builds on (reference by number and name)
+- A bridging note: one short paragraph explaining 
+  the conceptual link
+- Which single earlier topic it extends most 
+  directly
+
+Section 3 — Code Example
+- A plain JS/TS example showing the core concept 
+  in isolation
+- An Angular-specific example inside a component, 
+  service, lifecycle hook, reducer, or effect
+- Well-commented throughout — every non-obvious 
+  line gets a comment
+- (For non-Angular topics: both examples required 
+  — plain first, Angular second)
+
+Section 4 — Before & After Refactor
+- The wrong/old/naive way — with a plain English 
+  explanation of what breaks and why
+- The correct way
+- Why this specific refactor matters in an 
+  Angular codebase
+
+Section 5 — Common Mistakes & Misconceptions
+- Exactly 3 mistakes
+- Each with: what the mistake is | why developers 
+  make it | how to avoid it | consequence in an 
+  Angular codebase if not fixed
+
+Section 6 — Do's and Don'ts
+- Two-column format: DO (left) | DON'T (right)
+- 5–6 items per column
+- Angular-relevant where possible
+
+Section 7 — Debugging Tips
+- Exactly 3 real bugs a developer would actually 
+  encounter
+- Each with: the exact symptom or error | plain 
+  English cause | the fix | Angular-specific note
+
+Section 8 — Real-World Applications
+- 2 real scenarios where this topic directly 
+  applies
+- At least one must be set inside an Angular 
+  codebase
+- Each includes a realistic code example — not 
+  a toy example
+
+Section 9 — Practice Exercises
+- Exactly 3 exercises: Beginner → Intermediate 
+  → Advanced
+- Problem statements only — no solutions, 
+  no hints
+- At least one must involve Angular code
+
+Section 10 — Key Takeaways
+- Core concepts defined in plain English 
+  (bullet points)
+- A quick reference table capturing the most 
+  important comparisons or rules
+- Angular-specific rules to remember 
+  (separate bullet list)
+- One-Line Memory Aid at the very bottom
+
+Section 11 — Thought-Provoking Question + Answer
+- One deep question that goes beyond the basics
+- Immediately followed by a full answer covering: 
+  the conceptual explanation | the Angular-specific 
+  implication | a practical rule to take away
+
+Section 12 — Related Topics to Learn Next
+- Grouped into three categories:
+  - General Programming Concepts
+  - TypeScript Concepts  
+  - Angular-Specific Concepts
+- Each item has a one-line note on why it's 
+  relevant
+
+Section 13 — Study Plan Checkpoint
+- Which Topics 1–59 this topic directly depends 
+  on (list by number and name)
+- Which upcoming topics in the list this topic 
+  unlocks or makes significantly easier
+- Production readiness assessment — one honest 
+  sentence
+
+Section 14 — Common Interview Questions
+- Exactly 3 real interview questions developers 
+  get asked on this topic
+- Each with:
+  - The question (as an interviewer would ask it)
+  - What a strong answer covers (3–5 bullet points)
+  - What a weak answer typically misses (one line)
+  - Difficulty level: Junior / Mid / Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+- Exactly 3 anti-patterns real developers use 
+  in real codebases that cause problems at scale
+- Each with:
+  - A short code snippet showing what it looks like
+  - Why it seems fine or correct at first glance
+  - What actually breaks in production or at scale
+  - The correct pattern to replace it with 
+    (with code)
+
+Section 16 — Mental Model Summary
+- A single structured cheat sheet capturing the 
+  entire topic — designed to be read in 30 seconds
+- Core concept in exactly one sentence
+- Key rules as a numbered list (maximum 6 rules)
+- The single most important rule in bold
+- A side-by-side comparison table if the topic 
+  involves choosing between two approaches
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOPICS COMPLETED — DO NOT REPEAT (1–59)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Topics 1–59 (full list: let/const/var, Block Scope 
+& Hoisting, Closures, Arrow Functions, Event Loop, 
+Callbacks, Pass by Value vs Reference, Promises & 
+async/await, Array Methods, Destructuring & Spread, 
+Template Literals, Modules & Imports/Exports, 
+TypeScript Interfaces & Types, readonly & 
+Immutability, Access Modifiers, TypeScript Generics, 
+TypeScript Decorators, Error Handling, Optional 
+Chaining & Nullish Coalescing, RxJS Subscription 
+Management, takeUntilDestroyed & DestroyRef, async 
+Pipe, Angular Signals, OnPush Change Detection, 
+Component Lifecycle Hooks, @Input() & @Output(), 
+Services & Dependency Injection, Angular Template 
+Syntax, Built-in Control Flow, Built-in Directives, 
+Content Projection, ViewChild/ViewChildren/
+ContentChild, Reactive Forms, Form Validation, 
+Template-Driven Forms, HttpClient & API Integration, 
+HTTP Interceptors, Angular Router, Route Guards, 
+Lazy Loading & Code Splitting, Custom Directives, 
+Custom Pipes, Angular Animations, State Management 
+Patterns, Performance Optimisation, RxJS Operators 
+in Depth, Testing Angular Components, Testing 
+Services & HTTP, Angular CDK, Angular Universal & 
+SSR, NgRx Core Concepts, NgRx Effects, NgRx 
+Selectors In Depth, NgRx Entity, NgRx Component 
+Store, NgRx SignalStore, NgRx Router Store, NgRx 
+Testing, NgRx Best Practices & Architecture 
+Patterns)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOPICS TO COVER — IN THIS ORDER (60–82)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROGRAMMER FUNDAMENTALS
+Topic 60 — Clean Code Principles
+Topic 61 — SOLID Principles
+Topic 62 — Design Patterns in Practice
+Topic 63 — Big O & Practical Complexity
+Topic 64 — Recursion & Tree Traversal
+Topic 65 — Data Structures for Frontend
+
+SCALE, PATTERNS & ARCHITECTURE
+Topic 66 — Module & Standalone Architecture
+Topic 67 — Design Patterns Applied in Angular
+Topic 68 — Component Reusability & 
+            ControlValueAccessor
+Topic 69 — CSS Architecture & Scalable 
+            Styling Systems
+Topic 70 — Angular Component Styling
+
+PERFORMANCE & SECURITY
+Topic 71 — Core Web Vitals & Angular
+Topic 72 — Angular Performance Profiling
+Topic 73 — Bundle Optimization in Angular
+Topic 74 — Web Security for Frontend
+Topic 75 — Auth Concepts
+Topic 76 — Auth Implementation in Angular
+Topic 77 — Accessibility (a11y) in Angular
+
+FRONTEND SYSTEM DESIGN
+Topic 78 — Frontend System Design
+
+INTERVIEW READINESS
+Topic 79 — Programmer Fundamentals 
+            Interview Prep
+Topic 80 — Angular Interview Mastery
+Topic 81 — Behavioural & War Stories (STAR)
+Topic 82 — Portfolio & Career Positioning
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+START NOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Give me Topic 60 — Clean Code Principles using 
+all 16 sections.
+
+If the response is too long to complete in one 
+message, stop cleanly at the end of whichever 
+section you finish last and tell me exactly where 
+you stopped. I will say "continue" to get the rest.

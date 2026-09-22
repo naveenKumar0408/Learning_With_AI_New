@@ -1,0 +1,55 @@
+PROGRAMMER FUNDAMENTALS (Topics 60–65)
+Topic 60 — Clean Code Principles
+Meaningful naming, small functions, single responsibility, commenting philosophy, code-as-documentation. Angular section: applying clean code to components, services, reducers, and effects.
+Topic 61 — SOLID Principles
+SRP, OCP, LSP, ISP, DIP — each with a plain example and an Angular-specific violation + refactor. The most interview-critical programmer fundamentals topic.
+Topic 62 — Design Patterns in Practice
+Observer, Strategy, Factory, Facade, Singleton — not memorised, recognised. Angular section: where each pattern already exists in Angular (EventEmitter = Observer, DI = Factory, NgRx Facade = Facade).
+Topic 63 — Big O & Practical Complexity
+O(1), O(n), O(n²), O(log n) — frontend-focused, not LeetCode grinding. Angular section: where complexity decisions appear in real Angular code (selector memoisation, Entity dictionary vs array, trackBy).
+Topic 64 — Recursion & Tree Traversal
+Recursive thinking, base cases, tree traversal patterns. Angular section: component tree traversal, recursive template rendering, hierarchical menu/tree components.
+Topic 65 — Data Structures for Frontend
+Arrays vs Maps vs Sets — when and why. Hash maps, stacks, queues applied to real frontend problems. Angular section: NgRx Entity's dictionary structure, RxJS operator data flow, form array structures.
+
+SCALE, PATTERNS & ARCHITECTURE (Topics 66–70)
+Topic 66 — Module & Standalone Architecture
+NgModules vs standalone components, feature/core/shared structure, migration strategies, NX monorepo awareness. When to use what in 2026.
+Topic 67 — Design Patterns Applied in Angular
+Facade pattern (wrapping NgRx), Repository pattern (API layer abstraction), Adapter pattern (mapping API responses to view models). Real Angular code, not slides.
+Topic 68 — Component Reusability & ControlValueAccessor
+ng-content projection (deep), dynamic components, ControlValueAccessor — building custom form controls that integrate natively with Angular's form system. The plan calls this "the most underused Angular feature."
+Topic 69 — CSS Architecture & Scalable Styling Systems
+BEM methodology, CSS custom properties, design tokens (concept), scalable responsive systems, naming conventions. Deep on what matters, brief awareness on the rest.
+Topic 70 — Angular Component Styling
+ViewEncapsulation modes (Emulated, None, ShadowDom) and when to break them, host styling, component-scoped styles, design token integration in Angular, style isolation patterns.
+
+PERFORMANCE & SECURITY (Topics 71–77)
+Topic 71 — Core Web Vitals & Angular
+LCP, CLS, INP — what they measure, how Angular's rendering affects each, how to diagnose and improve with real tooling (Lighthouse, PageSpeed Insights, Chrome DevTools).
+Topic 72 — Angular Performance Profiling
+Chrome DevTools Performance tab, Angular DevTools, identifying slow change detection cycles, Zone.js awareness, flame charts, memory leak detection.
+Topic 73 — Bundle Optimization in Angular
+Lazy loading (already covered mechanically in Topic 40 — here the focus is measurement and strategy), tree shaking, preloading strategies, webpack-bundle-analyzer, differential loading awareness.
+Topic 74 — Web Security for Frontend
+XSS prevention (Angular's built-in sanitisation + when bypassSecurityTrust is dangerous), CSRF, CORS, Content Security Policy. Angular-specific attack vectors and defences.
+Topic 75 — Auth Concepts
+JWT structure and tradeoffs, HttpOnly cookies vs localStorage, OAuth 2.0 flows (Authorization Code, PKCE), OIDC, refresh token concepts. Framework-agnostic mental model.
+Topic 76 — Auth Implementation in Angular
+Token storage service, HTTP interceptor for auth headers (builds on Topic 37), route guard integration (builds on Topic 39), refresh token handling with RxJS, silent refresh pattern.
+Topic 77 — Accessibility (a11y) in Angular
+ARIA roles and attributes, keyboard navigation, focus management fundamentals. Angular CDK a11y module: FocusTrap, LiveAnnouncer, CdkTrapFocus, A11yModule, testing a11y in Angular.
+
+FRONTEND SYSTEM DESIGN (Topic 78)
+Topic 78 — Frontend System Design
+How to design a scalable Angular app from scratch: modularisation decision framework, state strategy selection, API layer abstraction, auth architecture, performance planning, interview whiteboard approach.
+
+INTERVIEW READINESS (Topics 79–82)
+Topic 79 — Programmer Fundamentals Interview Prep
+Big O applied to Angular problems, SOLID in code review conversations, design patterns in interview answers, event loop and async questions framed around real Angular code.
+Topic 80 — Angular Interview Mastery
+Top 30 Angular interview questions with strong answers: change detection, signals vs RxJS, NgRx architecture, performance, testing, system design. What weak answers miss.
+Topic 81 — Behavioural & War Stories (STAR)
+Your 3 war stories (hard bug solved, performance win, architecture decision), STAR format, specific numbered results, practising until natural. Structured preparation framework.
+Topic 82 — Portfolio & Career Positioning
+Clean READMEs, deployment (Netlify/Vercel), code quality presentation, technical writing for GitHub, how to talk about your projects in interviews. Making your work hireable.

@@ -1,0 +1,106 @@
+I'm learning [Y] in [X].
+
+Context: I'm an Angular developer targeting a senior 
+frontend role. Include Angular examples wherever applicable.
+Use modern Angular syntax only: Signals, inject(), 
+input()/output(), standalone components, functional guards, 
+takeUntilDestroyed. No NgModules, no constructor injection.
+
+Structure response exactly as:
+
+## 0. Difficulty & Priority Rating
+- Difficulty: Beginner / Intermediate / Advanced (one-line reason)
+- Angular Relevance: Low / Medium / High / Critical (one-line reason)
+
+## 1. Explanation
+Plain English first using analogy or real-world comparison. 
+Then purpose, how it works, when used. Technical terms only 
+after concept is clear.
+
+## 2. Connection to Prior Concepts
+- How it builds on or connects to prior topics
+- Important distinctions or overlaps
+- A short bridging sentence for my notes
+
+## 3. Code Example
+Simple, well-commented example in plain JS/TS first.
+One plain English sentence before each code block.
+Follow with a real Angular-specific example 
+(component, service, or lifecycle hook context).
+
+## 4. Before & After Refactor
+- Before: what a beginner or legacy codebase writes
+- After: the correct modern version
+- Why it matters: what changed and the impact
+Plain English summary before the code.
+
+## 5. Common Mistakes & Misconceptions
+Three mistakes beginners make, each with:
+- What the mistake is (analogy if possible)
+- Why it happens
+- How to avoid it
+- Angular-specific consequence if relevant
+
+## 6. Do's and Don'ts
+Quick-reference table aligned with Angular's official 
+style guide and production conventions.
+
+## 7. Debugging Tips
+Three common errors related to this concept:
+- The error message or buggy behaviour
+- What causes it (plain English)
+- How to fix or debug it
+- Angular-specific debugging note if applicable
+
+## 8. Real-World Applications
+Two real-world scenarios, at least one Angular-specific.
+Plain English before any code.
+
+## 9. Practice Exercises
+Three progressively challenging exercises 
+(Beginner → Intermediate → Advanced).
+Problem statements only — no solutions.
+At least one Angular-specific.
+
+## 10. Key Takeaways
+- Core concept definitions in plain English
+- Quick-reference table where applicable
+- Angular-specific rules to remember
+- One-line memory aid for the entire topic
+
+## 11. Thought-Provoking Question + Answer
+A deep question beyond the basics, followed immediately 
+by a thorough answer covering:
+- Conceptual explanation in plain English first
+- Angular-specific implication or use case
+- A practical rule or best practice to take away
+
+## 12. Related Topics to Learn Next
+Categorised as:
+- ES6/JS Concepts
+- TypeScript Concepts
+- Angular-Specific Concepts
+
+## 13. Modern Angular Pattern (Angular 17+)
+Show the current recommended way to write this concept
+using the latest Angular APIs. If the concept had an 
+older pattern, show the migration path explicitly.
+Flag any syntax that is now deprecated.
+
+## 14. Interview Preparation
+Two senior-level interview questions for this topic:
+- What an interviewer actually asks
+- What a strong answer covers
+- What a weak answer misses
+- Difficulty level: Mid / Senior
+
+## 15. Quick Reference Card
+A scannable one-page summary of the topic:
+- 3-line concept definition
+- Syntax at a glance
+- When to use / when not to use
+- The one rule that matters most
+
+If a section runs too long for one response, stop cleanly 
+at the end of a section. Never cut mid-section. 
+Tell me which section you stopped at.

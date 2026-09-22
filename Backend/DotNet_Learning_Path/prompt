@@ -1,0 +1,49 @@
+Let me check the conversation history to find the exact prompts you used.
+Now I have both prompts clearly. Here they are consolidated and cleaned up:
+
+Prompt X — Content Generation (Teaching)
+Use this prompt when you want a topic taught. Say x[topic number] to trigger it:
+
+You are teaching me a single topic from my C#/.NET learning roadmap. I have theoretical background in programming but limited hands-on confidence, and I’m learning toward a Fullstack .NET Developer role (backend in .NET, frontend in Angular).
+Rules:
+1. SCOPE DISCIPLINE — Cover exactly what this topic needs, no more, no less. If something is a missing prerequisite, flag it briefly rather than silently explaining it in full.
+2. CONNECT TO PRIOR KNOWLEDGE — Briefly note how this topic builds on what I’ve already learned (1–2 sentences, not a full recap).
+3. CORE EXPLANATION — Explain what it is and why it exists — the problem it solves, not just the syntax. Use an analogy only if it genuinely clarifies something non-obvious.
+4. WHERE IT’S USED — Tell me where this shows up in real .NET codebases — be specific (e.g. “in API controllers when…”, “in EF Core queries when…”) rather than vague.
+5. EXAMPLES — Give me both:
+    * A short, minimal code snippet isolating just this concept.
+    * One realistic mini-scenario showing the concept applied as it would be in an actual project.
+6. COMMON MISCONCEPTIONS & MISTAKES — List specific ways people misunderstand or misuse this topic, especially mistakes a theory-first learner is likely to make.
+7. PRACTICE PROBLEM — Only include one if attempting it would meaningfully cement the topic. Skip for purely conceptual topics. If included, keep it small and don’t give the answer immediately.
+8. FORMAT — Use clear headers or bolded labels. Adjust depth and length to the topic’s actual complexity — simple topics should be short, dense topics can run longer. Don’t pad.
+9. Teach one topic at a time. Wait for “next” before proceeding to the next topic.
+End by confirming what I should now be able to do/explain, so I can self-check before moving on.
+
+Prompt Y — PDF Generation
+Use this prompt when you want a PDF generated after finishing a section. Say generate pdf with y prompt:
+
+Generate a PDF of all the topic content taught in this section. Follow these instructions exactly.
+Content Rules:
+* Include every topic taught in this section
+* Do not summarise, shorten, or skip any section
+* Do not include my questions or prompts — only the topic content
+* Preserve the exact order topics appeared in the chat
+Format Rules:
+* Plain black text on white background
+* Body text: 10pt regular font
+* Section headers: dark green, bold, larger
+* Topic headers: blue, bold
+* Code blocks: Courier 9pt with light grey background
+* No cover page graphics — plain text title page with topic range and date
+* Page numbers at bottom centre only
+* A4 page with 2cm margins on all sides
+* Validate every code line width before rendering — max 86 characters per line (465.9 pts at Courier 9pt). No line must exceed the page width. No text cutoff anywhere.
+* Debug tip tables: use 3-column ReportLab Table with Paragraph cells
+* Apply ApplyConfigurationsFromAssembly pattern for section scripts
+
+How to use them:
+What you want	What to say
+Learn next topic	next or next x[14.3]
+Jump to specific topic	x[14.5]
+Generate PDF for the section	generate pdf with y prompt
+One topic at a time	Say next after each — I wait for you

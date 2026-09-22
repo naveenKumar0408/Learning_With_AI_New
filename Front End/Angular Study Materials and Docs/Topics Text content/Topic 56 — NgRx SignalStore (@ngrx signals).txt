@@ -1,0 +1,811 @@
+Topic 56 — NgRx SignalStore (@ngrx/signals)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — SignalStore introduces a new composition API (withState, withComputed, withMethods, withHooks) that feels different from both Component Store and global NgRx, but the underlying concepts — local state, computed derivations, and side effects — are ones you already know from Signals (Topic 23) and Component Store (Topic 55).
+Angular Relevance: High — SignalStore is the NgRx team's Signal-native answer to Component Store, designed specifically for Angular 17+ apps built on Signals and ChangeDetectionStrategy.OnPush; it eliminates the RxJS-Observable layer entirely for state management in components that have already committed to the Signal model.
+
+Section 1 — Explanation
+The LEGO Block Analogy
+Imagine building with LEGO. The old approach (Component Store) gives you a pre-shaped base plate — a fixed structure you must build on top of, following its dimensions. It works well, but you're always working within the plate's constraints.
+SignalStore gives you individual LEGO bricks that snap together in any combination:
+
+withState(...) — the brick that holds your raw state values
+withComputed(...) — the brick that derives new values from state
+withMethods(...) — the brick that adds your updaters and effects
+withHooks(...) — the brick that taps into the store's lifecycle
+Custom feature bricks you or the community build and snap in anywhere
+
+Each brick is independently composable. You snap together only the bricks you need, in the order that makes sense for your feature. The store is the result of all the bricks snapped together — a plain Angular injectable with Signal-based properties.
+Technically:
+@ngrx/signals provides a signalStore() factory function. Unlike Component Store's class extension, SignalStore uses function composition — you call signalStore() with a list of "features" (the bricks) and it returns an Angular injectable class:
+tsexport const CounterStore = signalStore(
+  withState({ count: 0 }),
+  withComputed(({ count }) => ({
+    doubled: computed(() => count() * 2),
+  })),
+  withMethods((store) => ({
+    increment() { patchState(store, { count: store.count() + 1 }); },
+  })),
+);
+The resulting CounterStore is a class you provide and inject like any other Angular service. Its state slices are Signals — not Observables. No async pipe, no subscription management, no tapResponse.
+Quick Reference — SignalStore vs Component Store vs Global NgRx
+Global NgRx StoreComponent StoreSignalStoreAPI styleClass + decoratorsClass extensionFunction compositionState typePlain objectsPlain objectsAngular SignalsRead statestore.select() → Observableselect() → Observablestore.slice → SignalWrite stateDispatch actionupdater() / patchState()patchState(store, {...})Derived statecreateSelector()select(projector)withComputed(() => computed())Side effectscreateEffect()effect()withMethods() + RxJS or rxMethod()Template bindingasync pipe or selectSignalasync pipeDirect Signal call store.count()Lifecycle hooksn/an/awithHooks({ onInit, onDestroy })Compositionn/aLimitedFirst-class (withFeature)
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 23 — Angular Signals: SignalStore's state slices are Angular Signals — store.count() is a Signal call, withComputed uses computed(), and the reactivity model is identical to Topic 23's signal/computed/effect trio.
+Topic 55 — NgRx Component Store: SignalStore solves the same problem as Component Store (local, component-scoped state) but replaces the Observable/RxJS API with Signals. Every concept maps across: updater() → patchState(), select() → withComputed(), effect() → withMethods() + rxMethod().
+Topic 24 — OnPush Change Detection: SignalStore pairs perfectly with OnPush because Signals notify Angular's runtime directly — no Zone.js, no CD cycles triggered by Observable emissions.
+Topic 27 — Services & Dependency Injection: A SignalStore is a plain Angular injectable — provided in providers: [] for component scope or providedIn: 'root' for global scope, using the same DI rules as any service.
+Topic 53 — NgRx Selectors In Depth: withComputed() produces computed() signals — the same memoisation rules from Topic 53 apply: new object/array literals in the computation function break memoisation.
+
+The single topic it extends most directly: Topic 55 — NgRx Component Store.
+SignalStore is the Signal-native evolution of Component Store. Every architectural concept is identical — local state, computed derivations, method-based mutations, lifecycle hooks — but the implementation replaces Observables with Signals throughout.
+Bridging note: In Topic 55, select() returned an Observable that you subscribed to with async pipe. In SignalStore, withComputed() returns a computed() Signal that you read directly in the template with store.slice(). The memoisation guarantee is the same — only the API differs.
+
+Section 3 — Code Example
+Plain TS — SignalStore concept in isolation
+ts// The three primitives SignalStore builds on (Topic 23)
+import { signal, computed } from '@angular/core';
+
+const count = signal(0);
+const doubled = computed(() => count() * 2); // Memoised derived value
+
+function increment() {
+  count.update(c => c + 1); // Mutation through the signal's own API
+}
+
+// SignalStore wraps this pattern into a composable, injectable service
+// patchState(store, changes) replaces signal.set() for multi-slice state
+Full Angular SignalStore Feature — User Management with HTTP
+ts// user.store.ts
+import {
+  signalStore,
+  withState,
+  withComputed,
+  withMethods,
+  withHooks,
+  patchState,
+} from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop'; // RxJS bridge
+import { computed, inject } from '@angular/core';
+import { pipe, switchMap, tap } from 'rxjs';
+import { tapResponse } from '@ngrx/operators';
+import { UserService } from './user.service';
+import { User } from './user.model';
+
+// ── State interface ──────────────────────────────────────────────────
+interface UserState {
+  users: User[];
+  selectedUserId: string | null;
+  loading: boolean;
+  error: string | null;
+  filter: string;
+}
+
+const initialState: UserState = {
+  users: [],
+  selectedUserId: null,
+  loading: false,
+  error: null,
+  filter: '',
+};
+
+// ── SignalStore factory ──────────────────────────────────────────────
+// signalStore() returns an Angular injectable class
+// Each withX() call is a "feature brick" — composable and ordered
+export const UserStore = signalStore(
+  // Optional: { providedIn: 'root' } for global scope
+  // Omit for component-scoped (add to component's providers: [])
+
+  // ── BRICK 1: Raw state ─────────────────────────────────────────────
+  // Each key in the state object becomes a Signal on the store
+  // store.users() → User[]    store.loading() → boolean
+  withState(initialState),
+
+  // ── BRICK 2: Computed / derived Signals ────────────────────────────
+  // withComputed receives the store (with all state Signals accessible)
+  // Return an object of computed() Signals — they appear on store directly
+  withComputed((store) => ({
+
+    // Filtered users — recomputes only when users() or filter() changes
+    filteredUsers: computed(() => {
+      const filter = store.filter().toLowerCase();
+      return filter
+        ? store.users().filter(u => u.name.toLowerCase().includes(filter))
+        : store.users();
+    }),
+
+    // Selected user — O(1) array find (small list; for large lists use Entity)
+    selectedUser: computed(() =>
+      store.users().find(u => u.id === store.selectedUserId()) ?? null
+    ),
+
+    // Count derived values
+    totalUsers: computed(() => store.users().length),
+    hasError: computed(() => store.error() !== null),
+
+    // View model — single composed Signal for the template (Topic 53 pattern)
+    // In SignalStore, this is a computed() Signal, not an Observable
+    vm: computed(() => ({
+      users: store.filteredUsers(),  // Can't reference computed() yet here
+      loading: store.loading(),      // so we read raw state instead
+      error: store.error(),
+      total: store.users().length,
+      selectedId: store.selectedUserId(),
+    })),
+  })),
+
+  // ── BRICK 3: Methods (mutations + effects) ─────────────────────────
+  // withMethods receives the store — return an object of plain functions
+  // These become methods directly on the store: store.loadUsers()
+  withMethods((store, userService = inject(UserService)) => ({
+
+    // Simple synchronous mutations — use patchState(store, changes)
+    // patchState is the SignalStore equivalent of Component Store's patchState
+    setFilter(filter: string) {
+      patchState(store, { filter, selectedUserId: null });
+    },
+
+    selectUser(id: string | null) {
+      patchState(store, { selectedUserId: id });
+    },
+
+    clearError() {
+      patchState(store, { error: null });
+    },
+
+    // ── rxMethod: the bridge between Signals and RxJS Observables ─────
+    // rxMethod() wraps an RxJS pipe — it can be called with:
+    // - a plain value: store.loadUsers()  (fires immediately)
+    // - a Signal:      store.loadByQuery(store.filter)  (auto-subscribes)
+    // - an Observable: store.loadUsers(trigger$)
+    // Subscriptions are cleaned up automatically when the store is destroyed
+
+    loadUsers: rxMethod<void>(
+      pipe(
+        tap(() => patchState(store, { loading: true, error: null })),
+        switchMap(() =>
+          userService.getAll().pipe(
+            tapResponse({
+              next: (users) => patchState(store, { users, loading: false }),
+              error: (err: Error) =>
+                patchState(store, { error: err.message, loading: false }),
+            })
+          )
+        )
+      )
+    ),
+
+    // rxMethod with a typed input — loads a single user by ID
+    loadUserById: rxMethod<string>(
+      pipe(
+        tap(() => patchState(store, { loading: true })),
+        switchMap((id) =>
+          userService.getById(id).pipe(
+            tapResponse({
+              next: (user) =>
+                patchState(store, {
+                  // Merge fetched user into existing users array
+                  users: store.users().some(u => u.id === user.id)
+                    ? store.users().map(u => (u.id === user.id ? user : u))
+                    : [...store.users(), user],
+                  loading: false,
+                }),
+              error: (err: Error) =>
+                patchState(store, { error: err.message, loading: false }),
+            })
+          )
+        )
+      )
+    ),
+
+    // Pure async method without rxMethod — for one-shot operations
+    async deleteUser(id: string) {
+      patchState(store, { loading: true });
+      try {
+        await userService.delete(id).toPromise();
+        patchState(store, {
+          users: store.users().filter(u => u.id !== id),
+          loading: false,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Delete failed';
+        patchState(store, { error: message, loading: false });
+      }
+    },
+  })),
+
+  // ── BRICK 4: Lifecycle hooks ───────────────────────────────────────
+  // withHooks fires after the store is fully constructed
+  // onInit: runs when store is created (component initializes)
+  // onDestroy: runs when store is destroyed (component destroys)
+  withHooks({
+    onInit(store) {
+      // Auto-load on store creation — no ngOnInit() needed in the component
+      store.loadUsers();
+    },
+    onDestroy(store) {
+      // Cleanup — rxMethod subscriptions are cleaned automatically,
+      // but you can add custom teardown logic here if needed
+      console.log('UserStore destroyed — cleaning up');
+    },
+  })
+);
+ts// users.component.ts
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
+import { UserStore } from './user.store';
+
+@Component({
+  selector: 'app-users',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  // Provide store in component — component-scoped lifetime
+  providers: [UserStore],
+  template: `
+    @if (store.loading()) {
+      <p>Loading...</p>
+    }
+
+    @if (store.hasError()) {
+      <p class="error">{{ store.error() }}</p>
+      <button (click)="store.clearError()">Dismiss</button>
+    }
+
+    <input
+      [value]="store.filter()"
+      (input)="store.setFilter($event.target.value)"
+      placeholder="Filter users..."
+    />
+
+    <p>Showing {{ store.filteredUsers().length }} of {{ store.totalUsers() }}</p>
+
+    @for (user of store.filteredUsers(); track user.id) {
+      <div
+        [class.selected]="user.id === store.selectedUserId()"
+        (click)="store.selectUser(user.id)"
+      >
+        {{ user.name }}
+        <button (click)="store.deleteUser(user.id)">Delete</button>
+      </div>
+    }
+  `
+})
+export class UsersComponent {
+  // inject() — store is in this component's injector
+  store = inject(UserStore);
+  // No ngOnInit needed — withHooks.onInit fires automatically
+  // No async pipe — Signals read directly in template: store.loading()
+  // No subscription management — SignalStore handles cleanup
+}
+
+Section 4 — Before & After Refactor
+Before — Component Store with Observable-based template binding
+ts// ❌ BEFORE — Component Store (Topic 55 style)
+@Injectable()
+export class UserStore extends ComponentStore<UserState> {
+  readonly vm$ = this.select(
+    this.select(s => s.users),
+    this.select(s => s.loading),
+    this.select(s => s.filter),
+    (users, loading, filter) => ({ users, loading, filter })
+  );
+
+  readonly loadUsers = this.effect((trigger$: Observable<void>) =>
+    trigger$.pipe(
+      switchMap(() => {
+        this.patchState({ loading: true });
+        return this.userService.getAll().pipe(
+          tapResponse(
+            users => this.patchState({ users, loading: false }),
+            (err: Error) => this.patchState({ error: err.message, loading: false })
+          )
+        );
+      })
+    )
+  );
+}
+
+// Component template — Observable subscription required
+@Component({
+  providers: [UserStore],
+  template: `
+    @if (vm$ | async; as vm) {
+      @if (vm.loading) { <p>Loading...</p> }
+      @for (user of vm.users; track user.id) { ... }
+    }
+  `
+})
+export class UsersComponent implements OnInit {
+  vm$ = this.store.vm$; // Observable
+
+  ngOnInit() {
+    this.store.loadUsers(); // Manual trigger
+  }
+}
+What this requires: async pipe, an ngOnInit to trigger loading, Observable mental model throughout the template, and RxJS knowledge to understand the effect chain.
+After — SignalStore with Signal-based template binding
+ts// ✅ AFTER — SignalStore
+export const UserStore = signalStore(
+  withState(initialState),
+  withComputed(store => ({
+    filteredUsers: computed(() => /* ... */),
+  })),
+  withMethods((store, userService = inject(UserService)) => ({
+    loadUsers: rxMethod<void>(pipe(
+      switchMap(() => userService.getAll().pipe(
+        tapResponse({
+          next: users => patchState(store, { users, loading: false }),
+          error: (err: Error) => patchState(store, { error: err.message, loading: false }),
+        })
+      ))
+    )),
+  })),
+  withHooks({ onInit: store => store.loadUsers() }) // Auto-triggers
+);
+
+// Component template — no async pipe, no ngOnInit
+@Component({
+  providers: [UserStore],
+  template: `
+    @if (store.loading()) { <p>Loading...</p> }
+    @for (user of store.filteredUsers(); track user.id) { ... }
+  `
+})
+export class UsersComponent {
+  store = inject(UserStore);
+  // Done — no lifecycle hooks, no subscriptions, no async pipe
+}
+Why this refactor matters in Angular:
+
+No async pipe means no null-check wrapper (@if (vm$ | async; as vm)) cluttering the template
+withHooks.onInit replaces ngOnInit for triggering initial loads — the component class can be empty
+Signal reads are synchronous — no subscription timing edge cases
+ChangeDetectionStrategy.OnPush integrates naturally — Signals notify Angular directly without Zone.js
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Reading a computed Signal inside withComputed before it's defined
+What:
+tswithComputed((store) => ({
+  // ❌ filteredUsers references store.vm which doesn't exist yet
+  vm: computed(() => ({
+    users: store.filteredUsers(), // filteredUsers is defined BELOW vm
+  })),
+  filteredUsers: computed(() => store.users().filter(...)),
+})),
+Why developers make it: JavaScript objects are defined top-to-bottom, but in a React useMemo world developers expect forward references to work because hooks run in sequence. In a plain object literal, properties are evaluated in definition order.
+How to avoid it: Always define computed Signals in dependency order — dependencies before dependents. Or split into two withComputed() calls: the first defines filteredUsers, the second (which receives the updated store with filteredUsers already on it) defines vm.
+Angular-specific consequence: Runtime error — store.filteredUsers is not a function — because filteredUsers hasn't been added to the store object at the point vm is evaluated.
+
+Mistake 2 — Using patchState outside of withMethods (directly in the template or component)
+What:
+ts// ❌ Wrong — calling patchState from the component
+export class UsersComponent {
+  store = inject(UserStore);
+
+  onFilterChange(filter: string) {
+    patchState(this.store, { filter }); // Direct state mutation from outside
+  }
+}
+Why developers make it: patchState is a public API and TypeScript won't stop you — it feels like a convenient shortcut.
+How to avoid it: All state mutations must go through methods defined in withMethods(). This enforces the same encapsulation principle as Topic 44's store service: private mutable state, public write methods.
+Angular-specific consequence: At small scale it works. At team scale, state mutations scattered across multiple components make the store's state unpredictable — any component can change any slice at any time with no audit trail. Use withMethods to define setFilter(filter: string) and call that from the component instead.
+
+Mistake 3 — Treating rxMethod like a regular function and forgetting it accepts Signals and Observables
+What:
+ts// ❌ Calling rxMethod repeatedly in the template — creates a new subscription each time
+@Component({
+  template: `
+    <!-- This calls store.search() on EVERY change detection cycle -->
+    <input (input)="store.search($event.target.value)" />
+  `
+})
+The misunderstanding: Developers treat rxMethod like a regular event handler, not recognising that its power is accepting a Signal or Observable to create a reactive pipeline that updates automatically.
+How to avoid it — passing a Signal for reactive binding:
+tswithMethods((store, service = inject(UserService)) => ({
+  // Define the method
+  search: rxMethod<string>(pipe(
+    debounceTime(300),
+    switchMap(q => service.search(q).pipe(
+      tapResponse({ next: r => patchState(store, { results: r }), error: () => {} })
+    ))
+  )),
+})),
+withHooks({
+  onInit(store) {
+    // Pass the Signal directly — rxMethod auto-subscribes and reacts to changes
+    store.search(store.filter); // store.filter is a Signal — no () call
+  }
+})
+Angular-specific consequence: Calling rxMethod with a plain value in an event handler is correct for one-shot calls, but misses the reactive Signal binding that is the primary advantage of rxMethod over a plain async method.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TDefine computed Signals in dependency order inside withComputed() — dependencies before dependentsForward-reference a computed Signal defined later in the same withComputed() object literalPut all state mutations in withMethods() — the store is the only entry point for state changesCall patchState(store, ...) directly from a component — it bypasses encapsulationUse withHooks({ onInit }) for initial data loading — keeps the component class cleanTrigger initial loads in ngOnInit when the store can self-initialize via withHooksUse rxMethod() for any method that involves Observables, HTTP calls, or debouncingUse plain async/await for complex Observable chains — you lose switchMap/concatMap cancellation semanticsProvide the store in providers: [UserStore] for component scope; use { providedIn: 'root' } for app-wide stateMix scoping — a store that should be component-local provided at root silently persists stale state across navigationSplit a large store into multiple withComputed() calls when computed values depend on each otherCram all computed values into one withComputed() when order dependencies exist — causes runtime reference errors
+
+Section 7 — Debugging Tips
+Bug 1 — store.someMethod is not a function at runtime
+Symptom: Calling store.loadUsers() throws TypeError: store.loadUsers is not a function.
+Cause: The method was defined in withMethods() but the store was not correctly exported or the withMethods call was accidentally omitted during refactoring.
+Fix: Verify the full signalStore() call includes your withMethods(...) brick. Also confirm you're injecting the store via Angular DI (inject(UserStore)) — if you accidentally new UserStore() directly, you bypass the DI system and the factory composition does not run correctly.
+ts// ✅ Verify the store export
+export const UserStore = signalStore(
+  withState(initialState),
+  withMethods(...), // Confirm this brick is present
+);
+Angular-specific note: TypeScript will not catch missing withMethods because the store type is inferred — the missing method simply isn't in the type, but if you stored a reference to the store typed as any elsewhere, the error is deferred to runtime.
+
+Bug 2 — computed() in withComputed returns stale data after patchState
+Symptom: You call patchState(store, { users: newUsers }) but store.filteredUsers() still returns the old filtered result.
+Cause: The computed() projector is reading a non-Signal value — typically a local variable captured by closure rather than store.users().
+Fix: Every value read inside a computed() projector must be a Signal call (with ()). Reading a plain variable means the computed has no reactive dependency on it and will not recompute.
+ts// ❌ Wrong — filter captured as a plain string, not reactive
+const filter = store.filter(); // Reads once at computed() creation time
+const filteredUsers = computed(() =>
+  store.users().filter(u => u.name.includes(filter)) // filter is stale
+);
+
+// ✅ Correct — both store.users() and store.filter() are reactive reads
+const filteredUsers = computed(() =>
+  store.users().filter(u => u.name.includes(store.filter()))
+);
+Angular-specific note: This is identical to the computed() reactivity rule from Topic 23 — any value read inside computed() must be a Signal call to establish a reactive dependency.
+
+Bug 3 — rxMethod does nothing after the first call
+Symptom: store.loadUsers() works on the first call, but subsequent calls (e.g. after a filter change) produce no HTTP request and no state change.
+Cause: An unhandled error in the rxMethod pipe killed the outer stream — same as the Component Store effect() bug from Topic 55. Once the outer Observable errors, it completes and no further emissions are processed.
+Fix: Always use tapResponse from @ngrx/operators inside rxMethod to handle errors safely:
+tsloadUsers: rxMethod<void>(pipe(
+  switchMap(() =>
+    userService.getAll().pipe(
+      tapResponse({
+        next: users => patchState(store, { users, loading: false }),
+        error: (err: Error) => patchState(store, { error: err.message, loading: false }),
+        // tapResponse catches the error inside the inner Observable
+        // The outer rxMethod stream stays alive
+      })
+    )
+  )
+)),
+Angular-specific note: Check the Network tab in DevTools — if the first call fires and subsequent ones don't, it is almost always an unhandled error killing the stream. tapResponse from @ngrx/operators (not @ngrx/component-store) is the correct import for SignalStore.
+
+Section 8 — Real-World Applications
+Scenario 1 — Shopping cart with persisted state and computed totals
+A cart feature needs: items list, loading state, computed subtotal/tax/total, and methods to add, remove, and update quantity — all reactive in the template.
+ts// cart.store.ts
+interface CartItem { id: string; name: string; price: number; quantity: number; }
+interface CartState { items: CartItem[]; loading: boolean; }
+
+export const CartStore = signalStore(
+  { providedIn: 'root' }, // Global — cart persists across page navigation
+
+  withState<CartState>({ items: [], loading: false }),
+
+  withComputed((store) => ({
+    itemCount: computed(() =>
+      store.items().reduce((sum, item) => sum + item.quantity, 0)
+    ),
+    subtotal: computed(() =>
+      store.items().reduce((sum, item) => sum + item.price * item.quantity, 0)
+    ),
+    tax: computed(() => {
+      const subtotal = store.subtotal(); // Reuses memoised subtotal Signal
+      return Math.round(subtotal * 0.1 * 100) / 100;
+    }),
+    total: computed(() => store.subtotal() + store.tax()),
+    isEmpty: computed(() => store.items().length === 0),
+  })),
+
+  withMethods((store, cartService = inject(CartService)) => ({
+    addItem(item: CartItem) {
+      const existing = store.items().find(i => i.id === item.id);
+      if (existing) {
+        patchState(store, {
+          items: store.items().map(i =>
+            i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+          )
+        });
+      } else {
+        patchState(store, { items: [...store.items(), { ...item, quantity: 1 }] });
+      }
+    },
+
+    removeItem(id: string) {
+      patchState(store, { items: store.items().filter(i => i.id !== id) });
+    },
+
+    syncCart: rxMethod<void>(pipe(
+      switchMap(() =>
+        cartService.getCart().pipe(
+          tapResponse({
+            next: items => patchState(store, { items, loading: false }),
+            error: () => patchState(store, { loading: false }),
+          })
+        )
+      )
+    )),
+  })),
+
+  withHooks({ onInit: store => store.syncCart() })
+);
+ts// cart-summary.component.ts — reads cart Signals directly, no async pipe
+@Component({
+  template: `
+    <span>{{ cart.itemCount() }} items</span>
+    <span>Subtotal: {{ cart.subtotal() | currency }}</span>
+    <span>Tax: {{ cart.tax() | currency }}</span>
+    <strong>Total: {{ cart.total() | currency }}</strong>
+  `
+})
+export class CartSummaryComponent {
+  cart = inject(CartStore); // Root-provided — same instance everywhere
+}
+
+Scenario 2 — Reactive search with debounce using rxMethod + Signal binding
+A search input should debounce user typing, cancel previous requests, and update results reactively — all driven by a Signal.
+ts// search.store.ts
+export const SearchStore = signalStore(
+  withState({ query: '', results: User[], loading: false }),
+
+  withMethods((store, userService = inject(UserService)) => ({
+
+    setQuery(query: string) {
+      patchState(store, { query });
+    },
+
+    // rxMethod accepts a Signal — auto-subscribes and reacts to every Signal change
+    search: rxMethod<string>(pipe(
+      debounceTime(300),       // Wait 300ms after last emission
+      distinctUntilChanged(),  // Skip if query hasn't changed
+      tap(() => patchState(store, { loading: true })),
+      switchMap(query =>       // Cancel previous — correct for reads (Topic 46)
+        userService.search(query).pipe(
+          tapResponse({
+            next: results => patchState(store, { results, loading: false }),
+            error: () => patchState(store, { loading: false }),
+          })
+        )
+      )
+    )),
+  })),
+
+  withHooks({
+    onInit(store) {
+      // Pass store.query Signal directly — rxMethod subscribes to it
+      // Every time store.query() changes, the rxMethod pipe re-runs automatically
+      store.search(store.query); // Note: store.query, not store.query() — pass the Signal
+    }
+  })
+);
+ts@Component({
+  providers: [SearchStore],
+  template: `
+    <input
+      [value]="store.query()"
+      (input)="store.setQuery($event.target.value)"
+    />
+    @if (store.loading()) { <span>Searching...</span> }
+    @for (user of store.results(); track user.id) {
+      <div>{{ user.name }}</div>
+    }
+  `
+})
+export class SearchComponent {
+  store = inject(SearchStore);
+}
+The key insight: store.search(store.query) passes the Signal itself (not its value) to rxMethod. Every time store.query Signal emits a new value, rxMethod's pipe re-runs — with debounceTime and switchMap applied automatically.
+
+Section 9 — Practice Exercises
+Beginner
+Create a TodoStore using signalStore() with state { todos: Todo[], filter: 'all' | 'active' | 'completed' } where Todo has id, title, and completed fields. Add withComputed for filteredTodos and completedCount. Add withMethods for addTodo(title), toggleTodo(id), and setFilter(filter). Provide the store in a TodoListComponent and render the filtered list with no async pipe.
+Intermediate
+Extend the TodoStore to persist todos to localStorage. Add a withHooks block that (a) loads todos from localStorage in onInit and (b) saves todos to localStorage in onDestroy. Then add a syncWithServer method using rxMethod<void> that fetches todos from a fake TodoService.getAll() Observable and merges them with local todos. Handle loading and error state. Use tapResponse for error safety.
+Advanced
+Build a PaginatedTableStore for a data table with server-side pagination and sorting. State includes: items, loading, error, currentPage, pageSize, sortField, sortDirection, and totalItems. Implement: (1) a loadPage rxMethod that takes { page, sort, filter } and uses switchMap; (2) computed Signals for totalPages, hasNextPage, hasPrevPage, and a vm Signal composing all display state; (3) withHooks.onInit that loads the first page automatically; (4) a selectRow method that sets a selectedItemId state slice; (5) a child TableRowComponent that injects the same store instance and calls selectRow directly. Verify with ChangeDetectionStrategy.OnPush on both components.
+
+Section 10 — Key Takeaways
+Core concepts:
+
+signalStore() is a factory that composes "feature bricks" (withState, withComputed, withMethods, withHooks) and returns an Angular injectable class
+State slices defined in withState() become Signals on the store — read them with store.slice(), not store.slice
+withComputed() defines computed() Signals — memoised, reactive, dependency-tracked automatically
+withMethods() defines the store's public API — all patchState() calls should live here, not in components
+rxMethod<T>() bridges RxJS Observables into the Signal world — it accepts a plain value, a Signal, or an Observable, and manages the subscription lifecycle automatically
+withHooks({ onInit, onDestroy }) replaces ngOnInit/ngOnDestroy for store-level lifecycle logic
+patchState(store, partialState) is the single mutation API — always a shallow merge, never a full replacement unless all keys are provided
+
+Quick reference:
+TaskAPIDefine raw statewithState({ key: initialValue })Derive computed valueswithComputed(store => ({ name: computed(() => ...) }))Add mutations and effectswithMethods((store) => ({ method() { patchState(store, ...) } }))HTTP / Observable side effectsrxMethod<InputType>(pipe(switchMap(...), tapResponse(...)))Lifecycle (load on init)withHooks({ onInit(store) { store.load(); } })Read state in templatestore.slice() — Signal call, no async pipePartial state updatepatchState(store, { key: newValue })
+Angular-specific rules:
+
+Always read Signal dependencies inside computed() with () calls — reading plain variables creates no reactive dependency
+Always use tapResponse inside rxMethod pipes — unhandled errors kill the method permanently
+Pass a Signal (not its value) to rxMethod for reactive binding: store.search(store.query) not store.search(store.query())
+Define computed Signals in dependency order — a computed value cannot reference another computed defined later in the same object literal
+Never call patchState from a component — always go through a withMethods method
+
+One-Line Memory Aid:
+
+SignalStore is Component Store rebuilt with LEGO bricks — compose withState, withComputed, withMethods, and withHooks into an injectable whose state slices are Signals you read directly in templates without async pipe.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: SignalStore state slices are Signals, and withComputed() uses computed() — both of which Angular already provides natively. What does SignalStore actually add beyond wrapping Angular's own Signal primitives in a class?
+Answer:
+This is the right question — and the honest answer is that SignalStore's value is architectural, not primitive.
+Angular's signal() and computed() solve the reactivity problem. What they don't solve is:
+1. Encapsulation enforcement. A raw signal() defined in a component is publicly writable — any code with a reference can call .set() on it. SignalStore's state Signals are read-only externally — you can read store.count() but cannot call store.count.set(5) from outside. The only mutation path is through withMethods(). This is the same encapsulation guarantee as NgRx's store (Topic 51) — state changes have a single auditable entry point.
+2. Composable feature pattern. Raw signals have no standard composition model — you'd define them ad hoc in services with no shared convention. SignalStore's withX() bricks give teams a consistent architectural grammar for feature state. A new developer reading any SignalStore immediately knows where state is defined (withState), where derivations are (withComputed), and where mutations are (withMethods).
+3. RxJS interop. rxMethod() handles the Signal ↔ Observable boundary cleanly — subscription management, debouncing, cancellation, and error handling with tapResponse. Doing this manually with raw signals and RxJS requires significant boilerplate.
+4. Lifecycle integration. withHooks integrates store initialization directly into Angular's DI lifecycle — no ngOnInit in the component, no manual trigger calls.
+Practical rule: If your component has one or two independent signals with no HTTP effects, use raw signal() and computed() directly. If it has three or more interdependent state slices, any HTTP effect, or state that children need to share, the encapsulation, composition, and lifecycle benefits of SignalStore pay for themselves.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Function composition — signalStore() is built on function composition; each withX() call transforms the store type incrementally; understanding how composed functions build on each other helps you write custom SignalStore features (Topic 3 — Closures)
+Proxy objects — SignalStore uses JavaScript Proxies internally to make state Signals read-only externally; understanding Proxies clarifies the "why can't I call .set() on store.count" question
+
+TypeScript Concepts:
+
+Intersection types and ReturnType<> — the store's type is the intersection of all withX() return types; TypeScript infers this automatically but knowing how helps when writing custom feature functions (Topic 13 — Interfaces & Types)
+infer and conditional types — custom SignalStore features use advanced generics to extend the store type; relevant when building reusable withX() features for a team library (Topic 16 — Generics)
+
+Angular-Specific Concepts:
+
+Topic 57 — NgRx Router Store: Router Store connects the Angular Router state to NgRx — after SignalStore you understand the full local-to-global state spectrum, and Router Store completes the picture for URL-driven state
+Topic 58 — NgRx Testing: Testing SignalStore involves providing it in TestBed and calling methods directly — simpler than testing global NgRx but with specific patterns for rxMethod
+Topic 59 — NgRx Best Practices: The architectural decision of when to use SignalStore vs Component Store vs global NgRx is the central question of Topic 59
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on:
+
+Topic 23 — Angular Signals (signal, computed, effect — SignalStore's foundation)
+Topic 24 — OnPush Change Detection (Signal-based stores integrate directly with OnPush)
+Topic 27 — Services & Dependency Injection (SignalStore is an injectable — same DI rules)
+Topic 46 — RxJS Operators in Depth (switchMap/concatMap/exhaustMap rules apply inside rxMethod)
+Topic 55 — NgRx Component Store (SignalStore is the Signal-native evolution — Component Store is the direct predecessor)
+
+Topics this unlocks:
+
+Topic 57 — NgRx Router Store (you now know the full local/global NgRx spectrum; Router Store slots into the global side)
+Topic 58 — NgRx Testing (testing SignalStore is a key subtopic; the patterns are distinct from testing Component Store)
+Topic 59 — NgRx Best Practices (SignalStore is the newest and most Angular-native option — understanding it is required to discuss current best practices)
+
+Production readiness assessment: NgRx SignalStore (@ngrx/signals) reached stable release in NgRx 18 and is actively recommended by the NgRx team for Angular 17+ Signal-first applications — it is production-ready but younger than Component Store, so evaluate your team's Angular version and Signal adoption before committing.
+
+Section 14 — Common Interview Questions
+Question 1
+"What is NgRx SignalStore and how does it differ from NgRx Component Store? Which would you choose for a new Angular 17+ project?"
+Strong answer covers:
+
+Component Store: class extension, Observable-based (select() → Observable, effect() → Observable chain), requires async pipe in templates
+SignalStore: function composition (signalStore() + withX() bricks), Signal-based (state slices are Signals, withComputed uses computed()), no async pipe needed
+SignalStore integrates more naturally with Angular 17+'s Signal-based reactivity and ChangeDetectionStrategy.OnPush
+For new projects on Angular 17+: SignalStore; for existing projects already using Component Store: no urgent need to migrate
+Both solve the same local state scoping problem — the choice is about team familiarity and Angular version
+
+Weak answers miss: The Observable vs Signal distinction — most candidates describe the API difference but not why Signals eliminate the async pipe and subscription management complexity.
+Difficulty: Mid
+
+Question 2
+"Explain rxMethod in NgRx SignalStore. What inputs does it accept, and what problem does it solve that a plain async method cannot?"
+Strong answer covers:
+
+rxMethod<T>() wraps an RxJS pipe and returns a method that accepts a plain value, a Signal, or an Observable
+When passed a Signal, it auto-subscribes and re-runs the pipe on every Signal emission — reactive binding without manual subscription
+The pipe can use debounceTime, switchMap, concatMap — full RxJS operator semantics including request cancellation
+A plain async method cannot cancel in-flight requests, debounce, or reactively bind to a Signal
+Subscriptions created by rxMethod are automatically cleaned up when the store is destroyed
+
+Weak answers miss: The Signal-as-input feature — most candidates explain rxMethod as an HTTP helper but miss that passing store.query (a Signal) creates a fully reactive pipeline.
+Difficulty: Senior
+
+Question 3
+"A computed Signal in your SignalStore is not updating when state changes. Walk me through how you would debug this."
+Strong answer covers:
+
+First: confirm the computed reads Signal values with () calls — reading plain variables creates no reactive dependency
+Second: confirm patchState is returning new references — if the same array/object reference is passed, the computed sees no change
+Third: check definition order in withComputed() — if the computed references another computed defined later in the same object literal, it reads undefined at construction time
+Fourth: check if the computed is split across two withComputed() calls where the second one correctly receives the first's outputs
+Tool: Angular DevTools Signal graph view shows the reactive dependency chain
+
+Weak answers miss: The definition order issue — most candidates know about Signal () reads but not the object literal evaluation order constraint.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Returning new object literals from withComputed projectors unnecessarily
+ts// ❌ Anti-pattern
+withComputed((store) => ({
+  userSummary: computed(() => ({
+    // New object literal created on EVERY Signal emission
+    name: store.selectedUser()?.name ?? 'None',
+    count: store.users().length,
+  })),
+})),
+Why it seems fine: The values displayed in the template are correct, and the code is readable.
+What breaks in production: Every time any Signal that userSummary depends on emits — even if the actual name and count values haven't changed — a new object literal {} is created. This new reference causes every component reading store.userSummary() to detect a change and re-render, even with OnPush. This is the same memoisation-breaking pattern from Topic 53, applied to computed() Signals.
+Correct pattern:
+ts// ✅ Return primitive values from individual computed Signals
+// Compose at the last moment in the template or a specific vm computed
+withComputed((store) => ({
+  selectedUserName: computed(() => store.selectedUser()?.name ?? 'None'),
+  userCount: computed(() => store.users().length),
+  // Only create the object vm if consumers genuinely need it as one unit
+})),
+
+Anti-Pattern 2 — Calling patchState directly from the component or template
+ts// ❌ Anti-pattern — component directly mutates store state
+import { patchState } from '@ngrx/signals';
+
+@Component({...})
+export class UserListComponent {
+  store = inject(UserStore);
+
+  onSelect(id: string) {
+    // Bypasses all withMethods encapsulation
+    patchState(this.store, { selectedUserId: id });
+  }
+}
+Why it seems fine: patchState is a public export — TypeScript permits it, and it works correctly.
+What breaks in production: State mutation is now scattered across components. In a team of five developers, each component that needs to set selectedUserId imports patchState and writes its own patch. There is no single place to add validation, side effects, or logging when selection changes. When a bug appears in selection state, you must search every component rather than checking one selectUser() method.
+Correct pattern:
+ts// ✅ All mutations through withMethods — one place to add logic
+withMethods((store) => ({
+  selectUser(id: string) {
+    patchState(store, { selectedUserId: id });
+    // Easily add: analytics, validation, side effects — all in one place
+  },
+})),
+// Component: this.store.selectUser(id) — clean, auditable
+
+Anti-Pattern 3 — Defining rxMethod inside withHooks instead of withMethods
+ts// ❌ Anti-pattern
+withHooks({
+  onInit(store) {
+    // Defining an rxMethod inside onInit — recreated every time store initialises
+    const load = rxMethod<void>(pipe(
+      switchMap(() => inject(UserService).getAll().pipe(
+        tapResponse({ next: users => patchState(store, { users }), error: () => {} })
+      ))
+    ));
+    load(); // Call it once
+  }
+}),
+Why it seems fine: The HTTP call fires and data loads correctly on initialization.
+What breaks in production: The rxMethod is created inside onInit, making it a local variable that cannot be called again from outside. If you need to refresh data later (pull-to-refresh, periodic polling, user action), there is no reference to the method. Additionally, the subscription cleanup that rxMethod provides is tied to the local variable's scope, not the store's lifetime — creating a subtle cleanup gap. inject() inside withHooks also requires careful ordering.
+Correct pattern:
+ts// ✅ Define rxMethod in withMethods — available as store.loadUsers()
+withMethods((store, service = inject(UserService)) => ({
+  loadUsers: rxMethod<void>(pipe(
+    switchMap(() => service.getAll().pipe(
+      tapResponse({ next: users => patchState(store, { users }), error: () => {} })
+    ))
+  )),
+})),
+withHooks({
+  onInit(store) {
+    store.loadUsers(); // Call the already-defined method
+  }
+}),
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+NgRx SignalStore composes feature bricks (withState, withComputed, withMethods, withHooks) into an Angular injectable whose state slices are read-only Signals — consumed directly in templates without async pipe, subscriptions, or Observable ceremony.
+Key rules:
+
+All state mutations go through withMethods() — never call patchState from a component directly
+Define computed Signals in dependency order — a computed cannot reference another computed defined later in the same withComputed() object literal
+Always use tapResponse inside rxMethod pipes — unhandled errors kill the method permanently with no warning
+Pass a Signal (not its value) to rxMethod for reactive binding: store.search(store.query) not store.search(store.query())
+Use withHooks({ onInit }) to trigger initial data loading — keeps the component class clean of lifecycle methods
+Avoid returning new object/array literals from computed() projectors unnecessarily — new references break memoisation and defeat OnPush
+
+The single most important Angular rule:
+
+All patchState() calls belong inside withMethods() — exposing state mutation through named methods is what makes a SignalStore auditable, testable, and maintainable at team scale.
+Side-by-side comparison:
+Component Store (Topic 55)SignalStore (Topic 56)State readingselect() → Observable + async pipestore.slice() → Signal, no pipeDerived stateselect(projector) → ObservablewithComputed(() => computed()) → SignalMutationsupdater((state, payload) => newState)withMethods() + patchState(store, partial)HTTP side effectseffect(trigger$ => pipe(...))withMethods() + rxMethod<T>(pipe(...))Reactive input bindingManual Observable wiringrxMethod(store.signalSlice) auto-subscribesLifecyclengOnInit in componentwithHooks({ onInit, onDestroy }) in storeTemplate binding@if (vm$ | async; as vm)store.slice() directlyAngular version fitAngular 14+Angular 17+ (Signal-first)

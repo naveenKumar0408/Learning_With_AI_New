@@ -1,0 +1,703 @@
+Topic 51 — NgRx Core Concepts (Store, Actions, Reducers, Selectors)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — The individual pieces (actions, reducers, selectors, store) are each simple; the difficulty is understanding why they are kept deliberately separate and how unidirectional data flow makes the whole system more predictable than the sum of its parts.
+Angular Relevance: Critical — NgRx is the dominant state management solution in professional Angular teams; understanding its core mental model is a prerequisite for every topic from Topic 52 onward, and misunderstanding it is the single most common source of unmaintainable Angular codebases at scale.
+
+Section 1 — Explanation
+The Bank Ledger Analogy
+Imagine a bank. The bank's vault holds the current balance (the Store — one authoritative state object). You cannot walk into the vault and change the number yourself. Instead, you fill out a deposit slip or withdrawal form (an Action — a plain description of what you want to happen, with no logic in it). A teller takes your form, reads the current balance, applies the transaction according to strict rules, and writes a new balance in the ledger (the Reducer — a pure function that takes current state + action and returns new state). At any time, you can ask the bank for a statement (a Selector — a memoised query that reads a specific slice of the ledger without exposing the raw vault).
+Critically: nobody ever reaches into the vault directly. Every change goes through the same controlled pathway. This is what makes the system auditable, replayable, and testable — not because the pieces are clever, but because the rules are strict.
+Technical Explanation
+NgRx implements the Redux pattern for Angular using RxJS. The four core pieces:
+Store — A single BehaviorSubject-backed object holding your entire application state tree. Components and services never mutate it directly. They read it through selectors and write to it by dispatching actions.
+Actions — Plain TypeScript objects with a mandatory type string property. Created with createAction(). They are descriptions of events, not commands — [User Page] Load Users Clicked not loadUsers(). This naming discipline matters at scale.
+Reducers — Pure functions: (currentState, action) => newState. Created with createReducer() + on(). They must be synchronous, have no side effects, and always return a new state object — never mutate the existing one. They are the only place state changes.
+Selectors — Pure functions that derive data from the store. Created with createSelector(). They are memoised — if the input slice hasn't changed (by reference), the projector function doesn't re-run. Components subscribe to selectors, not to raw store slices.
+The Unidirectional Data Flow
+Component dispatches Action
+        ↓
+Reducer computes new State
+        ↓
+Store emits new State
+        ↓
+Selector derives slice of State
+        ↓
+Component receives updated data
+        ↓
+(cycle repeats)
+Side effects (HTTP calls, etc.) sit outside this cycle — they listen to actions, do async work, then dispatch new actions back into the cycle. That is Topic 52.
+Quick Reference Table
+PieceCreated withRolePure?StoreprovideStore(reducers)Holds all stateN/AActioncreateAction(type, props)Describes an eventYes — no logicReducercreateReducer(initial, on(...))Computes new stateYes — must beSelectorcreateSelector(inputs, projector)Reads/derives stateYes — memoised
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 44 — State Management Patterns: NgRx is the industrial-scale implementation of exactly the store pattern you built manually in Topic 44 — private state, public read-only projections, write-only methods. NgRx formalises each of those concepts into its own named piece.
+Topic 20 — RxJS Subscription Management and Topic 46 — RxJS Operators in Depth: The Store is a stream — store.select(selector) returns an Observable. Everything you know about subscription cleanup, takeUntilDestroyed, and the async pipe applies directly.
+Topic 22 — Async Pipe: Selectors return Observables — the async pipe is the standard way to consume them in templates, giving you automatic subscription management and OnPush compatibility.
+Topic 24 — OnPush Change Detection: NgRx selectors emit only when their memoised output changes — this pairs perfectly with OnPush, because Angular only needs to check a component when its selector actually produces a new value.
+Topic 14 — readonly & Immutability: Reducers must return new state objects, never mutate existing ones — the immutability rules from Topic 14 are not optional suggestions in NgRx, they are correctness requirements.
+
+Bridging note: In Topic 44 you built a store service with a BehaviorSubject, private state, and public write methods. NgRx is that pattern taken to its logical extreme — each concern is pulled into its own dedicated, independently testable file. The BehaviorSubject becomes the Store, the write methods become Actions + Reducers, the public read-only projection becomes a Selector. The pattern is identical; the discipline is enforced by convention and tooling rather than by you.
+Most directly extends: Topic 44 — State Management Patterns.
+
+Section 3 — Code Example
+Plain TS — Core concept in isolation (no Angular)
+typescript// Understanding the reducer pattern before adding NgRx
+interface CounterState { count: number; }
+
+const initialState: CounterState = { count: 0 };
+
+// A reducer: pure function, always returns new state
+function counterReducer(
+  state = initialState,
+  action: { type: string; amount?: number }
+): CounterState {
+  switch (action.type) {
+    case '[Counter] Increment':
+      // CORRECT: returns a NEW object — never mutates state
+      return { ...state, count: state.count + 1 };
+    case '[Counter] Add':
+      return { ...state, count: state.count + (action.amount ?? 0) };
+    default:
+      // REQUIRED: always return current state for unknown actions
+      return state;
+  }
+}
+
+// A selector: pure function that reads a slice
+const selectCount = (state: CounterState) => state.count;
+
+// Usage:
+const state1 = counterReducer(undefined, { type: '@@INIT' }); // { count: 0 }
+const state2 = counterReducer(state1, { type: '[Counter] Increment' }); // { count: 1 }
+const state3 = counterReducer(state2, { type: '[Counter] Add', amount: 5 }); // { count: 6 }
+
+console.log(selectCount(state3)); // 6
+
+Real Angular NgRx — Full feature slice
+Installation:
+bashng add @ngrx/store
+ng add @ngrx/store-devtools  # essential for debugging
+
+Step 1 — Define the state shape and actions:
+typescript// users/store/users.actions.ts
+import { createAction, props } from '@ngrx/store';
+import { User } from '../models/user.model';
+
+// Action naming convention: '[Source] Event Description'
+// Source = where the action originates (page, component, API, effect)
+// Event = what happened in past tense or noun form
+
+// Page actions — dispatched by components
+export const loadUsersPageOpened = createAction(
+  '[Users Page] Page Opened'
+  // No props — this is just a signal that the page opened
+);
+
+export const userSearched = createAction(
+  '[Users Page] User Searched',
+  props<{ query: string }>() // props adds typed payload
+);
+
+// API actions — dispatched by Effects (Topic 52) after HTTP calls
+export const loadUsersSuccess = createAction(
+  '[Users API] Load Users Success',
+  props<{ users: User[] }>()
+);
+
+export const loadUsersFailure = createAction(
+  '[Users API] Load Users Failure',
+  props<{ error: string }>()
+);
+
+Step 2 — Define the reducer:
+typescript// users/store/users.reducer.ts
+import { createReducer, on } from '@ngrx/store';
+import { User } from '../models/user.model';
+import * as UsersActions from './users.actions';
+
+// The shape of this feature's slice of state
+export interface UsersState {
+  users: User[];
+  loading: boolean;
+  error: string | null;
+  searchQuery: string;
+}
+
+// Initial state — always defined explicitly
+const initialState: UsersState = {
+  users: [],
+  loading: false,
+  error: null,
+  searchQuery: ''
+};
+
+export const usersReducer = createReducer(
+  initialState,
+
+  // When the page opens, set loading = true
+  // The actual HTTP call happens in an Effect (Topic 52)
+  on(UsersActions.loadUsersPageOpened, state => ({
+    ...state,       // spread current state — never mutate
+    loading: true,  // only change what needs to change
+    error: null
+  })),
+
+  // When search query changes, store it in state
+  on(UsersActions.userSearched, (state, { query }) => ({
+    ...state,
+    searchQuery: query
+  })),
+
+  // When API returns success, store users and stop loading
+  on(UsersActions.loadUsersSuccess, (state, { users }) => ({
+    ...state,
+    users,          // shorthand for users: users
+    loading: false,
+    error: null
+  })),
+
+  // When API fails, store the error and stop loading
+  on(UsersActions.loadUsersFailure, (state, { error }) => ({
+    ...state,
+    loading: false,
+    error
+  }))
+);
+
+Step 3 — Define the selectors:
+typescript// users/store/users.selectors.ts
+import { createFeatureSelector, createSelector } from '@ngrx/store';
+import { UsersState } from './users.reducer';
+
+// createFeatureSelector gets the top-level slice by feature key
+// The key must match what you registered in provideState()
+const selectUsersState = createFeatureSelector<UsersState>('users');
+
+// createSelector takes input selectors + a projector function
+// The projector only re-runs when its inputs change (memoisation)
+export const selectAllUsers = createSelector(
+  selectUsersState,
+  state => state.users // projector: derive the users array
+);
+
+export const selectUsersLoading = createSelector(
+  selectUsersState,
+  state => state.loading
+);
+
+export const selectUsersError = createSelector(
+  selectUsersState,
+  state => state.error
+);
+
+export const selectSearchQuery = createSelector(
+  selectUsersState,
+  state => state.searchQuery
+);
+
+// Composed selector — takes two input selectors, derives filtered list
+// This projector only re-runs when users OR searchQuery changes
+export const selectFilteredUsers = createSelector(
+  selectAllUsers,
+  selectSearchQuery,
+  (users, query) => {
+    if (!query.trim()) return users;
+    const lower = query.toLowerCase();
+    return users.filter(u =>
+      u.name.toLowerCase().includes(lower) ||
+      u.email.toLowerCase().includes(lower)
+    );
+  }
+);
+
+// Selector with props — for selecting a single item by ID
+export const selectUserById = (id: number) => createSelector(
+  selectAllUsers,
+  users => users.find(u => u.id === id) ?? null
+);
+
+Step 4 — Register the store:
+typescript// app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideStore } from '@ngrx/store';
+import { provideStoreDevtools } from '@ngrx/store-devtools';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    // provideStore({}) registers the root store with an empty initial reducer map
+    // Feature reducers are added lazily with provideState() in feature routes
+    provideStore({}),
+
+    // DevTools — invaluable for debugging; disable in production
+    provideStoreDevtools({
+      maxAge: 25,           // keep last 25 actions in history
+      logOnly: false,       // set true in production
+      autoPause: true,      // pause recording when devtools is closed
+    }),
+  ]
+};
+
+// users/users.routes.ts — lazy feature state registration
+import { Routes } from '@angular/router';
+import { provideState } from '@ngrx/store';
+import { usersReducer } from './store/users.reducer';
+
+export const usersRoutes: Routes = [
+  {
+    path: '',
+    // provideState registers the feature reducer when this route loads
+    // State is added to the store lazily — only when needed
+    providers: [provideState('users', usersReducer)],
+    component: UsersPageComponent,
+  }
+];
+
+Step 5 — Component using the store:
+typescript// users/users-page.component.ts
+import { Component, inject, OnInit } from '@angular/core';
+import { Store } from '@ngrx/store';
+import { AsyncPipe } from '@angular/common';
+import * as UsersActions from './store/users.actions';
+import {
+  selectFilteredUsers,
+  selectUsersLoading,
+  selectUsersError
+} from './store/users.selectors';
+
+@Component({
+  selector: 'app-users-page',
+  standalone: true,
+  imports: [AsyncPipe],
+  // ChangeDetectionStrategy.OnPush pairs perfectly with NgRx selectors —
+  // component only re-checks when a selector emits a new value
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <input
+      #searchInput
+      (input)="onSearch(searchInput.value)"
+      placeholder="Search users..." />
+
+    @if (loading$ | async) {
+      <p>Loading...</p>
+    }
+
+    @if (error$ | async; as error) {
+      <p class="error">{{ error }}</p>
+    }
+
+    @for (user of filteredUsers$ | async; track user.id) {
+      <div class="user-card">
+        <h3>{{ user.name }}</h3>
+        <p>{{ user.email }}</p>
+      </div>
+    }
+  `
+})
+export class UsersPageComponent implements OnInit {
+  readonly #store = inject(Store);
+
+  // Select slices — these are Observables; use async pipe in template
+  filteredUsers$ = this.#store.select(selectFilteredUsers);
+  loading$       = this.#store.select(selectUsersLoading);
+  error$         = this.#store.select(selectUsersError);
+
+  ngOnInit(): void {
+    // Dispatch an action — describe what happened, not what to do
+    // The Effect (Topic 52) listens for this and makes the HTTP call
+    this.#store.dispatch(UsersActions.loadUsersPageOpened());
+  }
+
+  onSearch(query: string): void {
+    this.#store.dispatch(UsersActions.userSearched({ query }));
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Service-based state with direct mutation
+typescript// WRONG: State scattered across services, mutated directly
+@Injectable({ providedIn: 'root' })
+export class UsersService {
+  users: User[] = []; // public mutable — anything can change this
+  loading = false;
+
+  loadUsers(): void {
+    this.loading = true;
+    this.http.get<User[]>('/api/users').subscribe(users => {
+      this.users = users;  // direct mutation
+      this.loading = false;
+    });
+  }
+}
+
+// Component A mutates the service array directly
+this.usersService.users.push(newUser); // no other component knows
+
+// Component B reads stale data with no notification
+// Angular only updates if using default CD — with OnPush it never updates
+What breaks: State changes are invisible — no audit trail, no time-travel debugging, no way to know what changed state. Components that share the service may read inconsistent values depending on timing. OnPush components never update because the array reference doesn't change on push().
+✅ After — NgRx unidirectional flow
+typescript// CORRECT: All state changes go through actions → reducers
+// Every change is logged, replayable, and predictable
+
+// Component dispatches an action — no logic, just a description
+this.store.dispatch(userAdded({ user: newUser }));
+
+// Reducer handles it — pure, testable, single place
+on(userAdded, (state, { user }) => ({
+  ...state,
+  users: [...state.users, user] // new reference — OnPush updates
+}))
+
+// Selector emits the new value — all subscribers update automatically
+Why this matters in Angular: The new array reference from the spread in the reducer triggers OnPush change detection in every component subscribed to selectAllUsers — simultaneously, consistently, with zero manual markForCheck() calls.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Dispatching actions that describe commands instead of events
+What it looks like:
+typescript// ❌ Command-style action names
+export const fetchUsers = createAction('[Users] Fetch Users');
+export const setLoading = createAction('[Users] Set Loading', props<{ loading: boolean }>());
+export const updateUser = createAction('[Users] Update User', props<{ user: User }>());
+Why developers make it: Coming from imperative programming, actions feel like method calls — you want to tell the store what to do.
+How to avoid it: Name actions as past-tense events from the perspective of a specific source: [Users Page] Page Opened, [Users API] Load Users Success. An action describes what happened, and multiple reducers and effects can react to it independently.
+Angular-specific consequence: Command-style actions create tight coupling — one action becomes responsible for one specific mutation. Event-style actions allow multiple slices of state and multiple effects to react to the same event, which is the scalability advantage NgRx provides over a service-based store.
+
+Mistake 2 — Mutating state inside a reducer
+What it looks like:
+typescript// ❌ Direct mutation inside a reducer
+on(loadUsersSuccess, (state, { users }) => {
+  state.users = users;     // MUTATION — modifies the existing object
+  state.loading = false;
+  return state;            // returning the same reference
+})
+Why developers make it: It looks like it works — the values change. Developers coming from mutable patterns don't immediately see a problem.
+How to avoid it: Always return a new object using spread: { ...state, users, loading: false }. Use NgRx's runtime checks in development: provideStore({}, { runtimeChecks: { strictStateImmutability: true } }) — this throws an error immediately when mutation is detected.
+Angular-specific consequence: Selectors won't emit new values because the object reference hasn't changed. OnPush components freeze. The Redux DevTools shows the action was dispatched but the state diff is empty — one of the most confusing debugging experiences in NgRx.
+
+Mistake 3 — Selecting from the store inside a constructor or without using the async pipe
+What it looks like:
+typescript// ❌ Subscribing manually without cleanup
+constructor() {
+  this.store.select(selectAllUsers).subscribe(users => {
+    this.users = users; // manual assignment, no takeUntilDestroyed
+  });
+}
+Why developers make it: It's familiar — they know how to subscribe to Observables. The async pipe feels like extra syntax.
+How to avoid it: Use store.select() to assign an Observable to a class property and consume it with the async pipe. If you must subscribe manually, always add takeUntilDestroyed(destroyRef) (Topic 21).
+Angular-specific consequence: Without cleanup, the subscription lives until the application restarts — every component instance created and destroyed leaves a new active subscription. In a heavily navigated app, this creates dozens of zombie subscriptions all updating a component that no longer exists, causing memory leaks and ghost state updates.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TName actions as past-tense events with a [Source] prefixName actions as commands (fetchData, setLoading)Always spread state in reducers: { ...state, changed: value }Mutate state properties directly inside reducersEnable runtime immutability checks in developmentSkip runtime checks and discover mutations as mysterious bugsUse createFeatureSelector + createSelector for all state accessAccess store.select(state => state.featureName.users) inline in componentsRegister feature state lazily with provideState() in route providersRegister all feature reducers upfront in provideStore() — it defeats lazy loadingUse ChangeDetectionStrategy.OnPush on every component using the storeUse default change detection — it wastes render cycles NgRx selectors are designed to eliminate
+
+Section 7 — Debugging Tips
+Bug 1 — Component doesn't update after dispatching an action
+Symptom: You dispatch an action, the Redux DevTools shows the state changed, but the component template doesn't update.
+Plain English cause: Either the selector isn't memoising correctly (input reference didn't change), the component is OnPush and you subscribed manually without marking for check, or you mutated state in the reducer instead of returning a new reference.
+Fix checklist:
+
+Open Redux DevTools — confirm the action was dispatched and the state diff shows a change
+If state shows no diff: you mutated state in the reducer — enable strictStateImmutability runtime check
+If state shows a diff but component doesn't update: you're not using the async pipe — check for manual subscriptions without markForCheck()
+If using async pipe and still not updating: the selector's memoised output may be returning the same reference — check your projector function isn't returning a cached object when it should return a new one
+
+Angular-specific note: Redux DevTools is not optional for NgRx development — it's the only tool that shows you the exact state before and after every action. Install @ngrx/store-devtools from day one.
+
+Bug 2 — createFeatureSelector returns undefined
+Symptom: store.select(selectUsersState) emits undefined. Your selectors produce undefined or throw Cannot read properties of undefined.
+Plain English cause: The feature state was never registered. Either provideState('users', usersReducer) was never added, or it was added in the wrong providers array (e.g. in a parent route's providers instead of the feature route's providers).
+Fix: Search your route configuration for provideState('users', ...). Confirm the key string 'users' exactly matches the string you passed to createFeatureSelector<UsersState>('users'). A single character difference causes silent undefined.
+Angular-specific note: With lazy loading, provideState() must be in the providers array of the route that loads the feature component — not in app.config.ts. If you put it in app.config.ts, it works but you've eagerly loaded state that should be lazy.
+
+Bug 3 — Action dispatched but reducer never handles it
+Symptom: Redux DevTools shows the action dispatched with correct payload, but the state tree doesn't change.
+Plain English cause: The on() handler in the reducer references a different action creator than the one being dispatched. This happens when you import from the wrong path, have duplicate action type strings, or accidentally have two createAction calls with the same type string.
+Fix: In Redux DevTools, click the action and look at the type string. Then search your codebase for that exact string — confirm there is exactly one createAction with that type and that your reducer imports and references that exact creator in its on() call.
+Angular-specific note: NgRx matches actions by the type string, not by object reference. Two createAction('[Users] Load') calls in different files produce two action creators with the same type string — dispatching one will trigger on() handlers registered for the other. Use a unique source prefix on every action type to prevent collisions.
+
+Section 8 — Real-World Applications
+Scenario 1 — Shopping cart with persistent state
+A multi-page checkout flow needs cart state that survives navigation between pages:
+typescript// cart.actions.ts
+export const itemAddedToCart = createAction(
+  '[Product Page] Item Added To Cart',
+  props<{ productId: number; quantity: number }>()
+);
+
+export const itemRemovedFromCart = createAction(
+  '[Cart Page] Item Removed',
+  props<{ productId: number }>()
+);
+
+export const cartCleared = createAction('[Checkout Page] Order Placed');
+
+// cart.reducer.ts
+export interface CartItem { productId: number; quantity: number; }
+export interface CartState { items: CartItem[]; }
+
+const initialState: CartState = { items: [] };
+
+export const cartReducer = createReducer(
+  initialState,
+  on(itemAddedToCart, (state, { productId, quantity }) => {
+    const existing = state.items.find(i => i.productId === productId);
+    if (existing) {
+      // Update quantity — return entirely new array with new item object
+      return {
+        ...state,
+        items: state.items.map(i =>
+          i.productId === productId
+            ? { ...i, quantity: i.quantity + quantity }
+            : i
+        )
+      };
+    }
+    return { ...state, items: [...state.items, { productId, quantity }] };
+  }),
+  on(itemRemovedFromCart, (state, { productId }) => ({
+    ...state,
+    items: state.items.filter(i => i.productId !== productId)
+  })),
+  on(cartCleared, () => initialState) // reset to initial state
+);
+
+// cart.selectors.ts
+const selectCartState = createFeatureSelector<CartState>('cart');
+
+export const selectCartItems = createSelector(selectCartState, s => s.items);
+
+export const selectCartItemCount = createSelector(
+  selectCartItems,
+  items => items.reduce((sum, i) => sum + i.quantity, 0)
+);
+
+export const selectCartTotal = (prices: Record<number, number>) =>
+  createSelector(
+    selectCartItems,
+    items => items.reduce((sum, i) => sum + (prices[i.productId] ?? 0) * i.quantity, 0)
+  );
+
+Scenario 2 — Dashboard with multiple independent data slices
+A dashboard loads user profile, notifications, and recent activity independently — each with its own loading and error state:
+typescript// Each feature has its own state slice, registered lazily
+// dashboard.routes.ts
+export const dashboardRoutes: Routes = [{
+  path: 'dashboard',
+  providers: [
+    provideState('profile', profileReducer),
+    provideState('notifications', notificationsReducer),
+    provideState('activity', activityReducer),
+    // Effects for each feature registered here too (Topic 52)
+  ],
+  component: DashboardComponent
+}];
+
+// dashboard.component.ts — composes selectors from multiple slices
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <app-profile-card [profile]="profile$ | async" />
+    <app-notification-badge [count]="unreadCount$ | async" />
+    <app-activity-feed [items]="recentActivity$ | async" />
+  `
+})
+export class DashboardComponent implements OnInit {
+  readonly #store = inject(Store);
+
+  profile$       = this.#store.select(selectUserProfile);
+  unreadCount$   = this.#store.select(selectUnreadNotificationCount);
+  recentActivity$ = this.#store.select(selectRecentActivity);
+
+  ngOnInit(): void {
+    // Three independent actions — three independent Effects handle them
+    this.#store.dispatch(dashboardPageOpened());
+  }
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Create a standalone NgRx counter feature with actions for increment, decrement, and reset. Define a reducer that handles all three. Create a selector for the current count and a selector for whether the count is negative. Build a CounterComponent that displays the count and has three buttons dispatching each action. Use the async pipe for all template bindings.
+Exercise 2 — Intermediate
+Build a BookmarkService feature with NgRx. State should hold an array of bookmarked article IDs, a maxBookmarks limit (default 10), and a limitReached boolean. Write reducers for bookmarkAdded and bookmarkRemoved actions. Create a composed selector selectBookmarkStatus that combines all three state values into a single object. Demonstrate that the composed selector only re-runs its projector when the bookmarks array or the limit actually changes.
+Exercise 3 — Advanced
+Build a SearchState feature that manages a search query, a results array, pagination (current page, total pages, page size), and a loading flag. Write all actions following the [Source] Event naming convention — distinguish between user-initiated actions ([Search Page]) and API response actions ([Search API]). Write reducers that handle pagination navigation (next page, previous page, go to page) without losing the current search results. Write a composed selector selectSearchViewModel that returns all data a search results component needs in a single object, and a selector selectCurrentPageResults that slices the results array to the current page.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+The Store is a single immutable state tree — components read from it through selectors, write to it by dispatching actions
+Actions are plain event descriptions — past tense, [Source] Event Name, no logic inside them
+Reducers are pure functions — (state, action) => newState, always spread, never mutate
+Selectors are memoised queries — they only recompute when their input slice changes by reference
+Unidirectional flow makes state changes predictable, auditable, and time-travel debuggable
+
+Quick Reference Table:
+ConceptRuleCommon violationActionsDescribe events, not commandssetLoading, fetchData style namesReducersAlways return new referencestate.x = y; return stateSelectorsCompose from smaller selectorsInline state => state.feature.deep.value in componentsStore registrationLazy with provideState() in routesEager in provideStore({featureReducer})
+Angular-specific rules:
+
+Always pair NgRx with ChangeDetectionStrategy.OnPush — selectors emit only on real changes, making OnPush free performance
+Install @ngrx/store-devtools from day one — debugging without it is guesswork
+Enable runtime checks during development: strictStateImmutability: true, strictActionImmutability: true
+Register feature state in route providers with provideState(), not in app.config.ts
+
+One-Line Memory Aid:
+
+Components describe what happened (Actions), reducers decide what changes (pure State), selectors read what exists (memoised Queries) — nobody touches the vault directly.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: NgRx forces you to define actions, reducers, and selectors in separate files for even the simplest state change — a single counter increment requires touching at least three files. Is this overhead ever justified, and how do you decide when NgRx is the right tool versus a simpler Signal-based service?
+Answer:
+The overhead is real and the question is important. NgRx's verbosity is not an accident — it is a deliberate trade of writing effort for reading clarity at scale. Every additional file is a named, findable, independently testable unit.
+The case for NgRx overhead becomes justified when any of these are true:
+Multiple components share the same state and need to stay in sync. A Signal service works until two components on different routes both need the same data in different shapes. NgRx selectors let each component derive exactly what it needs without either component knowing the other exists.
+State changes have side effects that need to be auditable. When a payment fails, you want to know exactly which action was dispatched, what the state was before, and what it looked like after. NgRx DevTools gives you this for free.
+The team is larger than three people. In a large team, uncontrolled service-based state becomes a coordination problem — who owns this service, who can change this property, why did this value change? NgRx's strict conventions answer all three questions automatically.
+State transitions are complex. A multi-step form wizard, an optimistic update with rollback, a real-time feed with pagination — these state machines are far clearer as reducers with explicit on() handlers than as service methods with nested conditionals.
+The Signal-based service (Topic 44) is the right choice when:
+
+State is local to a single component tree (use Component Store — Topic 55)
+State is simple enough that one developer can hold it in their head
+The app is small enough that DevTools and time-travel debugging aren't needed
+The team is moving fast and verbosity genuinely slows delivery
+
+Practical rule: Default to Signal services for feature-local state. Reach for NgRx global Store when state is shared across multiple routes, when side effects need structure, or when the team needs a common contract for state changes. The cost of adding NgRx too late is refactoring; the cost of adding it too early is boilerplate — refactoring is the more expensive mistake.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Immutable update patterns — spread, Object.freeze, and structural sharing explain why NgRx reducers work the way they do and what "new reference" actually means at the memory level
+
+TypeScript Concepts:
+
+Discriminated unions — NgRx actions are discriminated unions (each has a unique type); understanding this TypeScript pattern explains how on() achieves type inference in reducers without explicit casting
+
+Angular-Specific Concepts:
+
+Topic 52 — NgRx Effects: The natural next step — Effects handle all async operations that actions trigger, completing the full NgRx cycle
+Topic 53 — NgRx Selectors In Depth: Selector memoisation, composition patterns, and createSelectorFactory for advanced use cases
+Topic 55 — NgRx Component Store: When global store is too heavy — local ephemeral state for a single component tree using the same NgRx mental model
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on:
+
+Topic 14 — readonly & Immutability (reducer spread pattern)
+Topic 20 — RxJS Subscription Management (store.select returns Observable)
+Topic 22 — Async Pipe (primary template consumption pattern)
+Topic 24 — OnPush Change Detection (selector + OnPush pairing)
+Topic 44 — State Management Patterns (NgRx is the formal version of that pattern)
+
+Topics this unlocks:
+
+Topic 52 — NgRx Effects (requires understanding actions and the dispatch cycle)
+Topic 53 — NgRx Selectors In Depth (requires understanding basic createSelector)
+Topic 54 — NgRx Entity (requires understanding reducers and state shape)
+Topic 55 — NgRx Component Store (shares the same action/selector mental model)
+Topic 58 — NgRx Testing (requires understanding all four core pieces)
+
+Production readiness assessment: A developer who understands the four core concepts, names actions correctly, never mutates state in reducers, and uses selectors with the async pipe is ready to contribute to any NgRx codebase — the remaining topics deepen and extend this foundation rather than replacing it.
+
+Section 14 — Common Interview Questions
+Question 1
+"Explain the role of each piece in NgRx — Store, Action, Reducer, Selector — and why they are kept separate."
+Strong answer covers:
+
+Store: single source of truth, read-only externally, updated only through reducers
+Actions: plain event descriptions, enable any part of the app to react to the same event
+Reducers: pure functions, only place state changes, enabling time-travel and testability
+Selectors: memoised derived data, decouple component templates from state shape
+Separation enables independent testability of each piece and allows multiple reducers/effects to react to one action
+
+Weak answers miss: Why separation matters — candidates describe what each piece does without explaining why the separation itself is the architectural benefit.
+Difficulty: Junior-Mid
+
+Question 2
+"What does 'pure function' mean in the context of NgRx reducers, and what breaks if a reducer isn't pure?"
+Strong answer covers:
+
+Pure: same inputs always produce same output, no side effects, no external state reads
+Breaks if impure: time-travel debugging replays actions — if a reducer reads Date.now() or Math.random(), replayed state diverges from original
+Mutation breaks selector memoisation — same reference = no emission = frozen UI
+Async operations in reducers break the synchronous state transition guarantee
+strictStateImmutability runtime check catches violations in development
+
+Weak answers miss: The time-travel debugging consequence — most candidates mention OnPush but miss that the whole DevTools replay mechanism depends on reducer purity.
+Difficulty: Mid
+
+Question 3
+"A senior developer on your team says 'we should dispatch one action per user interaction and handle everything in that action's reducer.' A junior developer says 'we should have separate actions for each state change.' Who is right and why?"
+Strong answer covers:
+
+Neither is entirely right — the correct model is one action per event, regardless of how many state changes result
+One action can be handled by multiple on() handlers across multiple feature reducers simultaneously
+"One action per state change" leads to action dispatching chains (Effect A dispatches Action B which dispatches Action C) — an anti-pattern called action dispatching waterfalls
+"One action per interaction" is closer to correct but misses that the same event might need to update multiple slices of state in one atomic operation
+The NgRx team's guidance: actions are events, not commands — model your domain events, let reducers and effects react
+
+Weak answers miss: The multi-reducer aspect — most candidates think one action maps to one reducer handler, when a single action can trigger changes across multiple independent feature reducers.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — "God actions" that carry the full new state
+typescript// ❌ Anti-pattern
+export const stateUpdated = createAction(
+  '[App] State Updated',
+  props<{ newState: Partial<UsersState> }>()
+);
+
+// In reducer:
+on(stateUpdated, (state, { newState }) => ({ ...state, ...newState }))
+
+// In component:
+this.store.dispatch(stateUpdated({ newState: { users: [], loading: false } }));
+Why it seems fine: It's flexible — one action handles any state update. Less boilerplate per change.
+What actually breaks in production: You've recreated direct state mutation with extra steps. Redux DevTools shows [App] State Updated for everything — you can't distinguish a user search from an API response from an error. Time-travel debugging becomes meaningless because the action carries the answer rather than describing the question. Testing becomes impossible because there's nothing domain-specific to assert on.
+Correct pattern: One specific action per specific event. The verbosity is the feature, not the bug.
+
+Anti-Pattern 2 — Selecting deeply nested state inline in components
+typescript// ❌ Anti-pattern — inline deep selection in the component
+@Component({})
+export class UserCardComponent {
+  readonly #store = inject(Store);
+
+  // Accessing deeply nested state inline — no memoisation composition
+  userName$ = this.#store.select(
+    state => state['users']['entities'][this.userId]?.['profile']?.['displayName']
+  );
+}
+Why it seems fine: It's concise — one line gets exactly the data you need without creating a selector file.
+What actually breaks in production: This lambda is a new function reference on every change detection cycle — NgRx cannot memoise it, so it re-evaluates on every store emission regardless of whether the relevant data changed. With 20 components doing this, every single action dispatched in the app causes 20 inline projections to re-run. The projector function also has no type safety, no reusability, and no testability.
+Correct pattern: Always use createFeatureSelector + createSelector in a dedicated selectors file. Import and reuse selectors across components.
+
+Anti-Pattern 3 — Dispatching actions in sequence from a component to orchestrate a workflow
+typescript// ❌ Anti-pattern — component orchestrating a multi-step flow
+onSubmitOrder(): void {
+  this.store.dispatch(validateCart());
+  this.store.dispatch(reserveInventory());
+  this.store.dispatch(processPayment());
+  this.store.dispatch(sendConfirmationEmail());
+}
+Why it seems fine: It reads like a clear sequence of steps. The component feels in control of the workflow.
+What actually breaks in production: These four dispatches happen synchronously in the same call stack — all four actions are processed before any async work begins. If validateCart fails, processPayment still dispatches. There is no way to conditionally proceed based on the outcome of a previous step. The component now owns business workflow logic that belongs in Effects.
+Correct pattern: Dispatch one action ([Order Page] Order Submitted). An Effect listens, calls the validate API, and dispatches [Orders API] Validation Success or [Orders API] Validation Failure. A second Effect listens to Validation Success and proceeds — each step conditional on the previous one's outcome. The component dispatches once and never knows about the workflow.
+
+Section 16 — Mental Model Summary
+Core concept in one sentence: NgRx enforces a strict one-way cycle where components dispatch event descriptions (Actions), pure functions compute new state (Reducers), a single object holds all state (Store), and memoised queries derive component data (Selectors) — nobody touches the state directly.
+Key rules:
+
+Actions describe past events: [Source] Event Happened — never commands
+Reducers must be pure: always { ...state, changed } — never state.x = y
+Selectors must be composed with createSelector — never inline lambdas in components
+Register feature state lazily in route providers with provideState()
+Always pair with ChangeDetectionStrategy.OnPush — selectors and OnPush are designed for each other
+Enable strictStateImmutability in development — catch mutations before they reach production
+
+The single most important Angular rule:
+
+Never mutate state in a reducer — always return a new object with spread syntax; mutation silently breaks selector memoisation, freezes OnPush components, and corrupts DevTools time-travel, all with no error message.
+
+Side-by-side comparison:
+NgRx Global StoreSignal Service (Topic 44)State scopeApplication-wideService instance lifetimeBest forShared cross-route stateFeature-local or single-component stateDevTools supportFull time-travel debuggingNone built-inBoilerplateHighLowTeam scalingExcellent — strict conventionsHarder — conventions must be self-enforcedAsync side effectsEffects (Topic 52)Method in service with takeUntilDestroyed

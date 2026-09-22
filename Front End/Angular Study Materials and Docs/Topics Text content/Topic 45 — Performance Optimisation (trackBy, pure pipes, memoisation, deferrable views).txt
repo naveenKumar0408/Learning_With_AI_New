@@ -1,0 +1,868 @@
+Topic 45 — Performance Optimisation (trackBy, pure pipes, memoisation, deferrable views)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — Each individual technique is approachable, but the skill is knowing which problem each technique solves and when applying one without the others leaves performance on the table; the interactions between OnPush, signals, pure pipes, and deferrable views require a unified mental model.
+Angular Relevance: Critical — Performance problems in Angular almost always trace back to a small set of well-known patterns; knowing these techniques separates developers who build fast apps from those who build apps that feel sluggish at scale, and every senior Angular interview touches this topic directly.
+
+Section 1 — Explanation
+The Restaurant Kitchen Analogy
+Imagine a restaurant kitchen during a busy service. An inefficient kitchen re-cooks every dish from scratch every time the head chef walks through — even if the dish hasn't been ordered again. A well-run kitchen:
+
+Only re-cooks dishes that were actually ordered (OnPush change detection — Topic 24)
+Remembers the recipe result so identical orders skip the cooking step (pure pipes + memoisation)
+Doesn't start cooking the dessert menu until a table actually orders dessert (deferrable views)
+Knows which specific dish changed on a tray instead of replacing the whole tray (trackBy)
+
+Angular's default behaviour is the inefficient kitchen — it re-checks everything on every event. Each technique in this topic is one discipline that makes the kitchen run efficiently.
+The Four Techniques — Overview:
+TechniqueProblem it solvesWhere it appliestrackBy / trackDOM thrashing when lists re-render@for loops with dynamic dataPure pipesRedundant transform recalculationTemplate expressions that transform dataMemoisationExpensive function re-executionComponent methods called in templatesDeferrable views (@defer)Blocking render with off-screen contentBelow-the-fold or conditionally shown components
+These four techniques address different layers of the rendering pipeline. In a real app you apply all four — they are complementary, not alternatives.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 24 — OnPush Change Detection — every technique here is an extension of the OnPush mental model; reducing unnecessary CD cycles is the throughline
+Topic 42 — Custom Pipes — pure pipes as a performance tool was introduced there; this topic quantifies the impact and shows how pure pipes interact with the other three techniques
+Topic 29 — Built-in Control Flow — @for with track and @defer are both built-in control flow features; the performance implications of both are covered here
+Topic 23 — Angular Signals — signals replace the need for trackBy in some scenarios and interact with deferrable views' loading triggers
+Topic 44 — State Management Patterns — store-driven lists are the primary context for trackBy and deferrable views; the patterns from Topic 44 are assumed throughout
+
+Bridging Note:
+
+In Topic 24 you learned that OnPush skips a component's re-render unless its inputs change by reference. The techniques in this topic extend that discipline further down the rendering stack: trackBy prevents unnecessary DOM node recreation inside a list that OnPush is already protecting at the component level; pure pipes prevent unnecessary transform recalculation inside the template expressions that OnPush is already limiting to changed inputs; @defer prevents the component from entering the rendering pipeline at all until it's needed.
+Most directly extends: Topic 24 — OnPush Change Detection (all four techniques are downstream optimisations of the same reference-equality mental model).
+
+Section 3 — Code Example
+Technique 1 — track in @for (replaces trackBy)
+typescript// Without track — Angular destroys and recreates every DOM node on every list update
+// Even if only one item changed, all 100 <li> elements are torn down and rebuilt
+
+// With track — Angular matches existing DOM nodes to new data by identity
+// Only the changed/added/removed items touch the DOM
+
+@Component({
+  standalone: true,
+  template: `
+    <!-- BAD: no track — full DOM rebuild on every change -->
+    @for (item of items(); ) {
+      <app-item [data]="item" />
+    }
+
+    <!-- GOOD: track by stable unique ID — only changed nodes are touched -->
+    @for (item of items(); track item.id) {
+      <app-item [data]="item" />
+    }
+  `
+})
+export class ListComponent {
+  items = signal<Item[]>([]);
+}
+typescript// When track by index is acceptable vs. when it breaks things:
+
+// ACCEPTABLE: static list that never reorders and items have no internal state
+@for (label of ['Home', 'About', 'Contact']; track $index) {
+  <li>{{ label }}</li>
+}
+
+// BREAKS: dynamic list where items reorder or have child components with state
+// If items reorder, $index changes but the DOM node stays — child component
+// receives wrong @Input() data while retaining its previous internal state
+@for (user of sortedUsers(); track $index) {  // ← dangerous with reordering
+  <app-user-card [user]="user" />             // card may show wrong user data
+}
+
+// ALWAYS CORRECT: stable unique ID from the data
+@for (user of sortedUsers(); track user.id) {
+  <app-user-card [user]="user" />
+}
+
+Technique 2 — Pure Pipes as a Performance Tool
+typescript// The problem: method calls in templates run on EVERY change detection cycle
+@Component({
+  template: `
+    <!-- BAD: getFilteredItems() runs on every mousemove, keydown, timer tick -->
+    @for (item of getFilteredItems(); track item.id) {
+      <app-item [data]="item" />
+    }
+  `
+})
+export class ListComponent {
+  items = signal<Item[]>([]);
+  filter = signal('');
+
+  getFilteredItems(): Item[] {              // called every CD cycle
+    return this.items().filter(i =>
+      i.name.includes(this.filter())
+    );
+  }
+}
+typescript// The fix: pure pipe — Angular memoises the result, only recalculates
+// when items() reference or filter() value changes
+
+@Pipe({ name: 'filterItems', standalone: true, pure: true })
+export class FilterItemsPipe implements PipeTransform {
+  transform(items: Item[] | null, query: string): Item[] {
+    if (!items) return [];
+    if (!query) return items;
+    return items.filter(i => i.name.toLowerCase().includes(query.toLowerCase()));
+  }
+}
+
+@Component({
+  standalone: true,
+  imports: [FilterItemsPipe],
+  template: `
+    <!-- GOOD: transform() only called when items signal or filter signal changes -->
+    @for (item of (items() | filterItems : filter()); track item.id) {
+      <app-item [data]="item" />
+    }
+  `
+})
+export class ListComponent {
+  items = signal<Item[]>([]);
+  filter = signal('');
+}
+
+Technique 3 — Memoisation for Expensive Computations
+typescript// When a pure pipe isn't applicable (e.g. in TypeScript logic, not templates),
+// use computed() for signal-based memoisation
+
+@Injectable({ providedIn: 'root' })
+export class ReportStore {
+  readonly #transactions = signal<Transaction[]>([]);
+  readonly transactions = this.#transactions.asReadonly();
+
+  // computed() memoises — only recalculates when #transactions signal changes
+  // Without computed(), this runs every time any signal in the app changes
+  readonly monthlyTotals = computed(() => {
+    console.log('Recalculating monthly totals...');  // should log rarely
+    return this.#transactions().reduce((acc, t) => {
+      const month = t.date.slice(0, 7);  // 'YYYY-MM'
+      acc[month] = (acc[month] ?? 0) + t.amount;
+      return acc;
+    }, {} as Record<string, number>);
+  });
+
+  readonly topCategory = computed(() => {
+    // This expensive calculation also only runs when transactions change
+    const counts = this.#transactions().reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'none';
+  });
+}
+typescript// Manual memoisation for non-signal contexts — when you genuinely need
+// a method call result cached outside Angular's reactive system
+
+@Component({...})
+export class ChartComponent {
+  private cache = new Map<string, ChartData>();
+
+  // Called from a template or service — caches by a string key
+  getChartData(datasetId: string): ChartData {
+    if (this.cache.has(datasetId)) {
+      return this.cache.get(datasetId)!;  // return cached result instantly
+    }
+    const result = this.computeExpensiveChart(datasetId);  // only runs once per id
+    this.cache.set(datasetId, result);
+    return result;
+  }
+
+  private computeExpensiveChart(id: string): ChartData {
+    // Heavy computation — sorting, grouping, statistical calculations
+    return { /* ... */ };
+  }
+}
+
+Technique 4 — Deferrable Views (@defer)
+typescript// @defer — the most powerful performance tool in modern Angular
+// Splits the component from the main bundle AND delays rendering
+
+@Component({
+  standalone: true,
+  template: `
+    <!-- Above the fold: renders immediately, in the main bundle -->
+    <app-hero-banner />
+    <app-featured-products />
+
+    <!-- Below the fold: deferred until the user scrolls to this area -->
+    @defer (on viewport) {
+      <!-- HeavyAnalyticsComponent and its entire dependency tree are:
+           1. Split into a separate lazy chunk (automatic code splitting)
+           2. Not downloaded until the user scrolls here
+           3. Not rendered until downloaded -->
+      <app-heavy-analytics-dashboard />
+
+      @placeholder {
+        <!-- Shown BEFORE the deferred block loads — must be lightweight -->
+        <div class="skeleton" style="height: 400px;"></div>
+      }
+
+      @loading (minimum 300ms) {
+        <!-- Shown WHILE the chunk is downloading -->
+        <!-- minimum 300ms prevents flash if download is fast -->
+        <app-spinner />
+      }
+
+      @error {
+        <!-- Shown if the chunk fails to download -->
+        <p>Failed to load analytics. <button (click)="retry()">Retry</button></p>
+      }
+    }
+
+    <!-- Defer with multiple triggers -->
+    @defer (on idle; on viewport; prefetch on hover) {
+      <!-- on idle: loads when browser is idle (requestIdleCallback) -->
+      <!-- on viewport: also triggers on scroll into view -->
+      <!-- prefetch on hover: pre-downloads chunk when user hovers nearby -->
+      <app-recommendations />
+      @placeholder { <div class="skeleton"></div> }
+    }
+  `
+})
+export class HomePageComponent {}
+typescript// @defer with interaction trigger and manual control
+
+@Component({
+  standalone: true,
+  template: `
+    <button (click)="showComments.set(true)">Show Comments</button>
+
+    <!-- on interaction — loads when the user clicks/focuses the placeholder -->
+    @defer (when showComments()) {
+      <app-comment-thread [postId]="postId()" />
+      @placeholder {
+        <div class="comments-placeholder">Click to load comments</div>
+      }
+    }
+  `
+})
+export class ArticleComponent {
+  postId = input.required<number>();
+  showComments = signal(false);
+}
+
+Section 4 — Before & After Refactor
+❌ Before — A Typical Unoptimised List Component
+typescript@Component({
+  changeDetection: ChangeDetectionStrategy.Default,  // re-checks everything always
+  template: `
+    <!-- No track: full DOM rebuild on every data change -->
+    @for (product of getFilteredProducts(); ) {
+      <!-- getFilteredProducts() is a method — runs every CD cycle -->
+      <app-product-card [product]="product" />
+    }
+
+    <!-- Heavy chart component always rendered, always in the bundle -->
+    <app-sales-chart [data]="salesData" />
+  `
+})
+export class ProductListComponent {
+  products: Product[] = [];
+  searchQuery = '';
+  salesData: SalesData[] = [];
+
+  getFilteredProducts(): Product[] {
+    // Runs on every mousemove, every keypress anywhere in the app
+    // With 1,000 products, this is 1,000 filter evaluations per event
+    return this.products.filter(p =>
+      p.name.toLowerCase().includes(this.searchQuery.toLowerCase())
+    );
+  }
+}
+What breaks at scale: 1,000 products × every CD cycle = the filter() runs hundreds of times per second during typing. No track means 1,000 DOM nodes are destroyed and recreated on every keystroke. app-sales-chart is always in the main bundle and always rendered even if the user never scrolls to it. With Default change detection, the component re-checks on every event in the entire app.
+
+✅ After — All Four Optimisations Applied
+typescript@Pipe({ name: 'filterProducts', standalone: true, pure: true })
+export class FilterProductsPipe implements PipeTransform {
+  transform(products: Product[], query: string): Product[] {
+    if (!products) return [];
+    if (!query) return products;
+    const lower = query.toLowerCase();
+    return products.filter(p => p.name.toLowerCase().includes(lower));
+  }
+}
+
+@Component({
+  standalone: true,
+  imports: [FilterProductsPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,  // only re-checks on input changes
+  template: `
+    <!-- Pure pipe: transform() only runs when products or searchQuery changes -->
+    <!-- track item.id: only changed DOM nodes are updated -->
+    @for (product of (products() | filterProducts : searchQuery()); track product.id) {
+      <app-product-card [product]="product" />
+    }
+
+    <!-- @defer: chart is lazy-loaded and only rendered when scrolled into view -->
+    @defer (on viewport) {
+      <app-sales-chart [data]="salesData()" />
+      @placeholder { <div class="chart-skeleton"></div> }
+      @loading { <app-spinner /> }
+    }
+  `
+})
+export class ProductListComponent {
+  products  = input.required<Product[]>();
+  salesData = input.required<SalesData[]>();
+  searchQuery = signal('');
+}
+Why this refactor matters:
+
+OnPush → component only re-checks when products or salesData inputs change by reference
+Pure pipe → filter() only runs when the products array reference or searchQuery string changes
+track product.id → only the specific DOM nodes that changed are updated, not all 1,000
+@defer (on viewport) → the chart component is excluded from the initial bundle and not rendered until the user scrolls to it; first meaningful paint is dramatically faster
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using track $index on Dynamic Lists
+What the mistake looks like:
+html@for (user of sortedUsers(); track $index) {
+  <app-user-card [user]="user" />
+}
+Why developers make it: $index is available automatically and feels like a natural unique identifier. It also silences any linting warnings about missing track.
+How to avoid it: track $index is only safe when the list never reorders and items have no internal component state. For any list that sorts, filters, or reorders, use track item.id (or another stable identity from the data).
+Angular-specific consequence: When the list reorders, index 0 might now point to a different item. Angular keeps the DOM node for index 0 alive and passes the new item as @Input() to the existing component instance — but that component instance still holds the previous item's internal state (form values, expansion state, selection). The visible data and the component state silently diverge.
+
+Mistake 2 — Treating @defer as a Substitute for All Performance Work
+What the mistake looks like:
+typescript// Developer wraps everything in @defer, skips OnPush, skips track, skips pure pipes
+@defer (on viewport) {
+  <!-- Still no track, no OnPush, no pure pipes inside -->
+  <app-slow-list [items]="items" />
+}
+Why developers make it: @defer is visually dramatic — it clearly splits the bundle and defers loading. It feels like "doing performance work." The other techniques are invisible.
+How to avoid it: @defer delays initial load — it has no effect once the component is rendered. After the deferred block loads, all the same OnPush / track / pure pipe rules apply inside it. All four techniques are complementary and address different phases: @defer = load time; OnPush + signals = render time; track = DOM update time; pure pipes = computation time.
+Angular-specific consequence: The app loads fast (thanks to @defer) but becomes sluggish as soon as the deferred component renders, because all the runtime performance problems still exist inside it.
+
+Mistake 3 — Calling Expensive Methods in Templates Instead of Using computed() or Pure Pipes
+What the mistake looks like:
+html<!-- BAD: formatReport() is called on every change detection cycle -->
+<div>{{ formatReport(reportData) }}</div>
+<span>{{ calculateTotal(items) }}</span>
+Why developers make it: Method calls in templates are convenient and feel like the natural Angular way, especially for simple transformations. Developers don't realise that Angular treats template method calls as volatile expressions — it cannot memoize them.
+How to avoid it: Any template expression that transforms data should be a pure pipe (for reusability) or a computed() signal (for TypeScript logic). Reserve template method calls for event handlers only — never for value derivation.
+Angular-specific consequence: With Default change detection, formatReport() runs on every mouse movement anywhere in the app. With OnPush, it still runs on every input change to this component. With 50 rows each calling two methods, that's 100 function calls per CD cycle — measurable frame drops during scrolling or typing in any nearby input.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse track item.id (or another stable entity ID) on all dynamic listsUse track $index on lists that reorder, sort, or filter — it causes silent state divergenceUse pure pipes for all data transformation in templatesCall methods that return transformed data directly from templates — Angular cannot memoise method callsUse computed() for all derived state in signal-based components and storesRe-derive calculated values (totals, counts, filtered lists) inside component methods called from templatesApply @defer (on viewport) to any significant component that starts below the foldRender every component eagerly regardless of whether it's visible on initial loadCombine all four techniques — they are complementary, not alternativesApply only one technique and consider performance "done"Use @placeholder with a skeleton UI that matches the deferred component's dimensionsUse an empty @placeholder — without it, layout shift (CLS) degrades Core Web Vitals
+
+Section 7 — Debugging Tips
+Bug 1 — List Items Show Wrong Data After Reordering
+Symptom: After sorting or filtering a list, some items display data from the wrong item, or child components show a previous item's expanded/selected state despite the data changing correctly.
+Plain English Cause: track $index is being used on a list that reorders. Angular matches DOM nodes to new data by index, so when the sort order changes, existing component instances receive new @Input() data but retain their previous internal state.
+Fix:
+html<!-- Replace: -->
+@for (item of sortedItems(); track $index) { ... }
+
+<!-- With: -->
+@for (item of sortedItems(); track item.id) { ... }
+Angular-specific note: This bug is invisible in development with short lists but becomes obvious with longer lists or complex child components. Always audit track usage when implementing sort or filter functionality.
+
+Bug 2 — @defer Block Never Loads / Stays on @placeholder Forever
+Symptom: The deferred component never appears. The @placeholder is always visible even after the trigger condition is met.
+Plain English Cause (most common): The trigger is on viewport but the @placeholder has zero height (height: 0 or no content). The Intersection Observer sees a zero-height element as "in viewport" immediately, but subsequent Angular rendering skips the load because the element has no visible area to observe.
+Plain English Cause (second common): provideNoopAnimations() was accidentally applied in a way that also disabled the browser APIs that @defer relies on in the test environment, and the test configuration leaked into development.
+Fix:
+html@defer (on viewport) {
+  <app-heavy-component />
+  @placeholder {
+    <!-- Give the placeholder real dimensions matching the deferred content -->
+    <div style="height: 400px; width: 100%;"></div>
+  }
+}
+Angular-specific note: Always give @placeholder meaningful dimensions. It serves double duty: triggering the Intersection Observer correctly AND preventing cumulative layout shift (CLS) when the real component loads.
+
+Bug 3 — Pure Pipe Not Updating After Store Data Changes
+Symptom: A filtered list stops updating after new items are added via a store write method.
+Plain English Cause: The store's array is being mutated in place (this.#items().push(item) or a direct mutation inside update()), so the signal's reference doesn't change, and the pure pipe's memoisation cache returns the stale result.
+Fix:
+typescript// WRONG — mutates in place, pure pipe doesn't see a new reference:
+addItem(item: Item) {
+  this.#items.update(curr => {
+    curr.push(item);   // ← mutates the existing array
+    return curr;       // ← returns the same reference
+  });
+}
+
+// CORRECT — new reference on every update:
+addItem(item: Item) {
+  this.#items.update(curr => [...curr, item]);  // new array reference
+}
+Angular-specific note: This is the same bug from Topic 42 (pure pipe + mutation), now appearing at the store layer. The fix is always at the mutation site — enforce immutable updates in every store write method.
+
+Section 8 — Real-World Applications
+Scenario 1 — High-Performance Data Table with 10,000 Rows
+A CRM application renders a paginated, sortable, filterable table of contacts. Initial implementation was sluggish during sort and filter operations.
+typescript@Pipe({ name: 'sortAndFilter', standalone: true, pure: true })
+export class SortAndFilterPipe implements PipeTransform {
+  transform(contacts: Contact[], query: string, sortField: keyof Contact, sortDir: 'asc' | 'desc'): Contact[] {
+    if (!contacts) return [];
+
+    let result = query
+      ? contacts.filter(c =>
+          c.name.toLowerCase().includes(query.toLowerCase()) ||
+          c.email.toLowerCase().includes(query.toLowerCase())
+        )
+      : contacts;
+
+    return [...result].sort((a, b) => {
+      const comparison = String(a[sortField]).localeCompare(String(b[sortField]));
+      return sortDir === 'asc' ? comparison : -comparison;
+    });
+  }
+}
+
+@Component({
+  standalone: true,
+  imports: [SortAndFilterPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <input [value]="query()" (input)="query.set($any($event.target).value)" />
+
+    <!-- Pure pipe: sort+filter only recalculates when contacts, query, or sort changes -->
+    <!-- track contact.id: only changed rows touch the DOM -->
+    @for (
+      contact of (contacts() | sortAndFilter : query() : sortField() : sortDir());
+      track contact.id
+    ) {
+      <app-contact-row [contact]="contact" />
+    }
+  `
+})
+export class ContactTableComponent {
+  contacts  = input.required<Contact[]>();
+  query     = signal('');
+  sortField = signal<keyof Contact>('name');
+  sortDir   = signal<'asc' | 'desc'>('asc');
+}
+Result: Sort and filter operations go from re-running on every CD cycle to running only when contacts, query, sortField, or sortDir change. DOM updates touch only the rows that actually changed position.
+
+Scenario 2 — Dashboard with Deferred Widgets and Skeleton Loading
+A SaaS dashboard has a summary header (above the fold) and five heavy chart widgets (below the fold). Initial load was slow because all five chart libraries were in the main bundle.
+typescript@Component({
+  standalone: true,
+  template: `
+    <!-- Critical above-fold content: always eager, in main bundle -->
+    <app-kpi-summary [metrics]="metrics()" />
+    <app-recent-activity [events]="recentEvents()" />
+
+    <!-- Below-fold widgets: deferred with skeleton placeholders -->
+    @defer (on viewport; prefetch on idle) {
+      <app-revenue-chart [data]="revenueData()" />
+      @placeholder { <app-chart-skeleton height="320" /> }
+      @loading (minimum 200ms) { <app-chart-skeleton height="320" animated /> }
+      @error { <app-widget-error message="Revenue chart unavailable" /> }
+    }
+
+    @defer (on viewport; prefetch on idle) {
+      <app-conversion-funnel [steps]="funnelData()" />
+      @placeholder { <app-chart-skeleton height="280" /> }
+      @loading (minimum 200ms) { <app-chart-skeleton height="280" animated /> }
+    }
+
+    @defer (on viewport) {
+      <app-geo-heatmap [regions]="geoData()" />
+      @placeholder { <app-chart-skeleton height="400" /> }
+      @loading (minimum 200ms) { <app-chart-skeleton height="400" animated /> }
+    }
+  `
+})
+export class DashboardComponent {
+  metrics      = input.required<KpiMetrics>();
+  recentEvents = input.required<ActivityEvent[]>();
+  revenueData  = input.required<RevenuePoint[]>();
+  funnelData   = input.required<FunnelStep[]>();
+  geoData      = input.required<GeoRegion[]>();
+}
+Result: The main bundle shrinks by the combined weight of three charting library imports. First meaningful paint happens before any chart library downloads. prefetch on idle pre-fetches the first two charts during browser idle time so they appear instantly when scrolled to. Skeleton placeholders prevent layout shift.
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Take an existing @for loop in a component that renders a list of { id: number, name: string } objects and add the correct track expression. Then verify your understanding by explaining in comments why track $index would be incorrect if the list were sortable.
+
+Exercise 2 — Intermediate
+Build a ProductSearchComponent that receives a large list of products via a signal input and has a search input bound to a local signal. Create a SearchProductsPipe (pure) that filters products by name and category. Wire the pipe into the @for loop with correct track. Ensure the component uses OnPush. Add a computed() signal for the count of visible results. Measure (using browser DevTools Performance tab) the difference in CPU usage between the method-call version and the pure pipe version during rapid typing.
+
+Exercise 3 — Advanced
+Refactor a dashboard component that currently renders four heavy chart components eagerly. Apply @defer (on viewport) with appropriate triggers to each chart. Each must have a skeleton @placeholder matching the chart's dimensions, an animated @loading state with a minimum display duration, and an @error fallback with a retry button. After the refactor, use ng build to verify that each chart component's dependencies appear in separate lazy chunks and are absent from the main bundle. Then apply prefetch on hover to the first chart and verify in the Network tab that the chunk is prefetched when the user hovers near it.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+track tells Angular how to match existing DOM nodes to updated data — without it, the entire list is torn down and rebuilt on every change
+Pure pipes cache their last result and only recalculate when input references change — method calls in templates have no such cache
+computed() is Angular's built-in memoisation for signal-derived values — it recalculates only when its signal dependencies change
+@defer splits a component into a separate lazy chunk AND delays its rendering until a trigger fires — it addresses both bundle size and render cost
+These four techniques operate at different phases: load time (@defer), component render time (OnPush + signals), DOM update time (track), computation time (pure pipes + computed())
+
+Quick Reference Table:
+TechniqueWhen it runsWhat it preventsKey ruletrack item.idDuring list reconciliationFull DOM rebuild on every updateNever use $index on sortable/filterable listsPure pipeDuring CD, input changes onlyRedundant transform recalculationReturns memoised result when input reference unchangedcomputed()When signal dependencies changeRedundant expensive derivationOnly recalculates when tracked signals emit@deferOn trigger (viewport, idle, interaction)Eager render of off-screen contentAlways give @placeholder real dimensions
+Angular-specific rules:
+
+track is required syntax in @for — always use a stable entity ID, not $index for dynamic lists
+Template method calls are never memoised — replace data-transformation methods with pure pipes or computed()
+@defer automatically code-splits the deferred component — no extra loadComponent() call needed
+@placeholder must have realistic dimensions to prevent CLS and to correctly trigger on viewport
+@loading (minimum Xms) prevents loading-state flicker for fast connections — always set a minimum
+
+One-Line Memory Aid:
+
+Load less (@defer), render less (OnPush + signals), compute less (pure pipes + computed()), patch less (track) — apply all four, in every list-heavy component.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: @defer automatically code-splits the deferred component into a separate chunk. But Angular's lazy loading via loadComponent() in the router (Topic 40) also code-splits. What is the actual difference, and when should you use one versus the other?
+Answer:
+This question reveals that code splitting has two different axes: when to split and what triggers the load. Understanding both axes clarifies why Angular has two different mechanisms.
+The conceptual explanation:
+loadComponent() in the router is route-driven splitting. The split boundary is a navigation event — the user navigates to a URL, the router downloads the component, and the component renders. The unit of splitting is a page. The trigger is always a route change.
+@defer is render-driven splitting. The split boundary is a template condition — a viewport intersection, a user interaction, a signal turning true, or the browser going idle. The unit of splitting is any component or component tree, regardless of routing. The trigger is configurable.
+The Angular-specific implication:
+Use loadComponent() / loadChildren() when the split maps to a route boundary — a whole page that the user navigates to. This is the right tool for splitting a /dashboard page from a /settings page because the user can only see one at a time.
+Use @defer when the split is within a single page/route — content that is on the same page but not immediately visible or needed. Heavy charts below the fold, comment sections, recommendation engines, rich text editors that only open on interaction — these live on the same route but don't need to be in the initial render.
+Practical rule: Router lazy loading and @defer are complementary. A production app uses both: loadChildren() to split routes into separate chunks, and @defer within those route components to split heavy sub-components within each page. The @defer block inside a lazy-loaded route component produces its own further-nested chunk — the two mechanisms compose naturally.
+The key question to ask: "Is this a separate page, or is this heavy content within a page?" Page → router lazy loading. Content within a page → @defer.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+WeakMap for memoisation — a production-grade manual memoisation cache that avoids memory leaks by allowing garbage collection of keys; relevant when computed() isn't available (non-signal contexts)
+requestIdleCallback — the browser API that @defer (on idle) wraps; understanding it helps you reason about when idle-triggered deferred blocks actually load
+
+TypeScript Concepts:
+
+Generic pipe types — a SortPipe<T> that works on any array of objects with a typed sort key; builds directly on Topic 16 (Generics) and makes reusable sort/filter pipes type-safe
+satisfies operator — useful for typing the track expression result and the pipe transform() return type more precisely in complex generics
+
+Angular-Specific Concepts:
+
+Topic 46 — RxJS Operators in Depth — debounceTime is a critical companion to pure pipe filtering (debouncing the search input before triggering the filter pipe prevents unnecessary recalculations)
+Topic 47 — Testing Angular Components — fakeAsync and tick() are required for testing @defer block transitions; pure pipe testing (covered in Topic 42) is the easiest entry point
+Virtual Scrolling (Topic 49 — Angular CDK) — for truly massive lists (10,000+ items), track alone is insufficient; CDK's VirtualScrollViewport renders only visible rows and is the next optimisation layer beyond track
+Angular DevTools — the browser extension's "Profiler" tab shows exactly which components re-rendered and why in each CD cycle; essential for validating that OnPush + pure pipes are actually reducing renders
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on (must be solid):
+
+Topic 23 — Angular Signals (computed() memoisation is a signal primitive)
+Topic 24 — OnPush Change Detection (all four techniques extend this mental model)
+Topic 29 — Built-in Control Flow (@for with track, @defer with its sub-blocks)
+Topic 42 — Custom Pipes (pure pipe performance mechanics)
+Topic 44 — State Management Patterns (stores provide the immutable data that makes track and pure pipes work correctly)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 46 — RxJS Operators in Depth (debounceTime becomes essential once you know pure pipes need immutable, non-debounced inputs to stay performant)
+Topic 47/48 — Testing (fakeAsync for @defer testing; pure pipe unit tests are trivial and make a great testing entry point)
+Topic 49 — Angular CDK (Virtual Scroll is the next layer of list performance after track)
+Topic 50 — Angular Universal & SSR (@defer blocks interact with SSR in specific ways that build directly on this topic)
+
+Production readiness assessment:
+
+These four techniques are the baseline for any Angular component handling dynamic lists or heavy sub-components — a component that skips all four is not production-ready for any data-intensive view; a component that applies all four is defensible at scale.
+
+Section 14 — Common Interview Questions
+Question 1
+"Why can using track $index in an @for loop cause bugs, and when is it actually safe?"
+Strong answer covers:
+
+track $index uses the array position as the DOM node identity
+When the list reorders (sort, filter, reverse), the index of each item changes but the DOM node stays in place — Angular updates @Input() on the existing component but the component's internal state (form values, expanded state, selection) belongs to the previous item
+Safe only for: static lists that never reorder, primitive value lists with no child component state, lists where items have no internal state at all
+Always prefer track item.id or another stable server-assigned identifier
+
+Weak answers typically miss: The internal component state problem — most candidates know $index is "bad" but can't explain exactly what breaks and why.
+Difficulty: Mid
+
+Question 2
+"What is the difference between @defer (on viewport) and route-based lazy loading, and when do you use each?"
+Strong answer covers:
+
+Route lazy loading splits at page/route boundaries — triggered by navigation
+@defer splits at component boundaries within a page — triggered by viewport, idle, interaction, or a signal condition
+They are complementary — a lazy-loaded route can contain @defer blocks for further within-page splitting
+@defer also handles the render lifecycle (placeholder, loading, error states) which route lazy loading does not
+Use route splitting for separate pages; use @defer for heavy content within a page
+
+Weak answers typically miss: That the two mechanisms compose — candidates often treat them as alternatives rather than complementary tools.
+Difficulty: Mid/Senior
+
+Question 3
+"A developer reports that their Angular app is slow during user input in a search box. The component uses OnPush. What would you investigate and what fixes would you apply?"
+Strong answer covers:
+
+Check for template method calls that return filtered/sorted arrays — these run every CD cycle even with OnPush, because the input that triggers OnPush is the search query itself
+Replace method calls with a pure pipe — the pipe's memoisation skips recalculation if the query string hasn't changed between CD cycles
+Check track on any @for loops in the search results — without it, every keystroke rebuilds the entire DOM
+Check whether any child components inside the results list also lack OnPush
+Mention debounceTime on the search input observable/signal to reduce how often the filter runs at all
+Mention @defer for any heavy components in the results that aren't immediately visible
+
+Weak answers typically miss: The pure pipe fix — most candidates jump to debounceTime or virtual scrolling without identifying the root cause (method calls in templates).
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Template Method Calls for Data Transformation
+typescript// ANTI-PATTERN
+@Component({
+  template: `
+    @for (item of getProcessedItems(); track item.id) {
+      <app-item [data]="item" />
+    }
+    <span>Total: {{ calculateTotal() }}</span>
+  `
+})
+export class DashboardComponent {
+  items = input.required<Item[]>();
+
+  getProcessedItems(): Item[] {
+    return this.items()
+      .filter(i => i.active)
+      .sort((a, b) => b.priority - a.priority);
+  }
+
+  calculateTotal(): number {
+    return this.items().reduce((sum, i) => sum + i.value, 0);
+  }
+}
+Why it seems fine: Method calls in templates are natural, readable, and work correctly.
+What breaks at scale: With Default CD, getProcessedItems() and calculateTotal() run on every mouse move. With OnPush, they run on every input change. With 500 items, this is 500 filter evaluations + 500 reduce evaluations per CD cycle — measurable CPU usage during any interaction.
+Correct pattern:
+typescript// Use computed() for signal-based derivation:
+processedItems = computed(() =>
+  this.items().filter(i => i.active).sort((a, b) => b.priority - a.priority)
+);
+total = computed(() => this.items().reduce((sum, i) => sum + i.value, 0));
+
+// Template:
+// @for (item of processedItems(); track item.id) { ... }
+// <span>Total: {{ total() }}</span>
+
+Anti-Pattern 2 — @defer Without Placeholder Dimensions
+typescript// ANTI-PATTERN
+@Component({
+  template: `
+    <app-header />
+    <app-main-content />
+
+    @defer (on viewport) {
+      <app-analytics-widget />
+      @placeholder { }  <!-- empty placeholder -->
+    }
+  `
+})
+Why it seems fine: The deferred component loads correctly. Everything looks fine in development on a fast connection.
+What breaks in production: An empty placeholder has zero height. The Intersection Observer triggers immediately (a zero-height element at the bottom of the DOM is technically "in viewport"). More critically, when the analytics widget loads and takes 400px of height, the entire page content below it shifts down — a Cumulative Layout Shift (CLS) score penalty that degrades Core Web Vitals and hurts SEO rankings. On slow connections, the page visually "jumps" as each widget loads.
+Correct pattern:
+html@defer (on viewport) {
+  <app-analytics-widget />
+  @placeholder {
+    <!-- Match the expected dimensions of the deferred component -->
+    <div style="height: 400px; width: 100%; background: #f5f5f5; border-radius: 8px;"></div>
+  }
+  @loading (minimum 300ms) {
+    <app-skeleton height="400" />
+  }
+}
+
+Anti-Pattern 3 — Applying @defer to Components That Are Already Lazy-Loaded via the Router
+typescript// ANTI-PATTERN: unnecessary double-deferral
+// This route is already lazy-loaded via loadComponent() in the router
+// app.routes.ts: { path: 'settings', loadComponent: () => import('./settings.component') }
+
+// Inside SettingsComponent (already lazy):
+@Component({
+  template: `
+    <!-- This form is already in a lazy chunk — @defer adds nothing here -->
+    @defer (on viewport) {
+      <app-settings-form />   <!-- small, simple form — not worth deferring -->
+      @placeholder { <div style="height: 50px"></div> }
+    }
+  `
+})
+export class SettingsComponent { }
+Why it seems fine: More deferral seems like more performance. @defer is always beneficial.
+What breaks at scale: @defer adds a placeholder → loading state → component swap lifecycle. For small, fast-rendering components (a settings form, a simple card), this lifecycle adds a visible flash of placeholder/loading that is worse UX than just rendering eagerly. @defer is only beneficial when the deferred component is genuinely heavy (large JS dependencies, complex rendering) and not immediately visible.
+Correct pattern: Apply @defer only to components that are: (a) not immediately visible on page load, AND (b) heavy enough that the split is worth the placeholder/loading lifecycle. Rule of thumb: if the component renders in under 50ms and has no large dependencies, render it eagerly.
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet — Performance Optimisation
+Core concept in one sentence:
+
+Angular performance is about doing less work at every phase — less to load (@defer), less to render (OnPush + signals), less to compute (pure pipes + computed()), and less DOM to patch (track) — and each technique is targeting a different phase of the rendering pipeline.
+Key rules:
+
+Always use track item.id (stable entity ID) on dynamic lists — never track $index on sortable/filterable data
+Replace template method calls that return transformed data with pure pipes or computed() signals
+Apply @defer (on viewport) to every heavy component that starts below the fold
+Always give @placeholder real dimensions matching the deferred content — prevents layout shift
+@defer addresses load time only — OnPush, track, and pure pipes are still required inside deferred blocks
+All four techniques are complementary — applying only one leaves the other three phases unoptimised
+
+The single most important Angular rule:
+
+Template method calls that transform data are never memoised — replace them with pure pipes or computed() signals; this is the single most common source of Angular performance problems in production.
+
+Choosing the right technique for the right problem:
+SymptomRoot causeFixSlow typing / input lagMethod calls in template running every CD cyclePure pipe or computed()List flicker on updateNo track — full DOM rebuildtrack item.idSlow initial page loadHeavy components in main bundle@defer (on viewport)Page layout shift on loadEmpty @placeholderGive @placeholder real dimensionsChild components not updatingtrack $index on reordering listtrack item.id
+
+
+
+Topic 45 — Performance Optimisation (REVISED)
+Audit findings applied: Zone.js presented as the only CD model (#7/#8) → corrected with zoneless coverage added. ChangeDetectorRef constructor injection (#3) → no instance of this existed in the original delivery (this topic never used ChangeDetectorRef directly — it relied on OnPush + signals throughout), so nothing needed correction there, confirmed below. Missing zoneless / provideExperimentalZonelessChangeDetection() mention (#7) → added as new content. Sections changed: 0, 1, 2, 10, 11, 12, 13, 16. All other sections kept verbatim.
+
+Section 0 — Difficulty & Priority Rating (REWRITTEN — Angular Relevance note expanded to acknowledge zoneless)
+Difficulty: Intermediate — Each individual technique is approachable, but the skill is knowing which problem each technique solves and when applying one without the others leaves performance on the table; the interactions between OnPush, signals, pure pipes, and deferrable views require a unified mental model — and that mental model now spans both Zone.js-based and zoneless change detection.
+Angular Relevance: Critical — Performance problems in Angular almost always trace back to a small set of well-known patterns; knowing these techniques separates developers who build fast apps from those who build apps that feel sluggish at scale. This matters more, not less, as Angular moves toward zoneless change detection via provideExperimentalZonelessChangeDetection() — several of these techniques (notably OnPush and signal-driven rendering) are not just performance optimisations under zoneless, they become load-bearing correctness requirements, because there is no Zone.js fallback silently re-checking everything for you.
+
+Section 1 — Explanation (REWRITTEN — added zoneless framing to the kitchen analogy and the technique table)
+The Restaurant Kitchen Analogy (extended)
+Imagine a restaurant kitchen during a busy service. An inefficient kitchen re-cooks every dish from scratch every time the head chef walks through — even if the dish hasn't been ordered again. A well-run kitchen:
+
+Only re-cooks dishes that were actually ordered (OnPush change detection — Topic 24)
+Remembers the recipe result so identical orders skip the cooking step (pure pipes + memoisation)
+Doesn't start cooking the dessert menu until a table actually orders dessert (deferrable views)
+Knows which specific dish changed on a tray instead of replacing the whole tray (trackBy)
+
+Angular's legacy default behaviour — Zone.js-driven, ChangeDetectionStrategy.Default — is the inefficient kitchen: the head chef (Zone.js) walks the entire restaurant after every single event (every setTimeout, every click anywhere, every HTTP response) and re-checks every table, every dish, every order, whether or not anything actually changed there. Each technique in this topic is one discipline that makes the kitchen run efficiently regardless of which change detection model is running underneath.
+The two change detection models, and why this topic applies to both:
+Zone.js-based (current default)Zoneless (provideExperimentalZonelessChangeDetection())What triggers a CD checkZone.js patches async APIs (setTimeout, Promise.then, DOM events) and schedules a check after each oneSignal writes and explicit notifications schedule a check directly — no patched APIsCost of an unoptimised Default-strategy componentHigh — re-checked on every async event anywhere in the appEven higher in practice — without Zone.js's broad safety net, components that don't use signals/OnPush correctly may not update reliably or may be checked unpredictably depending on how state changes are wiredRole of OnPushPerformance optimisation — skips redundant checksOften closer to a requirement — zoneless apps are commonly built OnPush-everywhere by convention, since there's no Zone.js broadly re-checking as a fallbackRole of signalsRecommended for clean stateFoundational — signals are the primitive zoneless change detection is built around; signal writes are what schedule the check
+This topic's four techniques — track, pure pipes, memoisation, @defer — are valuable under both models, but under zoneless they stop being purely about speed and start being about whether the UI updates correctly at all when state changes through a path Angular's reactivity graph isn't tracking.
+The Four Techniques — Overview (unchanged)
+TechniqueProblem it solvesWhere it appliestrackBy / trackDOM thrashing when lists re-render@for loops with dynamic dataPure pipesRedundant transform recalculationTemplate expressions that transform dataMemoisationExpensive function re-executionComponent methods called in templatesDeferrable views (@defer)Blocking render with off-screen contentBelow-the-fold or conditionally shown components
+These four techniques address different layers of the rendering pipeline. In a real app you apply all four — they are complementary, not alternatives.
+
+Section 2 — Connection to Prior Concepts (REWRITTEN — Topic 24 bridging note extended to mention zoneless)
+Directly builds on:
+
+Topic 24 — OnPush Change Detection — every technique here is an extension of the OnPush mental model; reducing unnecessary CD cycles is the throughline, and under zoneless Angular this mental model becomes the default assumption rather than an opt-in optimisation
+Topic 42 — Custom Pipes — pure pipes as a performance tool was introduced there; this topic quantifies the impact and shows how pure pipes interact with the other three techniques
+Topic 29 — Built-in Control Flow — @for with track and @defer are both built-in control flow features
+Topic 23 — Angular Signals — signals replace the need for trackBy in some scenarios and are the underlying primitive that makes zoneless change detection possible at all
+Topic 44 — State Management Patterns — store-driven lists are the primary context for trackBy and deferrable views; Topic 44 already establishes signal stores as the default specifically because they remain correct whether or not Zone.js is present
+
+Bridging Note — extended:
+
+In Topic 24 you learned that OnPush skips a component's re-render unless its inputs change by reference. The techniques in this topic extend that discipline further down the rendering stack: trackBy prevents unnecessary DOM node recreation inside a list that OnPush is already protecting at the component level; pure pipes prevent unnecessary transform recalculation inside the template expressions that OnPush is already limiting to changed inputs; @defer prevents the component from entering the rendering pipeline at all until it's needed. Under Zone.js, skipping these techniques costs you performance. Under zoneless change detection, skipping OnPush and signal-driven inputs specifically can cost you correctness — a component that mutates state outside the signal graph and isn't OnPush may simply never re-render, because there's no Zone.js sweep coming along afterward to catch it.
+Most directly extends: Topic 24 — OnPush Change Detection (all four techniques are downstream optimisations of the same reference-equality mental model — a model that zoneless Angular depends on directly rather than treats as optional).
+
+Sections 3–9 (unchanged — verbatim)
+(Code Example, Before & After Refactor, Common Mistakes, Do's and Don'ts, Debugging Tips, Real-World Applications, Practice Exercises — all already used inject(), signal(), computed(), OnPush, and track item.id exclusively. No ChangeDetectorRef constructor injection appeared anywhere in the original delivery — confirmed by re-checking all code blocks in these sections — so no audit-flagged drift exists here.)
+
+Section 10 — Key Takeaways (REWRITTEN — added a zoneless-specific rule)
+Core concepts in plain English:
+
+track tells Angular how to match existing DOM nodes to updated data — without it, the entire list is torn down and rebuilt on every change
+Pure pipes cache their last result and only recalculate when input references change — method calls in templates have no such cache
+computed() is Angular's built-in memoisation for signal-derived values — it recalculates only when its signal dependencies change
+@defer splits a component into a separate lazy chunk AND delays its rendering until a trigger fires — it addresses both bundle size and render cost
+These four techniques operate at different phases: load time (@defer), component render time (OnPush + signals), DOM update time (track), computation time (pure pipes + computed())
+Under zoneless change detection, OnPush + signal-driven inputs are not optional performance techniques — they are how the component gets re-checked at all
+
+Quick Reference Table (unchanged)
+TechniqueWhen it runsWhat it preventsKey ruletrack item.idDuring list reconciliationFull DOM rebuild on every updateNever use $index on sortable/filterable listsPure pipeDuring CD, input changes onlyRedundant transform recalculationReturns memoised result when input reference unchangedcomputed()When signal dependencies changeRedundant expensive derivationOnly recalculates when tracked signals emit@deferOn trigger (viewport, idle, interaction)Eager render of off-screen contentAlways give @placeholder real dimensions
+Angular-specific rules:
+
+track is required syntax in @for — always use a stable entity ID, not $index for dynamic lists
+Template method calls are never memoised — replace data-transformation methods with pure pipes or computed()
+@defer automatically code-splits the deferred component — no extra loadComponent() call needed
+@placeholder must have realistic dimensions to prevent CLS and to correctly trigger on viewport
+@loading (minimum Xms) prevents loading-state flicker for fast connections — always set a minimum
+If the app uses provideExperimentalZonelessChangeDetection(), every state mutation that should trigger a re-render must flow through a signal write — mutating a plain class property or calling a non-signal service method silently does nothing to the view
+
+One-Line Memory Aid:
+
+Load less (@defer), render less (OnPush + signals), compute less (pure pipes + computed()), patch less (track) — apply all four, in every list-heavy component, and treat OnPush + signals as mandatory rather than optional once zoneless is in play.
+
+
+Section 11 — Thought-Provoking Question + Answer (REWRITTEN — new question replacing the original, since the audit specifically calls out that zoneless was entirely absent from this topic's deep-dive content)
+Question: This topic treats OnPush as a performance technique alongside track, pure pipes, and @defer. But under provideExperimentalZonelessChangeDetection(), is OnPush still just a performance technique — or has its role fundamentally changed?
+Answer:
+This question matters because the original framing of OnPush as "one optimisation among several" is accurate under Zone.js but becomes misleading under zoneless Angular.
+The conceptual explanation: Under Zone.js, every component — OnPush or not — eventually gets checked, because Zone.js patches async browser APIs broadly and schedules a full tree check after virtually anything happens. OnPush's job in that world is purely to let Angular skip components whose inputs haven't changed by reference, saving work during that broad sweep. The component will always eventually be considered for a check; OnPush just makes that check a fast no-op.
+Under provideExperimentalZonelessChangeDetection(), there is no broad sweep. Angular instead relies on explicit signals: a write to a signal(), a markForCheck() call, or specific framework-internal notifications (like an @Input() binding update or an event handler firing) are what schedule a check at all. A component that mutates a plain class property — this.count++ instead of this.count.update(c => c + 1) — and is not otherwise notified through one of these channels may never be re-checked, because nothing told Angular a check was needed. There is no fallback sweep coming along five seconds later to catch the inconsistency.
+The Angular-specific implication: This means OnPush plus signal-driven state isn't really "a performance technique" under zoneless — it's closer to "the API contract for how the view stays in sync with the model at all." A component using ChangeDetectionStrategy.Default and mutating plain properties might happen to render correctly under zoneless if change happens to occur inside a context Angular is already tracking (an event handler it's currently dispatching, for instance), but this is fragile and implementation-dependent rather than guaranteed.
+Practical rule: Treat every technique in this topic — but especially OnPush and signal-driven @for/pure-pipe inputs — as the baseline architecture for any component you write today, regardless of whether your app currently runs Zone.js or zoneless. Components built this way port to zoneless with zero changes. Components that rely on Zone.js's broad sweep to "eventually" pick up a mutated plain property will need to be rewritten the day the app flips provideExperimentalZonelessChangeDetection() on — and that rewrite is exactly the OnPush + signals discipline this topic already teaches. Building it correctly now is strictly cheaper than retrofitting it later.
+
+Section 12 — Related Topics to Learn Next (REWRITTEN — added zoneless-specific entry)
+ES6/JS Concepts:
+
+WeakMap for memoisation — a production-grade manual memoisation cache that avoids memory leaks by allowing garbage collection of keys; relevant when computed() isn't available (non-signal contexts)
+requestIdleCallback — the browser API that @defer (on idle) wraps; understanding it helps you reason about when idle-triggered deferred blocks actually load
+
+TypeScript Concepts:
+
+Generic pipe types — a SortPipe<T> that works on any array of objects with a typed sort key; builds directly on Topic 16 (Generics) and makes reusable sort/filter pipes type-safe
+satisfies operator — useful for typing the track expression result and the pipe transform() return type more precisely in complex generics
+
+Angular-Specific Concepts:
+
+Topic 46 — RxJS Operators in Depth — debounceTime is a critical companion to pure pipe filtering (debouncing the search input before triggering the filter pipe prevents unnecessary recalculations)
+Topic 47 — Testing Angular Components — fakeAsync and tick() are required for testing @defer block transitions; pure pipe testing (covered in Topic 42) is the easiest entry point
+Virtual Scrolling (Topic 49 — Angular CDK) — for truly massive lists (10,000+ items), track alone is insufficient; CDK's VirtualScrollViewport renders only visible rows and is the next optimisation layer beyond track
+Angular DevTools — the browser extension's "Profiler" tab shows exactly which components re-rendered and why in each CD cycle; essential for validating that OnPush + pure pipes are actually reducing renders, and for diagnosing components that silently stop updating under zoneless
+provideExperimentalZonelessChangeDetection() — Angular's zoneless change detection provider; the natural next step once OnPush + signals are applied consistently across an app, since a fully signal-driven, OnPush-everywhere app is the prerequisite for safely removing Zone.js
+
+
+Section 13 — Study Plan Checkpoint (REWRITTEN — production readiness assessment extended)
+Topics this directly depends on (must be solid):
+
+Topic 23 — Angular Signals (computed() memoisation is a signal primitive, and signals are the foundation zoneless change detection is built on)
+Topic 24 — OnPush Change Detection (all four techniques extend this mental model; under zoneless this becomes closer to mandatory)
+Topic 29 — Built-in Control Flow (@for with track, @defer with its sub-blocks)
+Topic 42 — Custom Pipes (pure pipe performance mechanics)
+Topic 44 — State Management Patterns (stores provide the immutable data that makes track and pure pipes work correctly; Topic 44 already establishes signal stores as the zoneless-safe default)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 46 — RxJS Operators in Depth (debounceTime becomes essential once you know pure pipes need immutable, non-debounced inputs to stay performant)
+Topic 47/48 — Testing (fakeAsync for @defer testing; pure pipe unit tests are trivial and make a great testing entry point)
+Topic 49 — Angular CDK (Virtual Scroll is the next layer of list performance after track)
+Topic 50 — Angular Universal & SSR (@defer blocks interact with SSR in specific ways that build directly on this topic)
+
+Production readiness assessment — corrected:
+
+These four techniques are the baseline for any Angular component handling dynamic lists or heavy sub-components — a component that skips all four is not production-ready for any data-intensive view; a component that applies all four is defensible at scale. Critically, a component built this way — OnPush, signal-driven, track-correct, deferred where appropriate — requires zero changes to remain correct if the app later adopts provideExperimentalZonelessChangeDetection(). A component that ignores these techniques and relies on Zone.js's broad sweep is not just slower; it is a migration liability that will break, not just degrade, under zoneless.
+
+Section 14 (unchanged — verbatim)
+(Common Interview Questions — the three original questions on track $index, @defer vs route lazy loading, and slow search-box input remain technically accurate and were not contradicted by the audit; no rewrite needed.)
+
+Section 15 (unchanged — verbatim)
+(Anti-Patterns — Template Method Calls, @defer Without Placeholder Dimensions, Applying @defer to Already-Lazy Components — none of these referenced Zone.js or ChangeDetectorRef in a way that needed correction; the underlying advice holds under both CD models.)
+
+Section 16 — Mental Model Summary (REWRITTEN — added a zoneless callout to the single most important rule)
+Core concept in one sentence:
+
+Angular performance is about doing less work at every phase — less to load (@defer), less to render (OnPush + signals), less to compute (pure pipes + computed()), and less DOM to patch (track) — and each technique is targeting a different phase of the rendering pipeline, a discipline that holds under both Zone.js and zoneless change detection.
+Key rules:
+
+Always use track item.id (stable entity ID) on dynamic lists — never track $index on sortable/filterable data
+Replace template method calls that return transformed data with pure pipes or computed() signals
+Apply @defer (on viewport) to every heavy component that starts below the fold
+Always give @placeholder real dimensions matching the deferred content — prevents layout shift
+@defer addresses load time only — OnPush, track, and pure pipes are still required inside deferred blocks
+All four techniques are complementary — applying only one leaves the other three phases unoptimised, and under zoneless change detection, skipping OnPush/signals specifically risks correctness, not just speed
+
+The single most important Angular rule:
+
+Template method calls that transform data are never memoised — replace them with pure pipes or computed() signals; this is the single most common source of Angular performance problems in production, and under zoneless change detection, signal-driven state is not optional — it's how the view learns anything changed at all.
+
+Choosing the right technique for the right problem:
+SymptomRoot causeFixSlow typing / input lagMethod calls in template running every CD cyclePure pipe or computed()List flicker on updateNo track — full DOM rebuildtrack item.idSlow initial page loadHeavy components in main bundle@defer (on viewport)Page layout shift on loadEmpty @placeholderGive @placeholder real dimensionsChild components not updatingtrack $index on reordering listtrack item.idView silently never updates under provideExperimentalZonelessChangeDetection()State mutated outside the signal graph (plain property, non-signal service)Route all state through signal()/update(); verify with Angular DevTools Profiler
+
+Summary of changes made to Topic 45:
+
+Sections 3–9, 14, 15 → kept verbatim (confirmed no ChangeDetectorRef constructor injection existed anywhere in this topic's original content — audit item #3 was a false positive for this specific topic)
+Section 0 → Angular Relevance note expanded to name zoneless explicitly
+Section 1 → added a full Zone.js-vs-zoneless comparison table to the analogy section
+Section 2 → bridging note extended to explain why OnPush/signals shift from optimisation to requirement under zoneless
+Section 10 → added a new zoneless-specific rule to both the takeaways and the rules list
+Section 11 → entirely new Q&A replacing the original, since zoneless was completely absent from the original deep-dive (this was the core audit gap, #7)
+Section 12 → added provideExperimentalZonelessChangeDetection() as a new Related Topic entry
+Section 13 → production readiness assessment rewritten to frame Zone.js-dependent components as a migration liability
+Section 16 → added a new row to the symptom/fix table specifically for zoneless silent-update failures
+

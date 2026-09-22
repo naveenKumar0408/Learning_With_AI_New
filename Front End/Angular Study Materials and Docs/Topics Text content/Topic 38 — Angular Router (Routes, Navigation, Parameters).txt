@@ -1,0 +1,562 @@
+Topic 38 — Angular Router (Routes, Navigation, Parameters)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — Routes themselves are simple configuration, but understanding navigation lifecycle, parameter reactivity (especially when navigating between routes that reuse the same component), and the relationship between the Router's Observable-based APIs and Signals requires real depth.
+Angular Relevance: Critical — Every multi-page Angular app depends on the Router. It's the backbone of navigation, deep linking, lazy loading, and guarding access to views. There is no professional Angular app without it.
+
+Section 1 — Explanation
+The GPS Navigator Analogy
+Think of your Angular app as a city, and each component as a building. The Router is the GPS navigation system sitting in the user's car.
+You don't manually drive the user from building to building — you give the GPS a destination (a URL), and it figures out the route: which roads to take (which components to render), what to do at each junction (route configuration), and what information to carry along the way (route parameters, like a delivery address baked into the destination).
+Crucially, a GPS doesn't tear down and rebuild the car every time you arrive somewhere new. If you're already driving and just change the destination slightly — say, from "123 Main St" to "125 Main St" — the GPS recalculates the route, but the car (the component instance) might stay exactly the same if Angular decides the same component handles both addresses. This is the subtle, frequently-misunderstood part of routing: navigating to a new route doesn't always mean a new component instance is created.
+
+Technical Explanation:
+The Angular Router maps URL paths to components. It manages:
+ConceptWhat it isRoutesAn array of path-to-component mappings — the route configurationRouterOutletA placeholder directive in the template where the matched component rendersRouterLinkA directive for declarative navigation (like an anchor tag, but SPA-aware)RouterAn injectable service for programmatic navigation (router.navigate(...))ActivatedRouteAn injectable service giving you access to the current route's data — params, query params, etc.
+Modern Angular (v14+) uses standalone routing — no RouterModule.forRoot() wrapping needed. Routes are provided via provideRouter(routes) in app.config.ts, and components reference each other directly via loadComponent or static imports — no NgModule required.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 27 — Services & Dependency Injection — Router and ActivatedRoute are both injectable services, accessed via inject()
+Topic 20 — RxJS Subscription Management — ActivatedRoute.params, .queryParams, and .data are all Observables requiring subscription management
+Topic 21 — takeUntilDestroyed & DestroyRef — route parameter subscriptions need cleanup just like any other Observable
+Topic 23 — Angular Signals — modern Angular (v16+) offers toSignal() to convert route Observables into Signals, and v17.1+ introduces input-bound route params directly as component inputs
+Topic 25 — Component Lifecycle Hooks — understanding when a component is created vs reused is essential to knowing whether ngOnInit will re-fire on navigation
+Topic 36 — HttpClient — route resolvers (Topic 39) commonly use HttpClient to pre-fetch data before navigation completes
+
+Bridging note: Topic 20 taught that Observables need subscription management. ActivatedRoute.paramMap is one of the most commonly mis-subscribed Observables in real Angular apps, because developers expect a fresh component on every navigation and don't realize the same component instance can be reused — meaning a stale subscription silently keeps listening to route changes from a "previous" navigation context that's actually still the current one.
+Extends most directly: Topic 27 — Services & Dependency Injection, because the Router and ActivatedRoute are accessed exactly like any other injected service via inject().
+
+Section 3 — Code Example
+Plain concept — route configuration is just data
+typescript// app.routes.ts
+import { Routes } from '@angular/router';
+
+// Routes is just an array — no magic, no decorators
+export const routes: Routes = [
+  { path: '',              component: HomeComponent },
+  { path: 'users',         component: UsersListComponent },
+  { path: 'users/:id',     component: UserDetailComponent },   // :id is a route parameter
+  { path: 'users/:id/edit', component: UserEditComponent },
+  { path: '**',            component: NotFoundComponent }       // wildcard — catch-all 404
+];
+typescript// app.config.ts — modern standalone registration, no RouterModule.forRoot()
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes)
+  ]
+};
+typescript// app.component.ts — RouterOutlet is the placeholder where matched components render
+import { Component }      from '@angular/core';
+import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  template: `
+    <nav>
+      <!-- RouterLink: declarative navigation -->
+      <a routerLink="/users" routerLinkActive="active">Users</a>
+      <a routerLink="/" routerLinkActive="active">Home</a>
+    </nav>
+    <!-- RouterOutlet: where the matched route's component renders -->
+    <router-outlet></router-outlet>
+  `
+})
+export class AppComponent {}
+
+Real Angular — Reading route parameters (three approaches, oldest to newest)
+typescript// Approach 1 — ActivatedRoute.snapshot (one-time read, NOT reactive)
+// Use only when the component is guaranteed to be destroyed/recreated on param change
+export class UserDetailComponent {
+  private route = inject(ActivatedRoute);
+
+  // ⚠️ snapshot.paramMap is read ONCE when the component is created
+  // If the user navigates from /users/1 to /users/2 and the SAME component
+  // instance is reused, this value will NOT update
+  userId = this.route.snapshot.paramMap.get('id');
+}
+typescript// Approach 2 — ActivatedRoute.paramMap as an Observable (reactive, classic RxJS)
+export class UserDetailComponent {
+  private route       = inject(ActivatedRoute);
+  private userService  = inject(UserService);
+  private destroyRef    = inject(DestroyRef);
+
+  user = signal<User | null>(null);
+
+  constructor() {
+    // ✅ Reacts to param changes even when the component instance is reused
+    this.route.paramMap.pipe(
+      map(params => params.get('id')!),
+      switchMap(id => this.userService.getUserById(+id)), // cancels previous if id changes fast
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(user => this.user.set(user));
+  }
+}
+typescript// Approach 3 — withComponentInputBinding() + input() (Angular v16+, the modern standard)
+// Route params are bound DIRECTLY as component inputs — no ActivatedRoute needed at all
+
+// app.config.ts
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes, withComponentInputBinding()) // ✅ enables this feature
+  ]
+};
+
+// user-detail.component.ts
+export class UserDetailComponent {
+  // The route param 'id' is automatically bound to this input — Angular matches by name
+  id = input.required<string>();
+
+  private userService = inject(UserService);
+
+  // computed() automatically re-runs whenever the id input signal changes
+  user = toSignal(
+    toObservable(this.id).pipe(
+      switchMap(id => this.userService.getUserById(+id))
+    )
+  );
+}
+
+Programmatic navigation with parameters
+typescriptexport class UsersListComponent {
+  private router = inject(Router);
+
+  goToUser(userId: number): void {
+    // Array-based navigation — segments joined together
+    this.router.navigate(['/users', userId]);
+  }
+
+  goToUserWithQueryParams(userId: number): void {
+    this.router.navigate(['/users', userId], {
+      queryParams: { tab: 'orders', sort: 'recent' }
+      // Results in: /users/42?tab=orders&sort=recent
+    });
+  }
+
+  goBack(): void {
+    this.router.navigate(['..'], { relativeTo: this.route }); // relative navigation
+  }
+}
+html<!-- Declarative equivalent in the template -->
+<a [routerLink]="['/users', user.id]" [queryParams]="{ tab: 'orders' }">
+  View {{ user.name }}
+</a>
+
+Section 4 — Before & After Refactor
+❌ Before — Using snapshot where reactivity is needed
+typescript// WRONG: snapshot only reads the param ONCE
+export class UserDetailComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  user: User | null = null;
+
+  ngOnInit() {
+    const id = this.route.snapshot.paramMap.get('id'); // read once at creation
+    this.userService.getUserById(+id!).subscribe(u => this.user = u);
+  }
+}
+What breaks: If the user is on /users/1 and clicks a link to /users/2, and Angular's router reuses the same UserDetailComponent instance (which it does by default when navigating between sibling routes with the same component), ngOnInit does not fire again. The snapshot stays frozen at id: '1'. The page silently shows the wrong user's data with no error.
+
+✅ After — Reactive paramMap subscription
+typescriptexport class UserDetailComponent {
+  private route        = inject(ActivatedRoute);
+  private userService   = inject(UserService);
+  private destroyRef     = inject(DestroyRef);
+
+  user = signal<User | null>(null);
+
+  constructor() {
+    this.route.paramMap.pipe(
+      map(params => params.get('id')!),
+      switchMap(id => this.userService.getUserById(+id)),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(user => this.user.set(user));
+  }
+}
+Why this matters in Angular: Angular's router reuses component instances by default for performance — recreating the entire component tree on every navigation would be wasteful, especially for shared layouts (sidebars, headers). Reactive subscriptions to paramMap are the only reliable way to respond to navigations that reuse the same component instance.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Assuming a new component instance is created on every navigation
+What the mistake is: Believing ngOnInit always fires again when the route changes, leading to using snapshot instead of an Observable/Signal-based approach.
+Why developers make it: It "feels" intuitive that navigating to a new URL should mean a brand new component. In server-rendered, multi-page-app thinking, this is true. In an SPA, it often isn't.
+How to avoid it: Default to reactive param reading (paramMap Observable or input() with withComponentInputBinding()) unless you have a specific, verified reason the component will always be destroyed and recreated (e.g. navigating between routes with genuinely different component types).
+Angular-specific consequence: Stale data displayed silently — no error, no warning, just the wrong content shown to the user after navigating.
+
+Mistake 2 — Forgetting withComponentInputBinding() and wondering why input() doesn't populate
+What the mistake is:
+typescript// Component expects the route param as an input
+export class UserDetailComponent {
+  id = input.required<string>(); // never receives a value — stays empty
+}
+Why developers make it: This pattern (input-bound route params) is newer and the registration step is easy to miss since it's invisible at the component level — the failure is silent.
+How to avoid it: Always pair input()-based route param binding with provideRouter(routes, withComponentInputBinding()) in app.config.ts.
+Angular-specific consequence: input.required<string>() throws at runtime (NG0950: Input is required but no value is available yet) because Angular never receives a value to satisfy the required input — the binding feature was never enabled.
+
+Mistake 3 — Using absolute paths in nested route links instead of relative navigation
+What the mistake is:
+typescript// Inside a deeply nested route component
+this.router.navigate(['/edit']); // absolute — wipes out the entire current path
+Why developers make it: Absolute paths are simpler to reason about in isolation, so developers default to them without considering route nesting.
+How to avoid it: Use relative navigation (relativeTo: this.route) or relative array segments (['./edit'], ['../']) when navigating within a feature's sub-routes, so the navigation doesn't depend on knowing the full absolute path from the app root.
+Angular-specific consequence: Hardcoded absolute paths break the moment the route is nested under a different parent (e.g. moving a feature behind an /admin prefix) — every router.navigate(['/edit']) call across the app needs to be found and updated.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse paramMap Observable or input() + withComponentInputBinding() for reactive paramsUse snapshot.paramMap unless you're certain the component will always be recreatedUse provideRouter(routes) for standalone route registrationUse RouterModule.forRoot(routes) — legacy NgModule patternUse inject(Router) and inject(ActivatedRoute)Constructor-inject Router/ActivatedRouteUse relative navigation inside nested feature routesHardcode absolute paths inside deeply nested componentsUse the wildcard route (path: '**') as the LAST entry in the routes arrayPlace path: '**' anywhere except last — it will swallow all other routesUse switchMap when chaining param changes to an HTTP callUse subscribe inside subscribe for param-driven data fetching
+
+Section 7 — Debugging Tips
+Bug 1 — Component doesn't update when navigating between sibling routes
+Symptom: URL changes (/users/1 → /users/2), browser address bar updates, but the displayed data stays the same.
+Plain English cause: Angular's router reused the same component instance (because the same component handles both routes) and the code was reading route.snapshot.paramMap instead of subscribing reactively.
+Fix:
+typescript// Replace snapshot reads with reactive subscription
+this.route.paramMap.pipe(
+  map(p => p.get('id')!),
+  switchMap(id => this.userService.getUserById(+id)),
+  takeUntilDestroyed()
+).subscribe(user => this.user.set(user));
+Angular-specific note: This is the single most common Router bug reported by developers new to Angular SPAs.
+
+Bug 2 — NG0950: Input is required but no value is available yet
+Symptom: Runtime error thrown immediately when navigating to a route with an input.required<string>() bound to a route parameter.
+Plain English cause: withComponentInputBinding() was not added to provideRouter(), so Angular never populates the input from the route parameter — leaving the required input permanently empty.
+Fix:
+typescript// app.config.ts
+provideRouter(routes, withComponentInputBinding()) // ✅ add this
+Angular-specific note: Verify the route parameter name matches the input property name exactly — :id in the route path must correspond to id = input.required<string>(), not userId or any other name, unless explicitly mapped.
+
+Bug 3 — Cannot match any routes. URL Segment: 'users/abc'
+Symptom: Console error NavigationError / Cannot match any routes when navigating to a URL that should match a configured route.
+Plain English cause: Either (a) the wildcard route (path: '**') is positioned before the actual route in the array — since Angular matches top-to-bottom and stops at the first match, the wildcard swallows everything below it — or (b) a typo in the path string.
+Fix:
+typescript// ❌ WRONG ORDER — wildcard catches everything, 'users/:id' never matches
+export const routes: Routes = [
+  { path: '**', component: NotFoundComponent },
+  { path: 'users/:id', component: UserDetailComponent },
+];
+
+// ✅ CORRECT — wildcard must always be LAST
+export const routes: Routes = [
+  { path: 'users/:id', component: UserDetailComponent },
+  { path: '**', component: NotFoundComponent },
+];
+Angular-specific note: Route matching is order-sensitive and first-match-wins — always place more specific routes before more general ones, and the wildcard last.
+
+Section 8 — Real-World Applications
+Scenario 1 — Master-Detail Navigation with Reactive Params
+A user list where clicking a user navigates to their detail page, and clicking a different user while already on a detail page updates in place (component reused).
+typescript// users-list.component.ts
+@Component({
+  selector: 'app-users-list',
+  standalone: true,
+  imports: [RouterLink],
+  template: `
+    @for (user of users(); track user.id) {
+      <a [routerLink]="['/users', user.id]">{{ user.name }}</a>
+    }
+  `
+})
+export class UsersListComponent {
+  private userService = inject(UserService);
+  users = toSignal(this.userService.getUsers(), { initialValue: [] });
+}
+
+// user-detail.component.ts
+@Component({
+  selector: 'app-user-detail',
+  standalone: true,
+  template: `
+    @if (user(); as u) {
+      <h2>{{ u.name }}</h2>
+      <p>{{ u.email }}</p>
+    } @else {
+      <p>Loading...</p>
+    }
+  `
+})
+export class UserDetailComponent {
+  private route       = inject(ActivatedRoute);
+  private userService  = inject(UserService);
+
+  user = toSignal(
+    this.route.paramMap.pipe(
+      map(p => p.get('id')!),
+      switchMap(id => this.userService.getUserById(+id))
+    )
+  );
+}
+
+Scenario 2 — Query Param-Driven Filters (Shareable, Bookmarkable URLs)
+A product listing page where filters (category, sort order) live in query params, making the filtered view shareable via URL.
+typescript@Component({
+  selector: 'app-product-list',
+  standalone: true,
+  template: `
+    <select (change)="updateCategory($event)">
+      <option value="all">All</option>
+      <option value="electronics">Electronics</option>
+    </select>
+
+    @for (product of products(); track product.id) {
+      <div>{{ product.name }}</div>
+    }
+  `
+})
+export class ProductListComponent {
+  private route          = inject(ActivatedRoute);
+  private router          = inject(Router);
+  private productService   = inject(ProductService);
+
+  // Reactive query params drive the product list automatically
+  products = toSignal(
+    this.route.queryParamMap.pipe(
+      map(params => params.get('category') ?? 'all'),
+      switchMap(category => this.productService.getByCategory(category))
+    ),
+    { initialValue: [] }
+  );
+
+  updateCategory(event: Event): void {
+    const category = (event.target as HTMLSelectElement).value;
+    // Update the URL — this triggers the queryParamMap above automatically
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { category },
+      queryParamsHandling: 'merge' // preserves other existing query params
+    });
+  }
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner:
+
+Set up a standalone Angular app with three routes: / (HomeComponent), /about (AboutComponent), and a wildcard ** route (NotFoundComponent). Add a <nav> with routerLink and routerLinkActive for Home and About. Verify the wildcard route catches an unmatched URL like /nonsense.
+Exercise 2 — Intermediate:
+
+Build a ProductDetailComponent accessible via /products/:id. Implement it using the reactive paramMap Observable approach (Approach 2 from Section 3) — when the user navigates from /products/1 to /products/2 via a link, verify the component updates without a full re-render (use console.log in the constructor to prove the component instance is NOT recreated). Then refactor the same component to use input() with withComponentInputBinding() (Approach 3) and confirm identical behaviour with less code.
+Exercise 3 — Advanced:
+
+Build a product catalog with query-param-driven filtering and sorting (?category=electronics&sort=price-asc). Filters should be controlled by dropdown selects, update the URL via router.navigate with queryParamsHandling: 'merge', and the displayed product list should update reactively based on queryParamMap using switchMap. Ensure that directly visiting a URL with query params pre-populates the filter dropdowns correctly (read the initial state from route.snapshot.queryParamMap only for the initial dropdown value, but drive the actual product list reactively).
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+The Router maps URL paths to components via a Routes array — plain configuration data, no decorators
+RouterOutlet is the placeholder where the matched component renders; RouterLink is declarative navigation
+Angular reuses component instances across navigations when the same component handles multiple matching routes — this is the source of the most common Router bug
+Three ways to read route params: snapshot (one-time, fragile), paramMap Observable (reactive, classic), input() + withComponentInputBinding() (reactive, modern, least code)
+provideRouter(routes) is the standalone registration — no RouterModule.forRoot() needed
+
+Quick reference table:
+TaskHowRegister routes (standalone)provideRouter(routes) in app.config.tsEnable input-bound route paramsprovideRouter(routes, withComponentInputBinding())Read a route param reactively (Observable)route.paramMap.pipe(map(p => p.get('id')))Read a route param reactively (Signal)id = input.required<string>()Read a route param once (fragile)route.snapshot.paramMap.get('id')Navigate programmaticallyrouter.navigate(['/users', id])Navigate with query paramsrouter.navigate([...], { queryParams: {...} })Navigate relativelyrouter.navigate(['../'], { relativeTo: route })Merge query params without replacing{ queryParamsHandling: 'merge' }
+Angular-specific rules:
+
+Always place the wildcard route (path: '**') last — route matching is order-sensitive
+Default to reactive param reading; only use snapshot when you're certain the component is always destroyed and recreated
+withComponentInputBinding() must be explicitly enabled for input()-bound route params to work
+Use inject(Router) / inject(ActivatedRoute) — never constructor injection
+Match route param names to input property names exactly when using input binding
+
+One-Line Memory Aid:
+
+The Router maps URLs to components, but it reuses component instances by default — always read route parameters reactively, never assume a fresh component on every navigation.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If two different routes — /users/1 and /users/2 — both resolve to the exact same UserDetailComponent, and Angular reuses the component instance instead of destroying and recreating it, what actually changes during that navigation, and what stays the same?
+Answer:
+Conceptual explanation: When Angular reuses a component instance across a route change, the component instance itself stays alive — its class fields, its injected services, its internal state, all persist exactly as they were. What changes is purely the data flowing into it: the ActivatedRoute's paramMap, queryParamMap, and data Observables emit new values, because the route configuration matched a new URL segment. Angular does not call ngOnDestroy followed by ngOnInit — instead, it calls ngOnChanges (if applicable) and the route-level Observables simply emit again on their existing subscriptions.
+This means any state in the component that isn't derived from route params will silently persist across the navigation. If UserDetailComponent has a local signal tracking "is the edit form open," and the user navigates from /users/1 to /users/2 while the form is open, the form will still be open on the new user's page — because nothing told Angular to reset that state.
+Angular-specific implication: This is why production Angular apps that rely on component reuse often need an explicit "reset local UI state" step tied to the param change, not just a "refetch data" step. A common pattern is to reset local view-state inside the same paramMap.subscribe() callback that triggers the data fetch.
+Practical rule: When building components that will be reused across route navigations (the common case for master-detail and tabbed views), treat every piece of local component state as a candidate for explicit reset whenever the route parameter changes — don't assume Angular will clear it for you, because it won't.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+URLSearchParams — useful background for understanding how query strings are parsed under the hood
+
+TypeScript Concepts:
+
+Discriminated unions for route data typing — useful when route data carries different shaped payloads per route
+
+Angular-Specific Concepts:
+
+Topic 39 — Route Guards (CanActivate, CanDeactivate, Resolve) — the natural next step; guards control access to the routes this topic configures
+Topic 40 — Lazy Loading & Route-Based Code Splitting — loadComponent and loadChildren build directly on the Routes array structure from this topic
+RouterStateSnapshot and UrlTree — deeper Router internals useful for advanced guard and resolver logic
+Named outlets (auxiliary routes) — for advanced multi-pane layouts beyond a single RouterOutlet
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 20 — RxJS Subscription Management (paramMap/queryParamMap are Observables)
+Topic 21 — takeUntilDestroyed & DestroyRef (cleanup for manual subscriptions)
+Topic 23 — Angular Signals (toSignal(), input() for the modern param-reading approach)
+Topic 27 — Services & Dependency Injection (Router/ActivatedRoute via inject())
+
+This topic unlocks or makes significantly easier:
+
+Topic 39 — Route Guards (guards operate on the same Routes configuration and ActivatedRoute context)
+Topic 40 — Lazy Loading (extends the Routes array with loadComponent/loadChildren)
+Topic 46 — RxJS Operators in Depth (param-driven switchMap chains are a core real-world RxJS pattern)
+
+Production readiness assessment: If you can configure routes with parameters, read those parameters reactively (via either paramMap or input() + withComponentInputBinding()), navigate programmatically with query params, and correctly order the wildcard route — you are production-ready for standard Angular routing. Guards and lazy loading (Topics 39–40) complete the picture for larger applications.
+
+Section 14 — Common Interview Questions
+Question 1:
+
+"Does Angular always create a new component instance when you navigate to a new route?"
+Strong answer covers:
+
+No — Angular reuses the component instance when the same component is matched by both the old and new route, for performance reasons
+This means ngOnInit does not fire again on such navigations
+Route parameters must be read reactively (paramMap Observable or input() binding) to respond correctly to this kind of navigation
+snapshot.paramMap is only safe when the component is guaranteed to be destroyed and recreated
+Any non-route-derived local state will persist across reused-instance navigations unless explicitly reset
+
+Weak answer misses: That ngOnInit doesn't re-fire — many candidates assume routing always means "fresh component," leading to subtle production bugs they've never diagnosed correctly.
+Difficulty: Mid
+
+Question 2:
+
+"What is withComponentInputBinding() and what problem does it solve?"
+Strong answer covers:
+
+A provideRouter() feature (Angular v16+) that automatically binds route parameters, query parameters, and route data directly to component @Input()/input() properties by matching names
+Eliminates the need to manually inject ActivatedRoute and subscribe to paramMap for simple cases
+Property name must match the route parameter name exactly
+Without it, input()-bound route params silently stay empty, often surfacing as NG0950 errors for required inputs
+Reduces boilerplate significantly for components that only need route data, not full ActivatedRoute access
+
+Weak answer misses: That this feature must be explicitly enabled — many candidates familiar with the concept assume it's the router default behaviour.
+Difficulty: Mid–Senior
+
+Question 3:
+
+"Why does route order matter in the Routes array, and what's a common bug caused by getting it wrong?"
+Strong answer covers:
+
+Angular matches routes top-to-bottom and stops at the first match — order is significant, unlike some other matching systems
+The wildcard route (path: '**') must always be last, or it swallows every URL below it in the array
+More specific static paths should generally be ordered before more generic parameterized ones when ambiguity is possible
+The bug manifests as legitimate routes appearing to "not exist" — always showing the 404/wildcard component instead
+This is a config-only bug — no runtime error is thrown, making it harder to spot than a thrown exception
+
+Weak answer misses: That there's no runtime error — candidates often assume routing misconfigurations always throw, when in fact a misordered wildcard fails silently into the wrong component.
+Difficulty: Junior–Mid
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Reading route params with snapshot in a reusable component
+typescript// ❌ Anti-pattern: snapshot in a component that WILL be reused across sibling routes
+export class ProductDetailComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  product: Product | null = null;
+
+  ngOnInit() {
+    const id = this.route.snapshot.paramMap.get('id');
+    this.productService.getById(+id!).subscribe(p => this.product = p);
+  }
+}
+Why it seems fine: Works perfectly in manual testing if the developer always tests by navigating away to a different page first, then back — which always recreates the component and masks the bug.
+What breaks in production: Real users click directly from one product to a related product via an in-page link (/products/1 → /products/2). The component instance is reused, ngOnInit never re-fires, and the page keeps showing product 1's data under product 2's URL.
+Correct pattern:
+typescriptexport class ProductDetailComponent {
+  private route          = inject(ActivatedRoute);
+  private productService  = inject(ProductService);
+
+  product = toSignal(
+    this.route.paramMap.pipe(
+      map(p => p.get('id')!),
+      switchMap(id => this.productService.getById(+id))
+    )
+  );
+}
+
+Anti-Pattern 2 — Hardcoding absolute paths throughout deeply nested feature modules
+typescript// ❌ Anti-pattern: every navigation call hardcodes the full path from root
+export class OrderEditComponent {
+  private router = inject(Router);
+
+  cancel(): void {
+    this.router.navigate(['/admin/orders']); // assumes this exact absolute structure forever
+  }
+
+  saveAndReturn(): void {
+    this.router.navigate(['/admin/orders/list']); // duplicated assumption
+  }
+}
+Why it seems fine: Works correctly the day it's written, and absolute paths are easier to read in isolation than relative ones.
+What breaks in production: The moment the feature is restructured — moved under a different parent route, or the app introduces route-level internationalization prefixes (/en/admin/orders) — every hardcoded absolute path across dozens of components needs to be found and updated. This is a refactor that should take minutes but takes hours because the paths are scattered and untyped.
+Correct pattern:
+typescriptexport class OrderEditComponent {
+  private router = inject(Router);
+  private route  = inject(ActivatedRoute);
+
+  cancel(): void {
+    this.router.navigate(['../'], { relativeTo: this.route }); // relative — survives restructuring
+  }
+}
+
+Anti-Pattern 3 — Not resetting local component state on param change when the instance is reused
+typescript// ❌ Anti-pattern: local UI state silently carries over between different records
+export class UserDetailComponent {
+  private route = inject(ActivatedRoute);
+
+  isEditFormOpen = signal(false); // local UI state, NOT derived from route params
+
+  user = toSignal(
+    this.route.paramMap.pipe(
+      map(p => p.get('id')!),
+      switchMap(id => this.userService.getUserById(+id))
+    )
+  );
+  // isEditFormOpen is never reset when navigating between users
+}
+Why it seems fine: The data (user) updates correctly — the bug is invisible unless you specifically test interacting with local UI state, then navigating.
+What breaks in production: A user opens the edit form for User A, then clicks a link to view User B (component reused) — the edit form is still open, now showing User B's data inside what was meant to be User A's edit context. Confusing, and potentially leads to editing/saving the wrong record.
+Correct pattern:
+typescriptexport class UserDetailComponent {
+  private route        = inject(ActivatedRoute);
+  private userService   = inject(UserService);
+  private destroyRef     = inject(DestroyRef);
+
+  isEditFormOpen = signal(false);
+  user           = signal<User | null>(null);
+
+  constructor() {
+    this.route.paramMap.pipe(
+      map(p => p.get('id')!),
+      tap(() => this.isEditFormOpen.set(false)), // ✅ explicit reset on every param change
+      switchMap(id => this.userService.getUserById(+id)),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(user => this.user.set(user));
+  }
+}
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+The Angular Router maps URL paths to components via a plain Routes array, but it reuses component instances by default when the same component matches across a navigation — so route parameters must always be read reactively, not as a one-time snapshot.
+Key rules:
+
+Routes is plain configuration data — register with provideRouter(routes), no NgModule needed.
+Angular reuses component instances across navigations when possible — ngOnInit does not always re-fire.
+Default to reactive param reading: paramMap Observable or input() + withComponentInputBinding().
+Always place the wildcard route (path: '**') last — route matching is order-sensitive, first-match-wins.
+Use relative navigation inside nested features to survive future route restructuring.
+Explicitly reset local component state on param change if the component may be reused.
+
+The single most important Angular rule:
+
+Never assume a fresh component instance on navigation — always read route parameters reactively, because Angular reuses component instances by default whenever the same component matches the new route.
+
+Choosing how to read route params:
+SituationUseComponent is guaranteed destroyed/recreated on every navigationsnapshot.paramMapComponent may be reused; need full ActivatedRoute context (query params, data, etc.)paramMap ObservableComponent only needs the route param itself, nothing elseinput() + withComponentInputBinding()Need to combine route param with another reactive sourceparamMap Observable + combineLatest/switchMap
+
+Say "next" for Topic 39 — Route Guards (CanActivate, CanDeactivate, Resolve), or "continue" if I stopped mid-topic.

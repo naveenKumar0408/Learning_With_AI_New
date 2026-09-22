@@ -1,0 +1,82 @@
+The Three Types of Projects and When Each Starts
+Type 1 — Micro Projects (Start from Week 1)
+These are not portfolio projects. They are practice exercises that live in code, not just in your head.
+Every topic has three practice exercises at the end. From Week 1, after studying each topic, you open your code editor and actually build the exercise. Not on paper. In real Angular code in a real project folder.
+Create one Angular project right now called learning-playground. This is not a portfolio piece. It is your sandbox. Every topic's exercise goes here in its own folder.
+learning-playground/
+├── topic-01-closures/
+├── topic-02-scope/
+├── topic-03-closures/
+├── topic-05-event-loop/
+...
+This starts today alongside Topic 1. No waiting.
+
+Type 2 — Feature Projects (Start from Week 9)
+By Week 9 you will have covered JS foundations, TypeScript, RxJS basics, Angular Signals, OnPush, Lifecycle Hooks, Services and DI — enough to build something real.
+At Week 9, start one real Angular application. Not a tutorial project. Something you design yourself. It does not need to be complex. A few ideas based on your profile:
+
+A personal task manager with Angular Signals and OnPush
+A movie or book tracker with HttpClient and a free public API
+A personal finance tracker with Reactive Forms and local storage
+
+Why Week 9 and not earlier: Before Week 9 you are still building foundational JS and TS knowledge. Building an Angular app with gaps in closures, async/await, and TypeScript generics leads to frustration and bad habits. Week 9 is the earliest responsible starting point.
+How to grow this project: Each week as you learn a new topic, apply it to this project. Learn HTTP Interceptors in Week 9 — add an interceptor to your app. Learn Route Guards in Week 10 — add a guard. Learn NgRx in Week 13 — migrate your state management. The project becomes a living record of your learning.
+
+Type 3 — Portfolio Project (Start from Week 20)
+This is the project that goes on your CV and GitHub. It should demonstrate your strongest skills as a senior Angular developer. By Week 20 you will have covered everything through performance optimisation, auth, and the NgRx ecosystem.
+Build one substantial project that showcases:
+
+Angular 17+ with Signals and OnPush throughout
+NgRx for global state management
+NgRx Entity for collections
+HTTP Interceptors for auth
+Route Guards and Lazy Loading
+Reactive Forms with validation
+A real public API or a backend you build simply with json-server
+
+Some honest suggestions based on what product companies actually want to see:
+
+A GitHub-like repository browser using the GitHub public API
+A real-time dashboard using a WebSocket-based public API
+An e-commerce product catalogue with cart, auth, and filters
+
+This does not need to be finished before you apply for jobs. It needs to be in a presentable, working state by the time you start applying — which is around Week 25 in your roadmap.
+
+The Project Timeline Mapped to Your Learning Roadmap
+WEEK 1 — TODAY
+  Create learning-playground Angular project
+  Every topic's exercises go here, one folder per topic
+  This runs forever alongside all learning
+
+WEEK 9 — First Real Project Starts
+  Choose one idea and start building
+  Apply each new topic to this project as you learn it
+  Commit to GitHub every week — even small changes
+
+WEEK 20 — Portfolio Project Starts
+  One substantial, well-designed Angular application
+  Apply everything from Topics 1–70 to it
+  This is what you show in interviews
+
+WEEK 25 — Start Applying for Jobs
+  Portfolio project in presentable state
+  learning-playground on GitHub showing breadth
+  Feature project showing consistent growth over time
+
+The GitHub Rule — Start Now
+Create a GitHub account if you do not have one. Create a public repository for learning-playground today.
+Commit after every single topic exercise. Even if the commit is tiny. Even if the code is imperfect.
+Why this matters for jobs: a GitHub profile with consistent daily or weekly commits over 6 months tells a hiring manager more than any CV claim. 
+It shows consistency, discipline, and genuine learning over time. Employers at product companies look at this. It is not optional.
+
+One Final Honest Note on Projects
+The learning-playground project is more important than the portfolio project in the short term. Here is why.
+The portfolio project is what you show. The learning-playground is what makes you capable. Developers who only build portfolio projects to show often cannot answer
+technical questions about the code they wrote because they followed tutorials. 
+Developers who built 59 small exercises from scratch, without tutorials, understand every line they wrote.
+When an interviewer asks you to explain closures or how NgRx selectors work under the hood — the developer who built 59 small exercises from scratch will answer confidently. The developer who built one polished portfolio app following a YouTube tutorial will not.
+The learning-playground is your real portfolio. The portfolio project is just the presentable version of it.
+
+Your Immediate Actions This Week
+ActionWhenCreate learning-playground Angular projectTodayCreate GitHub repo and push itTodayOpen Topic 1 PDF and study itToday or tomorrowBuild Topic 1's practice exercise in the playgroundThis weekRepeat for Topics 2–4This week
+That is it. Everything else follows from those five actions.

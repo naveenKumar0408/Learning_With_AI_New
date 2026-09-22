@@ -1,0 +1,865 @@
+
+Topic 59 — NgRx Best Practices & Architecture Patterns
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Advanced — This topic requires you to hold the entire NgRx ecosystem in your head simultaneously and make principled architectural decisions under real-world constraints; the difficulty is not any single new API but the judgment required to apply six topics of NgRx knowledge correctly at scale.
+Angular Relevance: Critical — Every NgRx pattern you have learned in Topics 51–58 can be applied well or badly; this topic is the decision framework that determines which — teams that skip architectural discipline end up with NgRx stores that are harder to maintain than the component state they replaced.
+
+Section 1 — Explanation
+The City Planning Analogy
+A city needs infrastructure — roads, utilities, zoning laws. A small village can be built informally: houses wherever there's space, roads connecting them ad hoc. That works at small scale.
+But as the city grows, informal decisions compound into problems: a road built for ten houses cannot handle ten thousand, a utility line buried without a map cannot be maintained, and a neighbourhood zoned "whatever fits" becomes a maintenance nightmare.
+NgRx architecture is city planning for application state.
+At small scale, any approach works. At team scale and production scale, the decisions you make about where state lives, how it flows, what gets named what, and where side effects are allowed determine whether your codebase is a well-planned city or an informal sprawl.
+This topic is the zoning law, the infrastructure standard, and the urban planning guide — the framework that makes every NgRx decision in Topics 51–58 composable, maintainable, and scalable.
+The five architectural questions NgRx teams must answer:
+
+Where does this state live? (global store / Component Store / SignalStore / local signal)
+What gets an action? (events, not commands — naming discipline)
+Where do side effects go? (always Effects, never components)
+How are selectors composed? (layered, memoised, one view model per component)
+How is the store structured? (feature slices, lazy loading, Entity for collections)
+
+Quick Reference — The NgRx Decision Matrix
+State characteristicRecommended toolShared across multiple featuresGlobal NgRx StoreSurvives navigation (persistent)Global NgRx StoreNeeds DevTools / time-travelGlobal NgRx StoreCollection of identifiable recordsNgRx Entity (Topic 54)URL-driven stateNgRx Router Store (Topic 57)Complex local UI state (3+ slices, async)NgRx SignalStore or Component StoreSimple local UI state (1–2 values)Angular Signals or signal()One-off flag or toggleLocal signal() in component
+
+Section 2 — Connection to Prior Concepts
+Directly builds on every NgRx topic:
+
+Topic 51 — NgRx Core Concepts: The action naming discipline, reducer purity rules, and one-way data flow are the foundation of every best practice here
+Topic 52 — NgRx Effects: The operator selection rules (switchMap for reads, concatMap for writes, exhaustMap for submissions) and catchError placement inside inner Observables are non-negotiable production rules
+Topic 53 — NgRx Selectors In Depth: The layered selector pattern, one view model selector per component, and never returning new literals from projectors are selector architecture rules
+Topic 54 — NgRx Entity: Entity is the correct structure for any collection of records — avoiding hand-written array CRUD is a best practice, not an option
+Topic 55 — Component Store and Topic 56 — SignalStore: The boundary between local and global state is the most consequential architectural decision in NgRx
+Topic 57 — Router Store: The URL-as-state-of-truth principle and Effect-driven data loading are Router Store's contribution to the architecture
+Topic 58 — NgRx Testing: Testability is an architectural constraint — patterns that make code hard to test are architectural anti-patterns
+
+The single topic it extends most directly: Topic 51 — NgRx Core Concepts.
+Every best practice in this topic is an extension of Topic 51's foundational discipline: pure reducers, one-way flow, actions as events, selectors as the read layer. Topics 52–58 added capabilities; Topic 59 explains when and how to apply them correctly.
+Bridging note: In Topic 51, the rules were about correctness — never mutate state, always use createSelector, name actions as past-tense events. In Topic 59, the rules are about architecture — which of these tools belongs in which layer, how features relate to each other, and how the NgRx store grows without becoming unmanageable.
+
+Section 3 — Code Example
+This section demonstrates the complete architecture of a production NgRx feature — the Orders feature — applying every best practice in one cohesive example.
+Feature folder structure (the standard layout)
+src/app/features/orders/
+├── orders.routes.ts          ← Lazy route with provideState + provideEffects
+├── orders.actions.ts         ← createActionGroup per source
+├── orders.reducer.ts         ← createFeature + EntityAdapter
+├── orders.selectors.ts       ← Layered selectors + one vm selector per component
+├── orders.effects.ts         ← All side effects; no HTTP in components
+├── orders.service.ts         ← HTTP only; no store access
+├── components/
+│   ├── orders-list/
+│   │   └── orders-list.component.ts
+│   └── order-detail/
+│       └── order-detail.component.ts
+└── order.model.ts
+Actions — one createActionGroup per source, past-tense naming
+ts// orders.actions.ts
+import { createActionGroup, props, emptyProps } from '@ngrx/store';
+import { Order } from './order.model';
+
+// Rule: one action group per SOURCE — who caused this event?
+// Rule: past-tense event names — what HAPPENED, not what to DO
+
+export const OrdersPageActions = createActionGroup({
+  source: 'Orders Page',
+  events: {
+    // ✅ Past-tense event — something that happened
+    'Page Opened': emptyProps(),
+    'Order Selected': props<{ orderId: string }>(),
+    'Create Order Clicked': props<{ order: Omit<Order, 'id'> }>(),
+    'Delete Order Clicked': props<{ orderId: string }>(),
+  },
+});
+
+export const OrdersApiActions = createActionGroup({
+  source: 'Orders API',
+  events: {
+    'Orders Loaded': props<{ orders: Order[] }>(),
+    'Orders Load Failed': props<{ error: string }>(),
+    'Order Created': props<{ order: Order }>(),
+    'Order Create Failed': props<{ error: string }>(),
+    'Order Deleted': props<{ orderId: string }>(),
+    'Order Delete Failed': props<{ orderId: string; error: string }>(),
+  },
+});
+
+// ❌ NEVER: command-style names like 'Load Orders', 'Delete Order'
+// ❌ NEVER: generic names like 'Set Loading', 'Update State'
+Reducer — createFeature + EntityAdapter + extra slices
+ts// orders.reducer.ts
+import { createEntityAdapter, EntityState } from '@ngrx/entity';
+import { createFeature, createReducer, on } from '@ngrx/store';
+import { Order } from './order.model';
+import { OrdersApiActions, OrdersPageActions } from './orders.actions';
+
+export const orderAdapter = createEntityAdapter<Order>({
+  sortComparer: (a, b) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(), // Newest first
+});
+
+export interface OrdersState extends EntityState<Order> {
+  selectedOrderId: string | null;
+  loading: boolean;
+  creating: boolean; // Separate loading flags per operation
+  error: string | null;
+}
+
+const initialState: OrdersState = orderAdapter.getInitialState({
+  selectedOrderId: null,
+  loading: false,
+  creating: false,
+  error: null,
+});
+
+export const ordersFeature = createFeature({
+  name: 'orders',
+  reducer: createReducer(
+    initialState,
+
+    // Rule: loading flag set in the action that triggers the effect
+    // not inside the effect itself
+    on(OrdersPageActions.pageOpened, state =>
+      ({ ...state, loading: true, error: null })
+    ),
+
+    on(OrdersPageActions.orderSelected, (state, { orderId }) =>
+      ({ ...state, selectedOrderId: orderId })
+    ),
+
+    on(OrdersPageActions.createOrderClicked, state =>
+      ({ ...state, creating: true, error: null })
+    ),
+
+    on(OrdersApiActions.ordersLoaded, (state, { orders }) =>
+      orderAdapter.setAll(orders, { ...state, loading: false })
+    ),
+
+    on(OrdersApiActions.ordersLoadFailed, (state, { error }) =>
+      ({ ...state, loading: false, error })
+    ),
+
+    on(OrdersApiActions.orderCreated, (state, { order }) =>
+      orderAdapter.addOne(order, { ...state, creating: false })
+    ),
+
+    on(OrdersApiActions.orderCreateFailed, (state, { error }) =>
+      ({ ...state, creating: false, error })
+    ),
+
+    // Optimistic delete — remove immediately from UI
+    on(OrdersPageActions.deleteOrderClicked, (state, { orderId }) =>
+      orderAdapter.removeOne(orderId, state)
+    ),
+
+    // If API delete fails — restore via addOne (the entity was already in state
+    // before the optimistic remove; callers must snapshot before dispatching)
+    on(OrdersApiActions.orderDeleteFailed, (state, { orderId, error }) =>
+      ({ ...state, error })
+      // Restore handled by a separate 'orderRestored' action dispatched by the effect
+    ),
+  ),
+});
+
+export const {
+  selectOrdersState,
+  selectLoading,
+  selectCreating,
+  selectError,
+  selectSelectedOrderId,
+} = ordersFeature;
+Selectors — layered composition, one view model per component
+ts// orders.selectors.ts
+import { createSelector } from '@ngrx/store';
+import { getRouterSelectors } from '@ngrx/router-store';
+import {
+  orderAdapter,
+  selectOrdersState,
+  selectSelectedOrderId,
+  selectLoading,
+  selectCreating,
+  selectError,
+} from './orders.reducer';
+
+// Layer 1: Entity adapter selectors
+const {
+  selectAll: selectAllOrders,
+  selectEntities: selectOrderEntities,
+  selectTotal: selectOrderTotal,
+} = orderAdapter.getSelectors(selectOrdersState);
+
+export { selectAllOrders, selectOrderTotal };
+
+// Layer 2: Router-derived selector
+const { selectRouteParams } = getRouterSelectors();
+export const selectOrderIdFromRoute = createSelector(
+  selectRouteParams,
+  params => params['orderId'] as string | undefined
+);
+
+// Layer 3: Cross-slice derived selectors
+export const selectSelectedOrder = createSelector(
+  selectOrderEntities,
+  selectSelectedOrderId,
+  (entities, id) => (id ? entities[id] ?? null : null)
+);
+
+export const selectCurrentRouteOrder = createSelector(
+  selectOrderEntities,
+  selectOrderIdFromRoute,
+  (entities, id) => (id ? entities[id] ?? null : null)
+);
+
+// Layer 4: View model selectors — one per component
+// Rule: one view model selector per component (Topic 53)
+// Combines all state the component needs into a single computed object
+
+export const selectOrdersListVm = createSelector(
+  selectAllOrders,
+  selectLoading,
+  selectCreating,
+  selectError,
+  selectOrderTotal,
+  (orders, loading, creating, error, total) => ({
+    orders,
+    loading,
+    creating,
+    error,
+    total,
+    isEmpty: total === 0 && !loading,
+  })
+);
+
+export const selectOrderDetailVm = createSelector(
+  selectCurrentRouteOrder,
+  selectLoading,
+  selectError,
+  (order, loading, error) => ({ order, loading, error })
+);
+Effects — all side effects, correct operator selection
+ts// orders.effects.ts
+import { inject, Injectable } from '@angular/core';
+import { Actions, createEffect, ofType, concatLatestFrom } from '@ngrx/effects';
+import { Store } from '@ngrx/store';
+import { routerNavigatedAction } from '@ngrx/router-store';
+import { switchMap, concatMap, exhaustMap, map, filter } from 'rxjs/operators';
+import { catchError, of } from 'rxjs';
+import { OrdersPageActions, OrdersApiActions } from './orders.actions';
+import { OrdersService } from './orders.service';
+import { selectOrderIdFromRoute, selectSelectedOrder } from './orders.selectors';
+
+@Injectable()
+export class OrdersEffects {
+  private actions$ = inject(Actions);
+  private store = inject(Store);
+  private ordersService = inject(OrdersService);
+
+  // READ — switchMap: cancel previous load if page opens twice
+  loadOrders$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(OrdersPageActions.pageOpened),
+      switchMap(() =>                          // ✅ switchMap for reads
+        this.ordersService.getAll().pipe(
+          map(orders => OrdersApiActions.ordersLoaded({ orders })),
+          catchError(error =>                  // ✅ catchError INSIDE switchMap
+            of(OrdersApiActions.ordersLoadFailed({ error: error.message }))
+          )
+        )
+      )
+    )
+  );
+
+  // WRITE — concatMap: queue creates, never cancel
+  createOrder$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(OrdersPageActions.createOrderClicked),
+      concatMap(({ order }) =>               // ✅ concatMap for ordered writes
+        this.ordersService.create(order).pipe(
+          map(created => OrdersApiActions.orderCreated({ order: created })),
+          catchError(error =>
+            of(OrdersApiActions.orderCreateFailed({ error: error.message }))
+          )
+        )
+      )
+    )
+  );
+
+  // OPTIMISTIC DELETE — concatMap: queue deletes
+  deleteOrder$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(OrdersPageActions.deleteOrderClicked),
+      // Read current entity BEFORE optimistic remove (entity already removed by reducer)
+      concatLatestFrom(({ orderId }) =>
+        this.store.select(selectOrderEntities).pipe(
+          map(entities => entities[orderId])
+        )
+      ),
+      concatMap(([{ orderId }, originalOrder]) =>
+        this.ordersService.delete(orderId).pipe(
+          map(() => OrdersApiActions.orderDeleted({ orderId })),
+          catchError(error => {
+            // Restore the optimistically-removed order
+            return of(
+              OrdersApiActions.orderDeleteFailed({ orderId, error: error.message }),
+              // Dispatch restore action — reducer handles re-adding via addOne
+              OrdersApiActions.ordersLoaded({ orders: originalOrder ? [originalOrder] : [] })
+            );
+          })
+        )
+      )
+    )
+  );
+
+  // NAVIGATION-DRIVEN LOAD — Router Store pattern (Topic 57)
+  loadOrderOnNavigation$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(routerNavigatedAction),
+      concatLatestFrom(() => this.store.select(selectOrderIdFromRoute)),
+      filter(([, orderId]) => orderId !== undefined),
+      switchMap(([, orderId]) =>
+        this.ordersService.getById(orderId!).pipe(
+          map(order => OrdersApiActions.ordersLoaded({ orders: [order] })),
+          catchError(error =>
+            of(OrdersApiActions.ordersLoadFailed({ error: error.message }))
+          )
+        )
+      )
+    )
+  );
+}
+Lazy route registration
+ts// orders.routes.ts
+import { Routes } from '@angular/router';
+import { provideState } from '@ngrx/store';
+import { provideEffects } from '@ngrx/effects';
+import { ordersFeature } from './orders.reducer';
+import { OrdersEffects } from './orders.effects';
+import { authGuard } from '../../guards/auth.guard';
+
+export const ORDERS_ROUTES: Routes = [
+  {
+    path: '',
+    canActivate: [authGuard],           // Guard before loadComponent (Topic 40)
+    providers: [
+      provideState(ordersFeature),      // Lazy — loads only when route activates
+      provideEffects(OrdersEffects),
+    ],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./components/orders-list/orders-list.component')
+            .then(m => m.OrdersListComponent),
+      },
+      {
+        path: ':orderId',
+        loadComponent: () =>
+          import('./components/order-detail/order-detail.component')
+            .then(m => m.OrderDetailComponent),
+      },
+    ],
+  },
+];
+Component — thin view layer, reads from store only
+ts// orders-list.component.ts
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Store } from '@ngrx/store';
+import { OrdersPageActions } from '../../orders.actions';
+import { selectOrdersListVm } from '../../orders.selectors';
+
+@Component({
+  selector: 'app-orders-list',
+  changeDetection: ChangeDetectionStrategy.OnPush, // Always with NgRx
+  template: `
+    @let vm = orderVm();
+
+    @if (vm.loading) { <app-spinner /> }
+    @if (vm.error)   { <app-error [message]="vm.error" /> }
+    @if (vm.isEmpty) { <p>No orders yet.</p> }
+
+    @for (order of vm.orders; track order.id) {
+      <app-order-card
+        [order]="order"
+        (delete)="onDelete(order.id)"
+        (select)="onSelect(order.id)"
+      />
+    }
+
+    <p>{{ vm.total }} orders total</p>
+    <button (click)="onCreate()">New Order</button>
+  `
+})
+export class OrdersListComponent {
+  private store = inject(Store);
+
+  // Single view model Signal — one subscription (Topic 53 pattern)
+  orderVm = this.store.selectSignal(selectOrdersListVm);
+
+  // Components dispatch events — they do NOT call services directly
+  ngOnInit() { this.store.dispatch(OrdersPageActions.pageOpened()); }
+  onSelect(id: string) { this.store.dispatch(OrdersPageActions.orderSelected({ orderId: id })); }
+  onDelete(id: string) { this.store.dispatch(OrdersPageActions.deleteOrderClicked({ orderId: id })); }
+  onCreate() { /* open modal, collect data, dispatch createOrderClicked */ }
+}
+
+Section 4 — Before & After Refactor
+Before — Common "working but wrong" NgRx architecture
+ts// ❌ Anti-pattern: component making HTTP calls directly alongside NgRx
+@Component({ ... })
+export class OrdersComponent implements OnInit {
+  private store = inject(Store);
+  private ordersService = inject(OrdersService); // Service injected in component
+
+  orders = this.store.selectSignal(selectAllOrders);
+
+  ngOnInit() {
+    // HTTP called directly in component — bypasses Effects entirely
+    this.ordersService.getAll().subscribe(orders => {
+      this.store.dispatch(OrdersApiActions.ordersLoaded({ orders }));
+    });
+  }
+
+  delete(id: string) {
+    // Command-style action name — violates naming convention
+    this.store.dispatch({ type: 'DELETE_ORDER', id }); // Hand-rolled action
+  }
+}
+What breaks:
+
+The component owns HTTP logic — untestable without real HTTP
+DevTools shows no effect chain — "who triggered this load?" is unanswerable
+Hand-rolled actions bypass TypeScript safety from createActionGroup
+Error handling is the component's responsibility — inconsistent across the app
+No cancellation semantics — rapid navigation triggers multiple parallel loads
+
+After — Correct architecture
+ts// ✅ Component is a thin view layer — dispatches events, reads signals
+@Component({ ... })
+export class OrdersListComponent {
+  private store = inject(Store);
+  orderVm = this.store.selectSignal(selectOrdersListVm); // One selector
+
+  ngOnInit() {
+    this.store.dispatch(OrdersPageActions.pageOpened()); // Past-tense event
+    // Effect takes over: switchMap → HTTP → success/failure actions → reducer
+  }
+
+  delete(id: string) {
+    this.store.dispatch(OrdersPageActions.deleteOrderClicked({ orderId: id }));
+    // Effect handles: concatMap → HTTP → optimistic restore on failure
+  }
+}
+Why this refactor matters:
+
+Component has zero HTTP dependency — testable with only MockStore
+DevTools shows the complete chain: [Orders Page] Page Opened → [Orders API] Orders Loaded
+Cancellation, error handling, and sequencing are the Effect's responsibility — consistent app-wide
+Action names describe events — filtering DevTools by [Orders Page] shows every user interaction
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Putting everything in the global store "just in case"
+What: Developers add every piece of UI state — modal open/closed, accordion expanded, tab index, form step — to the global NgRx store because "state should be in the store."
+Why developers make it: Topic 51 teaches that NgRx is the state management solution. It's easy to conclude that all state belongs there. NgRx DevTools make global state feel powerful.
+How to avoid it: Apply the state decision matrix: "Does anything outside this component need this value?" If no — a modal's open state, a form's current step, a table's sort column for this view only — it belongs in a local signal(), Component Store, or SignalStore. Global store is for shared, persistent, cross-feature state.
+Angular-specific consequence: The global store grows to hundreds of slices, most of which are ephemeral UI state. DevTools becomes noise — the truly important state changes are buried in [Modal] Opened, [Accordion] Toggled, [Tab] Changed. Reducers and selectors multiply for zero architectural benefit. Every route carries and resets state that should have been local to begin with.
+
+Mistake 2 — Writing command-style actions instead of event-style actions
+What:
+ts// ❌ Commands — describe what to do (implementation detail)
+dispatch({ type: 'LOAD_ORDERS' })
+dispatch({ type: 'SET_LOADING', loading: true })
+dispatch({ type: 'UPDATE_SELECTED_ORDER', orderId })
+
+// ✅ Events — describe what happened (facts)
+dispatch(OrdersPageActions.pageOpened())
+dispatch(OrdersApiActions.ordersLoaded({ orders }))
+dispatch(OrdersPageActions.orderSelected({ orderId }))
+Why developers make it: Command names match the mental model of "I want the store to do X." Action-as-command feels natural when coming from imperative programming.
+How to avoid it: Ask "what just happened?" not "what should happen next?" The action names the fact; the reducer and effects decide what to do about it. This distinction enables one action to be handled by multiple reducers and effects simultaneously — a critical NgRx feature that command-style actions make impossible without creating many fine-grained commands.
+Angular-specific consequence: Command-style actions create tight coupling between the component (which knows what effect to trigger) and the effect (which is supposed to own that knowledge). When the business logic changes — loading strategy, caching, cancellation — command-style actions force component changes. Event-style actions decouple the component from all downstream logic.
+
+Mistake 3 — Writing effects without understanding operator semantics and swapping switchMap for all cases
+What:
+ts// ❌ switchMap for a DELETE — cancels in-flight deletes on double-click
+deleteOrder$ = createEffect(() =>
+  this.actions$.pipe(
+    ofType(OrdersPageActions.deleteOrderClicked),
+    switchMap(({ orderId }) =>       // WRONG for writes
+      this.ordersService.delete(orderId).pipe(...)
+    )
+  )
+);
+Why developers make it: switchMap is the most commonly shown operator in NgRx documentation examples (for search/load scenarios). Developers apply it universally.
+How to avoid it: Memorize the operator decision rule from Topic 52/46: switchMap only for reads (search, load), concatMap for ordered writes (delete, update in sequence), exhaustMap for submissions (login, form submit — ignore duplicates). A DELETE with switchMap silently cancels an in-flight server call when a second delete is dispatched — the server never receives the first delete, but your UI already removed the item optimistically.
+Angular-specific consequence: Data corruption in production. A user double-clicks delete — the first delete request is cancelled mid-flight, the server never deletes the order, the UI shows it as deleted, the next page load restores it. No error, no console warning. Pure data corruption.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse createActionGroup with one group per source (Orders Page, Orders API) — typed, discoverable, consistentHand-roll action objects with { type: 'LOAD_ORDERS' } — no TypeScript safety, no DevTools groupingName actions as past-tense events describing what happened (Orders Loaded, Order Selected)Name actions as commands (Load Orders, Set Loading) — breaks the event-driven mental modelPut ALL side effects in Effects — HTTP, navigation, analytics, timersCall services directly in components alongside store.dispatch() — creates an untestable, mixed-concern componentUse concatMap for writes (DELETE, POST, PUT) that must not be cancelledUse switchMap for write operations — it silently cancels in-flight write requests on any new emissionRegister feature state lazily with provideState() in route providersRegister all feature state in app.config.ts — defeats lazy loading and loads all state for every user on every pageApply ChangeDetectionStrategy.OnPush to every NgRx-connected componentLeave components on Default change detection — every store action triggers CD on the entire component tree
+
+Section 7 — Debugging Tips
+Bug 1 — Store grows unboundedly and DevTools becomes unusable
+Symptom: After navigating through the app, the NgRx state tree has hundreds of slices. DevTools shows thousands of [Modal] Opened and [Tab] Changed actions drowning out meaningful state changes.
+Cause: All UI state — including ephemeral per-component state — was added to the global store. Feature state was registered eagerly in app.config.ts rather than lazily in routes, so all state is always present.
+Fix: Audit each state slice against the decision matrix. Move ephemeral UI state to local signal() or SignalStore. Move feature state registration to route providers with provideState(). Apply the rule: "If this state doesn't need to survive navigation and isn't needed by another feature, it belongs locally."
+Angular-specific note: NgRx does not automatically clean up feature state when a route is destroyed. State registered lazily via provideState() in route providers IS cleaned up when the route injector is destroyed (Angular 17+) — another reason to prefer lazy registration.
+
+Bug 2 — Selector memoisation breaks silently and OnPush components re-render constantly
+Symptom: Components with ChangeDetectionStrategy.OnPush are re-rendering on every store action, even actions unrelated to their data.
+Cause: A selector projector is returning a new object or array literal on every call — {} or [] — breaking referential equality and causing the selector to emit on every store action (Topic 53 central warning).
+Fix: Audit every createSelector projector for {} and [] returns. For view model selectors that must return an object, this is unavoidable — but they should depend only on the minimum number of input selectors so they recompute infrequently. For collection selectors, sort in the reducer (via EntityAdapter.sortComparer) rather than in the selector.
+Angular-specific note: Enable strictStateImmutability and strictActionImmutability in NgRx runtime checks (development only). These don't catch the new-literal problem directly, but they catch the state mutation that often precedes it.
+
+Bug 3 — An Effect permanently stops working after the first error
+Symptom: An Effect works correctly for the first user action, but after the first HTTP error it silently stops responding to all subsequent actions of the same type. No error in the console.
+Cause: catchError is placed on the outer Observable — when the inner HTTP Observable errors, the error propagates to the outer stream and completes it permanently (Topic 52's most critical rule). All subsequent emissions from actions$ are silently ignored because the outer stream has completed.
+Fix: Move catchError inside the switchMap/concatMap/exhaustMap callback — it must catch errors from the inner Observable only, returning a new Observable so the outer stream continues:
+ts// ✅ catchError INSIDE the inner Observable
+switchMap(({ orderId }) =>
+  this.ordersService.delete(orderId).pipe(
+    map(result => OrdersApiActions.orderDeleted({ orderId })),
+    catchError(err => of(OrdersApiActions.orderDeleteFailed({ orderId, error: err.message })))
+    // ↑ Catches the inner error — outer stream stays alive
+  )
+)
+Angular-specific note: This bug is invisible in development if you only test the happy path. Always test the error path AND then dispatch a second action to verify the Effect is still alive — the sequence that Topic 58 identifies as the production-catching test.
+
+Section 8 — Real-World Applications
+Scenario 1 — Scaling NgRx across a large team with a shared architectural standard
+A team of 15 developers builds a financial dashboard with 12 feature areas. They adopt a shared NgRx architectural standard:
+Standard: Every feature must follow the EARS pattern
+  E — Entity adapter for all collections
+  A — Action groups per source (Page, API, WebSocket)
+  R — Router Store for navigation-driven loads
+  S — SignalStore for local feature UI state
+The standard is enforced with ESLint rules from @ngrx/eslint-plugin:
+json// .eslintrc.json
+{
+  "rules": {
+    "@ngrx/no-dispatch-in-effects": "error",      // No dispatch() inside effects
+    "@ngrx/no-effects-in-providers": "error",     // No effects in component providers
+    "@ngrx/prefer-action-creator": "error",       // No hand-rolled action objects
+    "@ngrx/prefer-selector-in-select": "error",   // No inline lambdas in store.select()
+    "@ngrx/prefer-concat-latest-from": "error",   // Enforces concatLatestFrom over withLatestFrom in effects
+    "@ngrx/avoid-combining-component-store-selectors": "warn"
+  }
+}
+The ESLint plugin enforces the patterns mechanically — developers get a lint error before a PR is merged if they use hand-rolled action objects, inline store.select() lambdas, or dispatch() inside effects.
+
+Scenario 2 — Incremental NgRx adoption in an existing Angular app
+A team has an existing Angular app with services and component state. They want to adopt NgRx incrementally without rewriting everything at once.
+Phase 1: Identify shared state pain points
+  — Which state is currently passed down 5+ levels of @Input()? → Move to global store
+  — Which service is injected in 10+ components? → Its state belongs in NgRx
+
+Phase 2: Add NgRx for the one most painful feature
+  — Start with one feature (e.g. User Authentication)
+  — Add provideStore({}) + provideEffects([]) to app.config.ts
+  — Migrate auth service state to NgRx: user, loading, error
+  — Leave all other features untouched
+
+Phase 3: Add NgRx Entity for collections
+  — As each feature is touched for other reasons, migrate its list state to Entity
+  — No "big bang" migration — one feature per sprint
+
+Phase 4: Add Router Store
+  — After 3+ features are in NgRx, navigation-driven loads become painful without it
+  — Add routerReducer + custom serializer + Effect-based data loading
+
+Phase 5: Replace Component-level state with SignalStore
+  — Complex UI state (wizards, data tables) moves to SignalStore
+  — Simple UI state stays as local signal()
+ts// Phase 1 result — coexistence: NgRx alongside existing services
+// app.config.ts
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideStore({ auth: authReducer }),     // Only auth in NgRx initially
+    provideEffects([AuthEffects]),
+    // All other features still use services directly — that's fine for now
+  ]
+};
+The key insight: NgRx adoption does not have to be all-or-nothing. provideStore({}) registers an empty store; features are added one at a time.
+
+Section 9 — Practice Exercises
+Beginner
+You have a feature with this reducer pattern:
+tson(SomeActions.loadData, state => ({ ...state, data: [] }))
+on(SomeActions.setLoading, (state, { loading }) => ({ ...state, loading }))
+on(SomeActions.setError, (state, { error }) => ({ ...state, error }))
+Identify three architectural problems with these actions and refactor them to follow NgRx best practices: correct naming convention, correct placement of loading flag management, and correct use of createActionGroup. Write the refactored actions file.
+Intermediate
+Audit the following Effect and identify all violations of NgRx best practices. Then rewrite it correctly:
+tsloadAndSave$ = createEffect(() =>
+  this.actions$.pipe(
+    ofType('[Orders] Load'),
+    switchMap(() =>
+      this.ordersService.getAll()
+    ),
+    tap(orders => this.store.dispatch({ type: '[Orders] Set Data', orders })),
+    switchMap(orders =>
+      this.analyticsService.track('orders_loaded').pipe(
+        catchError(() => EMPTY)
+      )
+    ),
+  ),
+  { dispatch: false }
+);
+There are at least five distinct violations. Name each one, explain why it's wrong, and provide the corrected code.
+Advanced
+Design the complete NgRx architecture for a real-time collaborative document editor feature. The feature must: (1) load the document on navigation to /documents/:docId; (2) receive real-time changes via WebSocket; (3) track local unsaved changes separately from server-confirmed state; (4) support optimistic saves (show saved immediately, restore on failure); (5) have a DocumentEditorSignalStore for local editor UI state (cursor position, selection, toolbar state) that is separate from the global document state. Produce: the state interface, action groups, selector layers, effect list with correct operators, and the decision of what goes in the global store vs SignalStore. You do not need to write all the code — produce the architecture specification.
+
+Section 10 — Key Takeaways
+Core concepts:
+
+NgRx is the right tool for shared, persistent, cross-feature state — not for all state in the application
+Actions are events (past-tense, [Source] Something Happened) not commands ([Source] Do Something) — this is the foundation of the NgRx event-driven architecture
+Effects own all side effects — components dispatch events and read signals, nothing else
+Operator selection is non-negotiable: switchMap for reads only, concatMap for ordered writes, exhaustMap for submissions
+catchError must always be inside the inner Observable — on the outer stream it permanently kills the Effect
+Feature state is always registered lazily in route providers — never eagerly in app.config.ts
+ChangeDetectionStrategy.OnPush is mandatory for every NgRx-connected component
+One view model selector per component — single selectSignal() call in the component
+
+Quick reference — the seven laws of NgRx architecture:
+LawRule1. State placementGlobal store for shared/persistent; local signal/SignalStore for ephemeral/local2. Action namingPast-tense events with [Source] Event Name — never commands3. Effect ownershipAll side effects in Effects — never in components4. Operator selectionswitchMap=reads, concatMap=ordered writes, exhaustMap=submissions5. Error handlingcatchError inside inner Observable — never on outer stream6. State registrationLazy via provideState() in route providers — never eager in app.config7. Change detectionOnPush on every NgRx-connected component — mandatory, not optional
+Angular-specific rules:
+
+Use @ngrx/eslint-plugin to enforce architectural rules mechanically — don't rely on code review alone
+Use createActionGroup for every set of related actions — it provides TypeScript safety and DevTools grouping
+Use createFeature for every feature reducer — it generates the feature selector automatically
+Use NgRx Entity for every collection of identifiable records — never hand-write array CRUD reducers
+Use Router Store for navigation-driven data loading — never inject ActivatedRoute in components that use NgRx
+
+One-Line Memory Aid:
+
+NgRx architecture has seven laws — state in the right layer, actions as past-tense events, all side effects in Effects, switchMap only for reads, catchError inside inner Observables, feature state lazy-loaded, and OnPush on every connected component — break any one of them and the store works but doesn't scale.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If NgRx adds so much boilerplate — actions, reducers, effects, selectors, tests for each — is there a point at which the overhead simply isn't worth it, and you should just use Angular Signals or a lightweight service instead?
+Answer:
+Yes — and any honest NgRx advocate will tell you so.
+NgRx is not the right tool for every Angular app. It is a significant upfront investment that pays dividends at a specific scale threshold. The honest framework:
+NgRx is worth it when three or more of these are true:
+
+The app has multiple features that share state (e.g. a notification badge that counts items from three different features)
+The team has three or more developers working on the same codebase concurrently
+State changes need to be auditable (financial apps, compliance, debugging in production)
+The app has complex async sequences (dependent HTTP calls, real-time updates, optimistic mutations)
+The app will grow significantly over time and maintainability over 12+ months matters
+
+NgRx is likely overkill when:
+
+The app is a single-developer project or a small prototype
+State is primarily local to individual pages with little cross-feature sharing
+The team is not already familiar with RxJS — the learning curve cost exceeds the benefit
+The app is content-heavy with minimal user interaction (a blog, a documentation site)
+
+The modern middle ground — Angular Signals + SignalStore:
+
+Angular 17+ with Signals and SignalStore covers a significant portion of what used to require NgRx. For apps that don't need the global shared state, DevTools time-travel, or complex Effect orchestration, signal() + SignalStore + a clean service layer is a legitimate, maintainable architecture with far less boilerplate.
+Practical rule: Start without NgRx. Add it when you feel one of these specific pains: "I need to share this state across three features," or "I can't debug production state because there's no audit trail," or "I need to cancel in-flight requests when actions sequence rapidly." Add NgRx to solve a pain you feel — not to preemptively architect for a scale you haven't reached.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Module systems and tree-shaking — understanding how Angular's build tool eliminates unused code helps you verify that lazy-loaded NgRx feature state actually reduces bundle size (Topic 12 — Modules & Imports)
+Proxy and getter patterns — NgRx's strictStateImmutability uses Proxy objects to detect mutations; understanding Proxies clarifies what the runtime check actually does
+
+TypeScript Concepts:
+
+Discriminated unions — NgRx actions form a discriminated union; understanding this helps when writing exhaustive switch statements over action types in complex reducers (Topic 13)
+Mapped types and Extract<> — createActionGroup uses advanced TypeScript to infer action creator types; reading the NgRx source deepens understanding of TypeScript's type system (Topic 16)
+
+Angular-Specific Concepts:
+
+Angular DevTools — the Signals graph view in Angular DevTools complements Redux DevTools; together they give full visibility into both Signal and NgRx state changes
+Micro-frontends with NgRx — at very large scale, multiple independently-deployed Angular apps sharing NgRx state is the next architectural challenge after mastering single-app NgRx
+NgRx Data (@ngrx/data) — a higher-level abstraction over NgRx Entity that generates actions, reducers, effects, and selectors for CRUD entities automatically; worth knowing exists but evaluate carefully against the added abstraction cost
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on — the entire NgRx series:
+
+Topic 51 — NgRx Core Concepts (the foundation every best practice extends)
+Topic 52 — NgRx Effects (operator selection rules are central best practices)
+Topic 53 — NgRx Selectors In Depth (layered selectors and view model pattern)
+Topic 54 — NgRx Entity (Entity for all collections is a best practice, not an option)
+Topic 55 — Component Store (local vs global state boundary)
+Topic 56 — NgRx SignalStore (the modern local state tool)
+Topic 57 — Router Store (Effect-driven navigation-loaded data)
+Topic 58 — NgRx Testing (testability as an architectural constraint)
+
+Topics this unlocks:
+
+This is Topic 59 — the final topic in the current series. The knowledge unlocked is architectural judgment applicable to every Angular app you build going forward.
+Next natural progression: Micro-frontend architecture with Angular, Angular performance profiling with DevTools, server-side rendering with NgRx (Universal + TransferState), and contributing to or building NgRx libraries.
+
+Production readiness assessment: Completing Topic 59 means you have a complete, production-grade understanding of the NgRx ecosystem — from core concepts through Entity, Component Store, SignalStore, Router Store, Testing, and architectural best practices; you are equipped to lead NgRx architecture decisions on a production Angular team.
+
+Section 14 — Common Interview Questions
+Question 1
+"How do you decide whether state belongs in the global NgRx store, NgRx SignalStore, or a local Angular Signal?"
+Strong answer covers:
+
+Global NgRx store: shared across multiple features, persists across navigation, needs DevTools audit trail, or drives complex async Effect chains
+SignalStore or Component Store: complex local feature state with 3+ slices or async side effects, scoped to one component and its children, destroyed when component is destroyed
+Local signal(): simple 1–2 value UI state (toggle, tab index, modal open) that nothing outside the component needs
+The decision question: "Does anything outside this component need this state, today or in the foreseeable future?"
+Practical rule: start local, promote to global only when sharing pain is felt
+
+Weak answers miss: The SignalStore middle ground — most candidates know global NgRx vs local component state, but miss that SignalStore covers the large middle territory between them.
+Difficulty: Mid
+
+Question 2
+"What is the difference between an action as an event versus an action as a command, and why does it matter architecturally?"
+Strong answer covers:
+
+Event: describes what happened ([Orders Page] Order Deleted Clicked) — past tense, fact-based, source-named
+Command: describes what to do ([Orders] Delete Order) — imperative, implementation-coupled
+Events decouple the dispatcher (component) from the handler (reducer/effect) — the component doesn't know or care what will happen as a result
+One event can be handled by multiple reducers AND multiple effects simultaneously — impossible with command-style actions without creating many fine-grained commands
+DevTools readability: filtering by [Orders Page] shows every user interaction; filtering by [Orders API] shows every server response — perfect separation of concerns
+Naming standard: createActionGroup({ source: 'Orders Page', events: { 'Order Delete Clicked': ... } })
+
+Weak answers miss: The "one event, multiple handlers" architectural benefit — most candidates know the naming convention but can't articulate why it enables better architecture.
+Difficulty: Senior
+
+Question 3
+"A junior developer on your team says: 'I've added NgRx to our new Angular project because we want to follow best practices.' What questions do you ask to evaluate whether that was the right decision, and what would you do if it wasn't?"
+Strong answer covers:
+
+Questions: How many features share state? How many developers? Does the app need an audit trail? Are there complex async sequences? What's the team's RxJS experience?
+Evaluation criteria: NgRx adds value when shared state, team scale, auditability, or complex async are present
+If not justified: NgRx can be removed incrementally — replace global store with services + Signals for simple cases, keep NgRx only for genuinely complex async features
+The modern alternative: Angular Signals + SignalStore covers the majority of state management needs without NgRx's boilerplate
+Avoiding the "we might need it later" trap — YAGNI applies to NgRx; add it when the pain is felt, not preemptively
+Diplomatic framing: evaluate the decision based on evidence, not on whether NgRx was already added
+
+Weak answers miss: The honest acknowledgment that NgRx can be the wrong tool — candidates who only defend NgRx regardless of context miss the architectural judgment the question is testing.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — The "everything in the store" anti-pattern
+ts// ❌ Anti-pattern — ephemeral UI state in the global store
+export const appReducer = createReducer(
+  {
+    // These belong in local signals, NOT the global store:
+    isNavMenuOpen: false,           // Local UI toggle
+    activeTabIndex: 0,              // Local tab state
+    modalOpen: false,               // Local modal flag
+    accordionExpandedIds: [],       // Local accordion state
+    formStep: 1,                    // Local wizard step
+    tableScrollPosition: 0,         // Local scroll position
+    tooltipVisible: false,          // Local tooltip flag
+
+    // These DO belong in the global store:
+    currentUser: null,
+    orders: [],
+    notifications: [],
+  }
+);
+Why it seems fine: NgRx DevTools show all state changes — including toggles and tabs — which feels comprehensive. "All state in one place" sounds like good architecture.
+What breaks in production: The global store becomes a dumping ground. DevTools log thousands of [Nav] Menu Opened actions per session, hiding the meaningful state changes. Every route carries and resets ephemeral UI state that should have died with the component. Reducers and selectors multiply for state that never needed to be shared. Onboarding new developers requires understanding 200 state slices when 180 of them are ephemeral toggles.
+Correct pattern:
+ts// ✅ Local signals for ephemeral UI state
+@Component({ ... })
+export class NavComponent {
+  isMenuOpen = signal(false);   // Lives and dies with this component
+  activeTab = signal(0);
+}
+
+// ✅ Global store for shared, persistent state only
+export const appReducer = createReducer({
+  currentUser: null,
+  orders: [],
+  notifications: [],
+});
+
+Anti-Pattern 2 — Dispatching actions inside Effects (non-dispatch: false effects with tap)
+ts// ❌ Anti-pattern — dispatching inside an effect with tap
+trackAnalytics$ = createEffect(() =>
+  this.actions$.pipe(
+    ofType(OrdersPageActions.pageOpened),
+    tap(action => {
+      // This dispatches inside a tap — creates an infinite loop
+      this.store.dispatch(AnalyticsActions.pageViewed({ page: 'orders' }));
+    })
+    // Missing { dispatch: false } — the effect also dispatches its output
+    // creating: pageOpened → trackAnalytics$ → dispatches AnalyticsActions.pageViewed
+    //                       ↑ trackAnalytics$ also emits the original action as its output
+    //                       → reducer receives it again → trackAnalytics$ fires again → ∞
+  )
+  // Missing second argument: { dispatch: false }
+);
+Why it seems fine: The tap operator is the standard way to perform a side effect without transforming the stream. Dispatching inside a tap seems like a clean pattern for "do something and also dispatch another action."
+What breaks in production: createEffect() by default treats the effect's output Observable as actions to dispatch. A tap doesn't transform the stream — the original action still flows through and gets dispatched again, triggering the effect again, creating an infinite dispatch loop that crashes the browser tab within seconds.
+Correct pattern:
+ts// ✅ Option A — side-effect only effect with { dispatch: false }
+trackAnalytics$ = createEffect(() =>
+  this.actions$.pipe(
+    ofType(OrdersPageActions.pageOpened),
+    tap(() => this.analyticsService.track('orders_page_viewed')),
+  ),
+  { dispatch: false } // Required — this effect does not dispatch actions
+);
+
+// ✅ Option B — transform to a new action with map (no tap needed)
+trackAnalytics$ = createEffect(() =>
+  this.actions$.pipe(
+    ofType(OrdersPageActions.pageOpened),
+    map(() => AnalyticsActions.pageViewed({ page: 'orders' }))
+    // map transforms the stream — the output IS the new action to dispatch
+  )
+);
+
+Anti-Pattern 3 — Inline selector lambdas in store.select() calls
+ts// ❌ Anti-pattern — inline lambda in store.select()
+@Component({ ... })
+export class OrdersComponent {
+  // New function reference created on EVERY component instance creation
+  // NgRx cannot memoise anonymous functions — new subscription, no caching
+  orders$ = this.store.select(state => state.orders.list);
+
+  // Also broken in template — creates a new selector every CD cycle
+  get orderCount() {
+    return this.store.select(state => state.orders.list.length);
+    // Returns a new Observable on every getter access
+  }
+}
+Why it seems fine: Inline lambdas are concise and avoid the ceremony of createSelector. For simple property access they look equivalent to a named selector.
+What breaks in production: NgRx cannot memoise anonymous function references — a new function object is created on every call, so every store.select(state => state.slice) creates a new Observable subscription with no memoisation. With ChangeDetectionStrategy.OnPush, the component re-renders on every store action because the inline selector always emits (no distinctUntilChanged without memoisation). With hundreds of components doing this, CD performance degrades significantly.
+Correct pattern:
+ts// ✅ Named selector — created once, memoised, reused everywhere
+// orders.selectors.ts
+export const selectOrderList = createSelector(
+  selectOrdersState,
+  state => state.list
+);
+
+// Component — single reference, fully memoised
+@Component({ ... })
+export class OrdersComponent {
+  orders = this.store.selectSignal(selectOrderList);
+}
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+NgRx best practices are seven laws — state in the right layer, actions as past-tense events, all side effects in Effects, correct operator selection for each write pattern, catchError inside inner Observables, feature state lazy-registered, and OnPush on every connected component — every production NgRx bug traces back to violating exactly one of these.
+Key rules:
+
+State placement: global store for shared/persistent, SignalStore for complex local, signal() for simple local — never everything in the global store
+Action naming: [Source] Past-Tense Event with createActionGroup — events describe facts, not commands
+Effect ownership: all side effects live in Effects — components dispatch and read, nothing else
+Operator law: switchMap → reads only; concatMap → ordered writes; exhaustMap → submissions (no duplicates)
+Error law: catchError always inside the inner Observable — on the outer stream it permanently kills the Effect
+Registration law: feature state lazy via provideState() in route providers — never eager in app.config.ts
+CD law: ChangeDetectionStrategy.OnPush on every NgRx-connected component — mandatory, not optional
+
+The single most important Angular rule:
+
+Never use switchMap for write operations (POST, PUT, DELETE) — it silently cancels in-flight requests on any new emission, causing data corruption with no error message and no console warning.
+Side-by-side comparison — The NgRx Decision Matrix:
+State typeCorrect toolWrong toolShared across 3+ featuresGlobal NgRx StoreComponent-local signalCollection of recordsNgRx EntityHand-written array reducerNavigation-driven dataRouter Store + EffectActivatedRoute in componentComplex local UI (3+ slices)SignalStoreGlobal NgRx StoreSimple toggle / flagLocal signal()Global NgRx StoreForm step in a wizardSignalStoreGlobal NgRx StoreAuth state (app-wide)Global NgRx StoreService with BehaviorSubjectHTTP side effectsNgRx EffectsDirect service call in component

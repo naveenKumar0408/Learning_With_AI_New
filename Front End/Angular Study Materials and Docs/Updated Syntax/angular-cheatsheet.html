@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Angular Quick Reference</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #e8ff47;
+    --accent2: #47ffe8;
+    --accent3: #ff6b6b;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --cat1: #e8ff47;
+    --cat2: #47ffe8;
+    --cat3: #ff6b6b;
+    --cat4: #c47bff;
+    --cat5: #ff9f47;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    padding: 40px;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 36px;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 6px;
+  }
+
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-end;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .row:last-child { border-bottom: none; }
+
+  .row:hover .cell {
+    background: #14141e;
+  }
+
+  .cell {
+    padding: 10px 14px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    transition: background 0.15s;
+  }
+
+  .cell:last-child { border-right: none; }
+
+  .term {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .analogy {
+    font-size: 12px;
+    color: #b0b0c8;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  .technical {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 8px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-header .bar {
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .col-labels {
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr;
+    border-bottom: 1px solid var(--border);
+    background: #0d0d15;
+  }
+
+  .col-label {
+    padding: 6px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    border-right: 1px solid var(--border);
+  }
+
+  .col-label:last-child { border-right: none; }
+
+  footer {
+    margin-top: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+
+  .footer-note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: #1a1a28;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  /* Category colors */
+  .cat-core .term { color: var(--cat1); }
+  .cat-core .section-header { color: var(--cat1); }
+  .cat-core .bar { background: var(--cat1); }
+
+  .cat-rxjs .term { color: var(--cat2); }
+  .cat-rxjs .section-header { color: var(--cat2); }
+  .cat-rxjs .bar { background: var(--cat2); }
+
+  .cat-http .term { color: var(--cat3); }
+  .cat-http .section-header { color: var(--cat3); }
+  .cat-http .bar { background: var(--cat3); }
+
+  .cat-state .term { color: var(--cat4); }
+  .cat-state .section-header { color: var(--cat4); }
+  .cat-state .bar { background: var(--cat4); }
+
+  .cat-meta .term { color: var(--cat5); }
+  .cat-meta .section-header { color: var(--cat5); }
+  .cat-meta .bar { background: var(--cat5); }
+
+  @media print {
+    body { background: #fff; color: #000; padding: 20px; }
+    :root {
+      --bg: #fff;
+      --surface: #f8f8f8;
+      --border: #e0e0e0;
+      --text: #111;
+      --muted: #666;
+    }
+    .section { border: 1px solid #ddd; }
+    h1 span { color: #222; }
+    .cat-core .term,
+    .cat-rxjs .term,
+    .cat-http .term,
+    .cat-state .term,
+    .cat-meta .term { color: #000; font-weight: 700; }
+    .section-header { background: #f0f0f0; color: #333; }
+    .bar { background: #333 !important; }
+    .analogy { color: #444; }
+    .technical { color: #666; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Angular <span>Reference</span></h1>
+    <div class="subtitle">Terms · Analogies · Technical Definitions</div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:var(--cat1)"></div> Core Framework</div>
+    <div class="legend-item"><div class="dot" style="background:var(--cat2)"></div> RxJS / Async</div>
+    <div class="legend-item"><div class="dot" style="background:var(--cat3)"></div> HTTP / Routing</div>
+    <div class="legend-item"><div class="dot" style="background:var(--cat4)"></div> State (NgRx)</div>
+    <div class="legend-item"><div class="dot" style="background:var(--cat5)"></div> Meta / Runtime</div>
+  </div>
+</header>
+
+<div style="display:flex;flex-direction:column;gap:12px;">
+
+  <!-- CORE FRAMEWORK -->
+  <div class="section cat-core">
+    <div class="section-header"><div class="bar"></div>Core Framework</div>
+    <div class="col-labels">
+      <div class="col-label">Term</div>
+      <div class="col-label">Analogy</div>
+      <div class="col-label">Technical Definition</div>
+    </div>
+    <div class="row"><div class="cell"><span class="term">Angular</span></div><div class="cell"><span class="analogy">The building's architecture blueprint</span></div><div class="cell"><span class="technical">Frontend framework by Google for building SPAs</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Component</span></div><div class="cell"><span class="analogy">A room in the building</span></div><div class="cell"><span class="technical">UI building block — class + template + styles</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Template</span></div><div class="cell"><span class="analogy">The room's interior design</span></div><div class="cell"><span class="technical">HTML with Angular syntax bound to the component class</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Service</span></div><div class="cell"><span class="analogy">Building plumbing — shared, runs behind walls</span></div><div class="cell"><span class="technical">Injectable singleton class for shared logic/data</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Dependency Injection</span></div><div class="cell"><span class="analogy">Calling reception instead of building it yourself</span></div><div class="cell"><span class="technical">Design pattern — Angular provides class instances via inject()</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Standalone</span></div><div class="cell"><span class="analogy">A room that brings its own furniture</span></div><div class="cell"><span class="technical">Component that declares its own imports, no NgModule needed</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Module (legacy)</span></div><div class="cell"><span class="analogy">A floor grouping related rooms</span></div><div class="cell"><span class="technical">NgModule — legacy grouping mechanism for components/services</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Decorator</span></div><div class="cell"><span class="analogy">A name badge clipped onto a class</span></div><div class="cell"><span class="technical">TypeScript metadata annotation — e.g. @Component, @Injectable</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Input / Output</span></div><div class="cell"><span class="analogy">Room door slot — data in, events out</span></div><div class="cell"><span class="technical">Component API — input() passes data down, output() emits events up</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Lifecycle Hook</span></div><div class="cell"><span class="analogy">Room alarm at key moments — entering, settling, leaving</span></div><div class="cell"><span class="technical">Interface methods Angular calls at defined points in a component's life</span></div></div>
+  </div>
+
+  <!-- SIGNALS & CHANGE DETECTION -->
+  <div class="section cat-core">
+    <div class="section-header"><div class="bar"></div>Signals &amp; Change Detection</div>
+    <div class="col-labels">
+      <div class="col-label">Term</div>
+      <div class="col-label">Analogy</div>
+      <div class="col-label">Technical Definition</div>
+    </div>
+    <div class="row"><div class="cell"><span class="term">Signal</span></div><div class="cell"><span class="analogy">A live scoreboard — updates the exact screen watching</span></div><div class="cell"><span class="technical">Reactive primitive — tracked value that notifies dependants on change</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Change Detection</span></div><div class="cell"><span class="analogy">Building inspector walking every room</span></div><div class="cell"><span class="technical">Mechanism that syncs component state to the DOM</span></div></div>
+    <div class="row"><div class="cell"><span class="term">OnPush</span></div><div class="cell"><span class="analogy">Inspector only visits if you call him</span></div><div class="cell"><span class="technical">CD strategy — skips component unless input ref changes or event fires</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Zone.js</span></div><div class="cell"><span class="analogy">Spy bug on every phone — reports when any call ends</span></div><div class="cell"><span class="technical">Third-party library Angular uses to intercept async APIs</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Monkey Patch</span></div><div class="cell"><span class="analogy">Secretly swapping the office phone with a bugged version</span></div><div class="cell"><span class="technical">Runtime override of a native browser API without caller knowing</span></div></div>
+  </div>
+
+  <!-- RXJS / ASYNC -->
+  <div class="section cat-rxjs">
+    <div class="section-header"><div class="bar"></div>RxJS / Async</div>
+    <div class="col-labels">
+      <div class="col-label">Term</div>
+      <div class="col-label">Analogy</div>
+      <div class="col-label">Technical Definition</div>
+    </div>
+    <div class="row"><div class="cell"><span class="term">Observable</span></div><div class="cell"><span class="analogy">A news subscription — delivers whenever there's a story</span></div><div class="cell"><span class="technical">RxJS lazy data stream that emits values over time</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Subscribe</span></div><div class="cell"><span class="analogy">Actually opening your mailbox</span></div><div class="cell"><span class="technical">Method that starts execution of an Observable</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Pipe</span></div><div class="cell"><span class="analogy">Conveyor belt with filters before package reaches you</span></div><div class="cell"><span class="technical">RxJS .pipe() — chains operators to transform a stream</span></div></div>
+    <div class="row"><div class="cell"><span class="term">switchMap</span></div><div class="cell"><span class="analogy">Cancelling your Uber and ordering a new one</span></div><div class="cell"><span class="technical">RxJS operator — cancels previous inner Observable, starts new one</span></div></div>
+    <div class="row"><div class="cell"><span class="term">tap</span></div><div class="cell"><span class="analogy">Security camera — watches but doesn't touch</span></div><div class="cell"><span class="technical">RxJS operator — side effect only, passes value through unchanged</span></div></div>
+    <div class="row"><div class="cell"><span class="term">map</span></div><div class="cell"><span class="analogy">Factory worker reshaping every item on the belt</span></div><div class="cell"><span class="technical">RxJS operator — transforms each emitted value</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Async Pipe</span></div><div class="cell"><span class="analogy">Butler who opens mail, reads it, cleans up after</span></div><div class="cell"><span class="technical">Angular pipe that subscribes, unwraps, and auto-unsubscribes</span></div></div>
+  </div>
+
+  <!-- HTTP / ROUTING -->
+  <div class="section cat-http">
+    <div class="section-header"><div class="bar"></div>HTTP / Routing</div>
+    <div class="col-labels">
+      <div class="col-label">Term</div>
+      <div class="col-label">Analogy</div>
+      <div class="col-label">Technical Definition</div>
+    </div>
+    <div class="row"><div class="cell"><span class="term">Router</span></div><div class="cell"><span class="analogy">Building directory — tells you which room to go to</span></div><div class="cell"><span class="technical">Angular module managing client-side navigation via URL</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Guard</span></div><div class="cell"><span class="analogy">Bouncer at the room entrance</span></div><div class="cell"><span class="technical">Functional route guard — controls navigation access</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Interceptor</span></div><div class="cell"><span class="analogy">Customs — inspects every package in and out</span></div><div class="cell"><span class="technical">HTTP middleware — intercepts requests and responses globally</span></div></div>
+  </div>
+
+  <!-- NGRX STATE -->
+  <div class="section cat-state">
+    <div class="section-header"><div class="bar"></div>NgRx / State</div>
+    <div class="col-labels">
+      <div class="col-label">Term</div>
+      <div class="col-label">Analogy</div>
+      <div class="col-label">Technical Definition</div>
+    </div>
+    <div class="row"><div class="cell"><span class="term">NgRx Store</span></div><div class="cell"><span class="analogy">Single whiteboard everyone in the building reads from</span></div><div class="cell"><span class="technical">Redux-pattern global state container for Angular</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Selector</span></div><div class="cell"><span class="analogy">Highlighter on the whiteboard — shows only your section</span></div><div class="cell"><span class="technical">Pure function that derives a slice of state from the Store</span></div></div>
+    <div class="row"><div class="cell"><span class="term">Effect</span></div><div class="cell"><span class="analogy">Task triggered when someone updates the whiteboard</span></div><div class="cell"><span class="technical">NgRx side effect handler — listens for actions, runs async logic</span></div></div>
+  </div>
+
+</div>
+
+<footer>
+  <span class="footer-note">Angular Quick Reference · Modern Angular: Signals, inject(), Standalone</span>
+  <div style="display:flex;gap:8px;">
+    <span class="tag">v17+</span>
+    <span class="tag">Signals</span>
+    <span class="tag">No NgModules</span>
+  </div>
+</footer>
+
+</body>
+</html>

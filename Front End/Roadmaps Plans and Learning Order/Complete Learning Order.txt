@@ -1,0 +1,111 @@
+The Learning Order — Complete and Honest
+STAGE A — Learn Topics 1–59 First (Months 1–3)
+You have these PDFs already. Start learning from them immediately using your daily routine.
+Month 1 — JS & TypeScript Foundations
+  Week 1:  Topics 1–4   (let/const, Scope, Closures, Arrow Functions)
+  Week 2:  Topics 5–8   (Event Loop, Callbacks, Pass by Value, Promises)
+  Week 3:  Topics 9–12  (Array Methods, Destructuring, Template Literals, Modules)
+  Week 4:  Topics 13–16 (TS Interfaces, Readonly, Access Modifiers, Generics)
+
+Month 2 — TypeScript Deep + RxJS + Angular Core
+  Week 5:  Topics 17–20 (Decorators, Error Handling, Optional Chaining, RxJS Subs)
+  Week 6:  Topics 21–24 (takeUntilDestroyed, async Pipe, Signals, OnPush)
+  Week 7:  Topics 25–28 (Lifecycle Hooks, Input/Output, Services & DI, Template Syntax)
+  Week 8:  Topics 29–32 (Control Flow, Directives, Content Projection, ViewChild)
+
+Month 3 — Angular Advanced + NgRx
+  Week 9:  Topics 33–36 (Reactive Forms, Validation, Template Forms, HttpClient)
+  Week 10: Topics 37–40 (Interceptors, Router, Guards, Lazy Loading)
+  Week 11: Topics 41–44 (Custom Directives, Pipes, Animations, State Patterns)
+  Week 12: Topics 45–48 (Performance, RxJS Operators, Testing Components, Testing Services)
+  Week 13: Topics 49–52 (CDK, SSR, NgRx Core, NgRx Effects)
+  Week 14: Topics 53–56 (Selectors, Entity, Component Store, SignalStore)
+  Week 15: Topics 57–59 (Router Store, NgRx Testing, Best Practices)
+  
+How to learn each topic from the PDF:
+Read the full topic once. Then close the PDF and write from memory: the analogy, the core concept, and one code example. Then open the PDF and check what you missed.
+Then do the practice exercises — all three of them, independently, without looking back.
+That process is the learning. Reading alone is not learning.
+
+STAGE B — Get Responses + Learn Topics 60–82 (Months 3–5)
+Do not collect all 23 responses upfront. Get one response, create a small PDF or print it, study it that same week. Then get the next one.
+Month 3 (overlap with end of Stage A)
+  Week 13: Get + study Topic 60 — Clean Code Principles
+  Week 14: Get + study Topic 61 — SOLID Principles
+  Week 15: Get + study Topic 62 — Design Patterns in Practice
+
+Month 4
+  Week 16: Topic 63 — Big O & Practical Complexity
+  Week 17: Topic 64 — Recursion & Tree Traversal
+  Week 18: Topic 65 — Data Structures for Frontend
+  Week 19: Topic 66 — Module & Standalone Architecture
+  Week 20: Topic 67 — Design Patterns Applied in Angular
+
+Month 5
+  Week 21: Topic 68 — Component Reusability & CVA
+  Week 22: Topic 69 — CSS Architecture
+  Week 23: Topic 70 — Angular Component Styling
+  Week 24: Topic 71 — Core Web Vitals & Angular
+  Week 25: Topic 72 — Angular Performance Profiling
+
+STAGE C — Get Responses + Learn D1–D40 DSA (Months 4–7)
+DSA starts after you have reached Week 9 of Stage A — after you have solid JS/TS/Angular foundations. 
+Starting DSA before that means you will hit problems referencing concepts you have not studied yet.
+Month 4 (start DSA alongside Mastery Plan Topics 63+)
+  Week 16: Get + study D1 — How to Read a Problem
+  Week 17: Get + study D2 — Brute Force First Always
+  Week 18: Get + study D3 — How to Spot Patterns
+  Week 19: Get + study D4 — Complexity Thinking
+  Week 20: Get + study D5 — The Problem Solving Framework
+  Week 21: Get + study D6 — Debugging Your Own Code
+
+Month 5
+  Week 22: D7  — Arrays & Two Pointer
+  Week 23: D8  — Strings & String Manipulation
+  Week 24: D9  — Hash Maps & Hash Sets
+  Week 25: D10 — Sliding Window Pattern
+  Week 26: D11 — Prefix Sums
+  Week 27: D12 — Stacks
+
+Month 6
+  Week 28: D13 — Queues
+  Week 29: D14 — Linked Lists
+  Week 30: D15 — Sorting
+  Week 31: D16 — Binary Search
+  Week 32: D17 — Recursion Foundations
+  Week 33: D18 — Trees Structure & Traversal
+  Week 34: D19 — Trees Common Patterns
+
+Month 7
+  Week 35: D20 — Binary Search Trees
+  Week 36: D21 — Graphs Structure
+  Week 37: D22 — Graph Traversal DFS & BFS
+  Week 38: D23 — DP Mental Model
+  Week 39: D24 — DP 1D Problems
+  Week 40: D25 — DP 2D Problems
+  Week 41: D26 — Heaps & Priority Queues
+  Week 42: D27 — Backtracking
+  Week 43: D28 — Greedy Algorithms
+
+Month 8
+  Week 44: D29–D36 — Applied Practice (Stage 4)
+  Week 48: D37–D40 — System Design (Stage 5)
+
+The One Rule That Changes Everything
+Get the response. Print it or save it. Study it that same week. Only then get the next one.
+Not 10 at a time. Not all 40 DSA topics collected before starting. One at a time, studied before the next is fetched.
+This is the rule that turns your preference for paper learning into actual learning rather than an ever-growing collection of unread PDFs.
+
+Your Immediate Next Actions — This Week
+Today or tomorrow:
+Open the PDF for Topic 1. Read it fully. Close it. Write the analogy and core concept from memory. Do the practice exercise.
+This week:
+Complete Topics 1–4 using your commute and WFH morning blocks as designed.
+Do not:
+Spend this week getting more responses or creating more PDFs. You have everything you need to start right now.
+
+The Complete Timeline at a Glance
+PeriodFocusTopicsNow — Month 3Learn from existing PDFsTopics 1–59Month 3–5Get + study one per weekTopics 60–82Month 4–8Get + study one per weekDSA D1–D40Month 6 onwardApply for Tier C jobsActive learning continuesMonth 9–12Upgrade to Tier BDSA Stage 4–5 + advanced prep
+
+The preparation phase is over. You have the PDFs for Topics 1–59. That is your starting point and it is enough.
+Open Topic 1 today.

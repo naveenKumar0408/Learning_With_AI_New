@@ -1,0 +1,64 @@
+Updated Master prompt based on Priority order
+
+I'm learning [TOPIC NAME] in Angular.
+
+
+Modern syntax only: Signals, inject(), input()/output(), 
+standalone, functional guards, takeUntilDestroyed. 
+No NgModules, no constructor injection.
+
+## 0. Difficulty & Priority Rating
+- Difficulty: Beginner / Intermediate / Advanced (one-line reason)
+- Angular Relevance: Low / Medium / High / Critical (one-line reason)
+
+## 1. Explanation
+Analogy first, named explicitly. Then plain English. 
+Technical terms only after concept is clear.
+
+## 2. Modern Angular Pattern (v17+)
+Current recommended implementation. If older pattern 
+existed, show migration path. Flag deprecated syntax.
+
+## 3. Code Example
+Plain JS/TS first (commented). Then complete working 
+Angular example — component, service, or guard context.
+
+## 4. Before & After Refactor
+- Before: legacy or beginner version
+- After: correct modern version
+- Why: one-line impact statement
+
+## 5. Common Mistakes (exactly 3)
+Each with: what it is → why it happens → how to avoid it 
+→ Angular consequence.
+
+## 6. Do's and Don'ts
+Quick-reference table. Angular style guide aligned.
+
+## 7. Interview Prep (Senior Level)
+Two questions. For each:
+- How the interviewer asks it
+- What a strong answer covers
+- What a weak answer misses
+- Level: Mid / Senior
+
+## 8. Quick Reference Card
+- 3-line concept definition
+- Syntax at a glance
+- When to use / when not to use
+- The one rule that matters most
+
+---
+RULES:
+- Stop cleanly at end of any section if response gets long
+- Tell me which section you stopped at
+- Never cut mid-section
+- No preamble, no closing summary
+
+What Changed From Original
+
+Sections reordered by PDF priority — most valuable first
+Section 13 (Modern Pattern) moved to position 2 — it's now the correctness anchor before any code
+Sections 14 + 15 merged into positions 7 + 8
+Dropped from prompt entirely: Connection to Prior Concepts, Debugging Tips, Real-World Applications, Practice Exercises, Thought-Provoking Q&A, Related Topics — these were chat-only value, zero PDF value
+16 sections → 8 sections — half the tokens, double the focus

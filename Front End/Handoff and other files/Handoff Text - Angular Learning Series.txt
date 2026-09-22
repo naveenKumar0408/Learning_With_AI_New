@@ -1,0 +1,233 @@
+## CONTEXT HANDOFF — Angular Learning Series
+
+I've been learning Angular-relevant JavaScript and TypeScript concepts
+in a structured format. Here is everything you need to continue
+seamlessly.
+
+---
+
+### MASTER PROMPT (follow this format for every topic response)
+
+I'm learning [Y] in [X].
+
+**Context:** I'm an Angular application developer, so include examples
+and explanations relevant to Angular wherever applicable.
+
+**Communication Style:** Explain everything in simple, plain English
+that is easy to understand and hard to forget. Use analogies,
+real-world comparisons, and multiple explanation methods (visual,
+story-based, analogy-based) before introducing technical terms.
+Every explanation should be clear enough that I could explain it to
+someone else and they would also understand it. Avoid leading with
+technical jargon — always explain the concept in human terms first,
+then map it to the technical term.
+
+Please structure your response exactly as follows:
+
+## 0. Difficulty & Priority Rating
+Rate [Y] on:
+- **Difficulty:** Beginner / Intermediate / Advanced (with a one-line reason)
+- **Angular Relevance:** Low / Medium / High / Critical (with a one-line reason)
+
+## 1. Explanation
+Explain [Y] in plain English first using an analogy or real-world
+comparison. Then explain its purpose, how it works, and when it's
+commonly used. Only introduce technical terms after the concept is
+already clear.
+
+## 2. Connection to Prior Concepts
+Relate [Y] to any previously covered concepts where relevant:
+- How it builds on or connects to prior topics
+- Any important distinctions or overlaps to be aware of
+- A short bridging sentence I can add to my notes
+
+## 3. Code Example
+A simple, well-commented code example demonstrating [Y] in plain
+JS/TS. Before each code block, explain in one plain English sentence
+what the code is about to show. Follow with a real-world
+Angular-specific example (component, service, or lifecycle hook
+context).
+
+## 4. Before & After Refactor
+Show a realistic "bad practice → good practice" code example:
+- **Before:** What a beginner or legacy codebase might write
+- **After:** The correct, refactored version
+- **Why it matters:** Plain English summary before the code
+Use a plain English summary before the code to explain the problem.
+
+## 5. Common Mistakes & Misconceptions
+Three mistakes beginners have about [Y], each with:
+- What the mistake is (with analogy if possible)
+- Why it happens
+- How to avoid it
+- Angular-specific consequence if relevant
+
+## 6. Do's and Don'ts
+Quick-reference table aligned with Angular's style guide and
+production conventions.
+
+## 7. Debugging Tips
+Common errors or symptoms:
+- The error message or buggy behavior
+- What causes it (in plain English)
+- How to fix it
+- Angular-specific note if applicable
+
+## 8. Real-World Applications
+Two real-world scenarios — at least one Angular-specific.
+Plain English explanation before any code.
+
+## 9. Practice Exercises
+Three progressively challenging exercises (Beginner → Intermediate
+→ Advanced). Problem statements only — no solutions.
+At least one Angular-specific.
+
+## 10. Key Takeaways
+- Core concepts in plain English (bullets)
+- Quick-reference table where applicable
+- Angular-specific rules to remember
+- One-line memory aid
+
+## 11. Thought-Provoking Question + Answer
+A deep question + thorough answer covering:
+- Plain English explanation first
+- Angular-specific implication
+- Practical rule to take away
+
+## 12. Related Topics to Learn Next
+Grouped as: ES6/JS Concepts | TypeScript Concepts |
+Angular-Specific Concepts
+
+---
+
+### COMPLETED TOPICS (do not re-cover these)
+
+| # | Topic | Category |
+|---|---|---|
+| 1 | `let` vs `const` vs `var` | ES6/JS |
+| 2 | Block Scope & Hoisting | ES6/JS |
+| 3 | Closures & Lexical Scope | ES6/JS |
+| 4 | Arrow Functions & `this` binding | ES6/JS |
+| 5 | The Event Loop & Call Stack | ES6/JS |
+| 6 | Callback Functions | ES6/JS |
+| 7 | Pass by Value vs Pass by Reference | ES6/JS |
+| 8 | Promises & async/await | ES6/JS |
+| 9 | Array Methods | ES6/JS |
+| 10 | Destructuring & Spread Operator | ES6/JS |
+| 11 | Template Literals | ES6/JS |
+| 12 | Modules & Imports/Exports | ES6/JS |
+| 13 | TypeScript Interfaces & Types | TypeScript |
+
+---
+
+### UPCOMING TOPICS IN ORDER
+
+| # | Topic | Category | Tier |
+|---|---|---|---|
+| 14 | `readonly` & Immutability Patterns | TypeScript | 2 |
+| 15 | Access Modifiers (`private`, `protected`, `public`) | TypeScript | 2 |
+| 16 | TypeScript Generics | TypeScript | 3 |
+| 17 | TypeScript Decorators | TypeScript | 3 |
+| 18 | Error Handling (try/catch + RxJS) | TypeScript/RxJS | 3 |
+| 19 | Optional Chaining & Nullish Coalescing | TypeScript | 3 |
+| 20 | RxJS Subscription Management | Angular | 3 |
+| 21 | `takeUntilDestroyed` & `DestroyRef` | Angular | 3 |
+| 22 | `async` pipe | Angular | 3 |
+| 23 | OnPush Change Detection | Angular | 3 |
+
+---
+
+### KEY STYLE RULES TO MAINTAIN
+
+- Always lead with an analogy or real-world comparison
+  before any technical terms
+- Every section uses the numbered format above — no skipping
+- Code examples have plain English explanation before each block
+- Memory aids are one punchy sentence
+- Analogies used in this series (keep consistent):
+  - Closures = backpack
+  - `this` = name tag
+  - Event Loop = restaurant with one waiter
+  - Pass by Reference = house key
+  - Array methods = factory assembly line
+  - Modules = LEGO sets
+  - Interfaces = blueprints / form validation
+
+---
+
+### QUICK REFERENCE SUMMARY (all completed topics)
+
+**Topic 1 — `let`/`const`/`var`**
+> Default to `const`, `let` when reassigning, `var` never.
+- `const` = locked box | `let` = open box | `var` = everyone's box
+
+**Topic 2 — Block Scope & Hoisting**
+> Hoisting = HR paperwork before day one. `var` = building pass.
+`let`/`const` = room pass with locked door until declaration line.
+- TDZ = badge created but not activated
+
+**Topic 3 — Closures & Lexical Scope**
+> A closure is a backpack — packed at birth, opened when it runs.
+- Capture variables not values — live TV feed not a photo
+- Always unsubscribe — take down your tent
+
+**Topic 4 — Arrow Functions & `this`**
+> Regular function = temp worker no ID. Arrow = permanent employee
+name tag always on.
+- Arrow callbacks always safe in Angular async code
+- Arrow class properties for methods passed as references
+
+**Topic 5 — The Event Loop**
+> One waiter, one task. Kitchen handles long orders. Pickup counter
+checked only when waiter is free.
+- Call Stack → Web APIs → Queue → Microtask queue runs first
+
+**Topic 6 — Callback Functions**
+> Instructions handed to someone else to run when ready.
+- Sync callbacks = array methods (immediate)
+- Async callbacks = HTTP/timers (from queue)
+- Never nest beyond 2 levels — use RxJS to flatten
+
+**Topic 7 — Pass by Value vs Reference**
+> Primitives = photocopy. Objects = house key. OnPush = security
+guard checking keys not furniture.
+- Mutation invisible to OnPush — always return new references
+
+**Topic 8 — Promises & async/await**
+> Promise = buzzer. `await` = wait without freezing. `Promise.all`
+= all contractors at once.
+- Always try/catch. Observables for streams, async/await for
+one-time ops.
+
+**Topic 9 — Array Methods**
+> `map` = transform all. `filter` = keep some. `reduce` = snowball.
+`find` = spotlight. `forEach` = look don't touch.
+- Filter before map. `sort` mutates — spread first.
+
+**Topic 10 — Destructuring & Spread**
+> Unpack the suitcase. Photocopy to new location. Collect leftovers.
+Spread is always shallow. Later spread wins.
+- Spread each nested level that changes
+
+**Topic 11 — Template Literals**
+> Mad Libs for strings. Backticks frame, `${}` fills the blanks.
+Multi-line free. `.trim()` keeps it clean.
+- `encodeURIComponent()` for user input in URLs
+
+**Topic 12 — Modules & Imports/Exports**
+> Every file is a private LEGO set. `export` shares. `import`
+borrows. Barrel files are the index page.
+- Named exports always. `CommonModule` for `*ngFor`/`*ngIf`.
+- Standalone components preferred for new Angular apps.
+
+**Topic 13 — TypeScript Interfaces & Types**
+> Interfaces = blueprints. Compile-time only — disappear at runtime.
+`any` = hole in the dam.
+- `Partial`, `Omit`, `Pick` build new blueprints from old ones
+- Optional chaining + Zod for runtime safety
+
+---
+
+Please confirm you have this context and are ready to continue
+with Topic 14: `readonly` & Immutability Patterns.
+Then give me the full response using the master prompt format above.

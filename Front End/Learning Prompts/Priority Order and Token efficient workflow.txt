@@ -1,0 +1,56 @@
+Section Order of Importance for PDF
+Ranked by how much they contribute to your actual goal (build confidence + interview ready):
+PrioritySectionKeep in PDF?
+🔴 Must0 — Difficulty RatingYes — sets context
+🔴 Must1 — ExplanationYes — core understanding
+🔴 Must3 — Code ExampleYes — the build bridge
+🔴 Must4 — Before & After RefactorYes — kills bad habits
+🔴 Must13 — Modern Angular PatternYes — correctness
+🔴 Must14 — Interview PrepYes — job goal
+🔴 Must15 — Quick Reference CardYes — revision anchor
+🟡 Useful5 — Common MistakesYes if space allows
+🟡 Useful10 — Key TakeawaysMerge into Section 15
+🟡 Useful6 — Do's and Don'tsYes if space allows
+🟠 Optional2 — Connection to Prior ConceptsSkip in PDF
+🟠 Optional8 — Real-World ApplicationsSkip unless unique
+🟠 Optional11 — Thought-Provoking Q&ASkip in PDF
+🔵 Drop7 — Debugging TipsChat only, not PDF
+🔵 Drop9 — Practice ExercisesChat only, not PDF
+🔵 Drop12 — Related TopicsAlready in roadmap
+Smart rule: Sections 10 and 15 overlap heavily — merge them into one "Quick Reference + Takeaways" section per topic in the PDF.
+
+Token-Efficient Workflow (End to End)
+Step 1 — Generate the response
+Paste the master prompt with [TOPIC NAME] filled in. One message. Done.
+Step 2 — Read it independently
+Don't come back to chat. Read the response on your own first.
+Step 3 — Doubt pass (optional, targeted)
+If something didn't click, come back with the exact section number and the specific doubt.
+Example: Section 3 — why does inject() need to run in injection context?
+Not: Can you explain inject() again? — that wastes tokens re-explaining what's already there.
+Step 4 — Signal consolidation
+When the topic is fully clear, type exactly:
+Consolidate [TOPIC NAME]
+Doubts resolved: [yes / list the clarifications we covered]
+Step 5 — I generate the PDF doc
+I take the original response + any clarifications and produce the final cleaned PDF-ready document for that topic. No re-explaining. No re-generating from scratch.
+Step 6 — Phase PDF
+After all topics in a phase are consolidated, type:
+Generate Phase [N] PDF
+Topics: [list them]
+I combine all topic docs into one PDF.
+
+Token Rules Going Forward
+You never paste content I already generated — if it's in this chat, I have it. Only paste content from a different chat.
+Doubt messages stay under 2 lines — section number + specific gap. Nothing else.
+One topic per chat session — keeps context clean, prevents drift, makes consolidation fast.
+Never ask me to re-explain a full section — ask for the specific line or concept that broke. I fix only that.
+
+Trigger Shortcuts (Save These)
+What you type					 What happens
+Gen: [TOPIC NAME]I generate the full 8-section response
+Doubt: S[N] — [gap]I address only that section gap
+Consolidate: [TOPIC NAME]I produce the PDF-ready doc
+Phase PDF: [N]I combine all consolidated topics into one PDF
+
+Start with: Gen: Standalone Components and I'll run the full 8-section response right now.

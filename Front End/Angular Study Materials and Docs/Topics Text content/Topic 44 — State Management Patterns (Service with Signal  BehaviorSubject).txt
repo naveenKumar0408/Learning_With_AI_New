@@ -1,0 +1,792 @@
+Topic 44 — State Management Patterns (Service with Signal / BehaviorSubject)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — The individual pieces (signals, BehaviorSubject, services) are already familiar from earlier topics; the difficulty here is architectural — understanding when to use which pattern, how to structure a store service correctly, and why naive approaches cause bugs at scale.
+Angular Relevance: Critical — Every non-trivial Angular app needs a shared state strategy; this is the pattern you reach for before installing NgRx or Akita, and it covers 80% of real-world Angular state requirements with zero third-party dependencies.
+
+Section 1 — Explanation
+The Whiteboard Analogy
+Imagine a shared office whiteboard that every team member can read at any time. When someone updates a number on the whiteboard, everyone in the room immediately sees the new value — they don't need to be told, they just look up and it's already changed.
+A state management service is that whiteboard. Instead of each component holding its own local copy of data (their own private notepad), they all read from and write to one central service. The service owns the data. Components are just displays and input devices.
+The two technologies for building this whiteboard differ in how they notify readers of changes:
+
+Signal-based store — reactive by Angular's change detection itself; components reading a signal are automatically re-evaluated when the signal updates; no subscription management needed
+BehaviorSubject-based store — reactive via RxJS; components subscribe to an observable stream; requires subscription cleanup but integrates naturally with RxJS pipelines
+
+Technical Explanation:
+Both patterns follow the same architectural shape:
+Private mutable state  →  Public read-only projection  →  Components read & display
+Public write methods   →  Components call to update
+The discipline of this shape is what makes state management work. Breaking it — by exposing the mutable state directly — is what causes the bugs.
+Side-by-side comparison:
+Signal StoreBehaviorSubject StoreState primitivesignal<T>(initialValue)new BehaviorSubject<T>(initialValue)Public read APIreadonly count = this.#count.asReadonly()readonly count$ = this.#count.asObservable()Write APIthis.#count.set(n) / .update(fn)this.#count.next(newValue)Template consumption{{ store.count() }}{{ store.count$ | async }}Subscription cleanupNone — signals are not subscriptionsRequired — takeUntilDestroyed() or async pipeRxJS pipeline integrationUse toObservable(signal) to bridgeNative — already an ObservableBest forNew Angular (v17+) apps, OnPush, simple–medium complexityApps already heavy on RxJS, complex async pipelines, HTTP chains
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 23 — Angular Signals — the signal store pattern is a direct architectural application of signal(), computed(), and effect(); this topic takes those primitives and organises them into a service
+Topic 20 — RxJS Subscription Management — the BehaviorSubject pattern requires proper subscription cleanup; every rule from Topic 20 applies here
+Topic 21 — takeUntilDestroyed & DestroyRef — BehaviorSubject stores in components must use takeUntilDestroyed() to prevent memory leaks
+Topic 22 — async Pipe — BehaviorSubject-based stores are consumed in templates via the async pipe; Topic 22's rules apply directly
+Topic 24 — OnPush Change Detection — signal-based stores work perfectly with OnPush because signal reads are tracked; BehaviorSubject stores require the async pipe or manual markForCheck() to work with OnPush
+Topic 27 — Services & Dependency Injection — the store is a service; providedIn: 'root' vs. feature-level provision determines state scope
+
+Bridging Note:
+
+In Topic 23 you learned that signal() holds a value and notifies readers when it changes, and computed() derives values from signals automatically. This topic takes that knowledge and applies it architecturally: the signal lives in a service (not a component), making it shared across the entire app. The component's job shrinks from "hold state + transform it + display it" to just "display it and call write methods."
+Most directly extends: Topic 23 — Angular Signals (the signal store is signals applied at architectural scale).
+
+Section 3 — Code Example
+Plain TS Concept in Isolation — The Shape of a Store
+typescript// The core pattern — no Angular needed to understand the structure
+class CounterStore {
+  // Private mutable state — ONLY this class can write to it
+  #count = 0;
+
+  // Public read-only projection — anyone can READ, no one can WRITE directly
+  get count() { return this.#count; }
+
+  // Public write methods — the ONLY way to change state
+  increment() { this.#count++; }
+  decrement() { this.#count--; }
+  reset()     { this.#count = 0; }
+}
+
+// External code can read but cannot corrupt state:
+const store = new CounterStore();
+store.increment();
+console.log(store.count); // 1
+// store.#count = 999;    // ← compile error — private field
+This shape — private mutable state, public read projection, public write methods — is the entire pattern. Both Signal and BehaviorSubject stores are just this shape made reactive.
+
+Real Angular Example 1 — Signal-Based Store
+typescript// cart.store.ts
+import { Injectable, computed, signal } from '@angular/core';
+
+export interface CartItem {
+  id: number;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+@Injectable({ providedIn: 'root' })
+export class CartStore {
+
+  // ── Private mutable state ──────────────────────────────────────────────
+  // The # prefix makes these truly private (ES2022 private fields)
+  // Components can never access or mutate these directly
+  readonly #items = signal<CartItem[]>([]);
+  readonly #isLoading = signal(false);
+
+  // ── Public read-only projections ───────────────────────────────────────
+  // asReadonly() returns a Signal<T> with no set/update methods exposed
+  readonly items       = this.#items.asReadonly();
+  readonly isLoading   = this.#isLoading.asReadonly();
+
+  // Derived state — computed() recalculates only when #items changes
+  readonly itemCount   = computed(() => this.#items().reduce((sum, i) => sum + i.quantity, 0));
+  readonly totalPrice  = computed(() => this.#items().reduce((sum, i) => sum + i.price * i.quantity, 0));
+  readonly isEmpty     = computed(() => this.#items().length === 0);
+
+  // ── Public write methods ───────────────────────────────────────────────
+  addItem(item: CartItem): void {
+    this.#items.update(current => {
+      const exists = current.find(i => i.id === item.id);
+      if (exists) {
+        // Replace the existing item with an incremented quantity (immutable update)
+        return current.map(i => i.id === item.id
+          ? { ...i, quantity: i.quantity + 1 }
+          : i
+        );
+      }
+      return [...current, item];  // new reference — signals and pure pipes detect this
+    });
+  }
+
+  removeItem(id: number): void {
+    this.#items.update(current => current.filter(i => i.id !== id));
+  }
+
+  clearCart(): void {
+    this.#items.set([]);
+  }
+
+  setLoading(loading: boolean): void {
+    this.#isLoading.set(loading);
+  }
+}
+typescript// cart-icon.component.ts — reads from the store, no local state
+@Component({
+  selector: 'app-cart-icon',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,  // works perfectly with signals
+  template: `
+    <button>
+      🛒
+      @if (store.itemCount() > 0) {
+        <span class="badge">{{ store.itemCount() }}</span>
+      }
+    </button>
+  `
+})
+export class CartIconComponent {
+  // inject() — Topic 27 pattern; no constructor boilerplate
+  protected store = inject(CartStore);
+  // No local state, no ngOnInit, no subscriptions — pure display component
+}
+typescript// product-card.component.ts — writes to the store
+@Component({
+  selector: 'app-product-card',
+  standalone: true,
+  template: `
+    <h3>{{ product().name }}</h3>
+    <p>{{ product().price | currency }}</p>
+    <button (click)="addToCart()">Add to Cart</button>
+  `
+})
+export class ProductCardComponent {
+  product = input.required<CartItem>();
+  private store = inject(CartStore);
+
+  addToCart() {
+    this.store.addItem(this.product());
+    // CartIconComponent updates automatically — no EventEmitter, no @Output
+  }
+}
+
+Real Angular Example 2 — BehaviorSubject-Based Store
+typescript// auth.store.ts — BehaviorSubject pattern; natural fit for auth (RxJS pipelines, HTTP)
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable, map } from 'rxjs';
+
+export interface AuthState {
+  user: User | null;
+  token: string | null;
+  isLoading: boolean;
+}
+
+const INITIAL_STATE: AuthState = {
+  user: null,
+  token: null,
+  isLoading: false
+};
+
+@Injectable({ providedIn: 'root' })
+export class AuthStore {
+
+  // ── Private mutable state ──────────────────────────────────────────────
+  // BehaviorSubject requires an initial value and holds the latest value
+  readonly #state = new BehaviorSubject<AuthState>(INITIAL_STATE);
+
+  // ── Public read-only observable stream ────────────────────────────────
+  // asObservable() strips .next() from the type — consumers cannot push values
+  readonly state$ = this.#state.asObservable();
+
+  // Derived streams — map() recalculates when state$ emits
+  readonly user$      = this.state$.pipe(map(s => s.user));
+  readonly isLoggedIn$= this.state$.pipe(map(s => s.token !== null));
+  readonly isLoading$ = this.state$.pipe(map(s => s.isLoading));
+
+  // ── Private helper — immutable state update ────────────────────────────
+  // Spreads current state and merges only the changed slice
+  #patch(partial: Partial<AuthState>): void {
+    this.#state.next({ ...this.#state.getValue(), ...partial });
+  }
+
+  // ── Public write methods ───────────────────────────────────────────────
+  setLoading(isLoading: boolean): void {
+    this.#patch({ isLoading });
+  }
+
+  loginSuccess(user: User, token: string): void {
+    this.#patch({ user, token, isLoading: false });
+  }
+
+  logout(): void {
+    this.#state.next(INITIAL_STATE);  // full state reset
+  }
+}
+typescript// nav.component.ts — consuming BehaviorSubject store with async pipe
+@Component({
+  selector: 'app-nav',
+  standalone: true,
+  imports: [AsyncPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (store.isLoggedIn$ | async) {
+      <span>Welcome, {{ (store.user$ | async)?.name }}</span>
+      <button (click)="logout()">Log out</button>
+    } @else {
+      <a routerLink="/login">Log in</a>
+    }
+  `
+})
+export class NavComponent {
+  protected store = inject(AuthStore);
+
+  logout() {
+    this.store.logout();
+  }
+  // async pipe handles subscription and cleanup automatically — Topic 22
+  // No takeUntilDestroyed needed here because async pipe manages it
+}
+
+Section 4 — Before & After Refactor
+❌ Before — State Scattered Across Components
+typescript// WRONG: every component manages its own copy of user state
+@Component({ template: `<span>{{ user?.name }}</span>` })
+export class HeaderComponent implements OnInit {
+  user: User | null = null;
+
+  ngOnInit() {
+    this.authService.getUser().subscribe(u => this.user = u);
+    // This HTTP call fires AGAIN every time HeaderComponent initialises
+  }
+}
+
+@Component({ template: `<p>Hello {{ user?.name }}</p>` })
+export class DashboardComponent implements OnInit {
+  user: User | null = null;
+
+  ngOnInit() {
+    this.authService.getUser().subscribe(u => this.user = u);
+    // THIRD copy of the same data. Three HTTP calls. Three places to go out of sync.
+  }
+}
+What breaks:
+
+Three separate HTTP requests for the same data on the same page
+If the user updates their profile, only the component that triggered the update reflects the change — the other two are stale
+Every component carries subscription cleanup boilerplate
+Impossible to test components in isolation — every test needs a mock HTTP call
+
+
+✅ After — Single Source of Truth in a Store Service
+typescript// GOOD: one HTTP call, one source of truth, all components stay in sync
+@Injectable({ providedIn: 'root' })
+export class UserStore {
+  readonly #user = signal<User | null>(null);
+  readonly user = this.#user.asReadonly();
+
+  private http = inject(HttpClient);
+
+  loadUser(): void {
+    // Called ONCE from AppComponent or a route resolver
+    this.http.get<User>('/api/me').subscribe(u => this.#user.set(u));
+  }
+
+  updateUser(update: Partial<User>): void {
+    this.#user.update(current => current ? { ...current, ...update } : null);
+  }
+}
+
+// HeaderComponent — zero HTTP calls, zero subscription management
+@Component({ template: `<span>{{ store.user()?.name }}</span>` })
+export class HeaderComponent {
+  protected store = inject(UserStore);
+}
+
+// DashboardComponent — same store, automatically stays in sync
+@Component({ template: `<p>Hello {{ store.user()?.name }}</p>` })
+export class DashboardComponent {
+  protected store = inject(UserStore);
+}
+// When updateUser() is called anywhere, BOTH components update simultaneously
+Why this refactor matters in Angular:
+
+One HTTP call instead of N calls (one per component)
+All components sharing the same store signal see updates simultaneously — no stale data
+OnPush change detection works out of the box with signals
+Unit tests inject a mock store — no HTTP mocking needed in component tests
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Exposing the Mutable Signal or BehaviorSubject Directly
+What the mistake looks like:
+typescript@Injectable({ providedIn: 'root' })
+export class CartStore {
+  // WRONG: public writable signal — any component can call .set() directly
+  items = signal<CartItem[]>([]);
+}
+
+// In a component somewhere:
+this.cartStore.items.set([]); // ← bypasses all store logic, clears cart silently
+Why developers make it: It's less code. Making the signal public feels simpler than writing asReadonly() and separate write methods.
+How to avoid it: Always use #privateSignal + public readonly = this.#privateSignal.asReadonly(). The write methods on the store are the single entry point for all mutations — they can contain validation, logging, or derived state updates.
+Angular-specific consequence: State mutations bypass the store's logic, making it impossible to add side effects (analytics, persistence, validation) without hunting down every direct mutation across the codebase. This is the architectural equivalent of making every variable public in an OOP class.
+
+Mistake 2 — Creating a New Store Instance Per Component
+What the mistake looks like:
+typescript@Component({...})
+export class ProductListComponent {
+  // WRONG: component-level provider creates a NEW store instance for this component
+  providers: [CartStore]  // ← in @Component metadata, not @Injectable root
+}
+Why developers make it: Developers copy-paste a service provider from a feature module into the component, not realising this creates a scoped instance that is not shared with the rest of the app.
+How to avoid it: State management services that need to be shared across the app must use providedIn: 'root' in @Injectable. Never list a store in a component's providers: [] array unless you deliberately want component-scoped state (which is rare and should be explicitly documented).
+Angular-specific consequence: Each component that lists the store in its providers gets a fresh, empty store instance. CartIconComponent shows 0 items while ProductListComponent shows 3 — from two different store instances. This is one of the hardest Angular bugs to diagnose because there is no error, just silently disconnected state.
+
+Mistake 3 — Subscribing to a BehaviorSubject Store Inside ngOnInit Without Cleanup
+What the mistake looks like:
+typescriptngOnInit() {
+  // WRONG: no takeUntilDestroyed — subscription leaks when component is destroyed
+  this.authStore.user$.subscribe(user => {
+    this.currentUser = user;
+  });
+}
+Why developers make it: The async pipe isn't always applicable (e.g. when needing the value in TypeScript logic, not just the template), so developers subscribe manually and forget cleanup.
+How to avoid it: Use takeUntilDestroyed(this.destroyRef) on every manual BehaviorSubject subscription, or prefer the async pipe in templates wherever possible. Signal stores avoid this entirely — no subscription to manage.
+Angular-specific consequence: The destroyed component's callback continues firing every time the store emits, updating a reference on a destroyed view. In long sessions with heavy navigation this accumulates — the classic Angular memory leak.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse private fields (#state) for mutable state and expose only asReadonly() signals or .asObservable() streamsExpose mutable signals or BehaviorSubjects publicly — any component can corrupt statePut the store in providedIn: 'root' for app-wide shared stateAdd the store to a component's providers: [] unless you explicitly need component-scoped stateUse computed() for all derived state in signal storesRecompute derived values (totals, counts, filters) inside components — this scatters logic and duplicates workUse update(fn) for signal mutations that depend on the current value (items.update(curr => [...curr, item]))Call set() with a manually retrieved current value (set([...items(), item])) — this is a race condition in concurrent update scenariosUse #patch() helper for partial BehaviorSubject state updates ({ ...state.getValue(), ...partial })Call .next() with a full state object built from scratch every time — this is error-prone and verboseConsume BehaviorSubject stores via async pipe in templates for automatic subscription cleanupManually subscribe to BehaviorSubject stores in ngOnInit without takeUntilDestroyed
+
+Section 7 — Debugging Tips
+Bug 1 — Component Not Updating When Store State Changes
+Symptom: The store's set() or next() is called, the store's internal state is correct (verified in DevTools), but the component template doesn't reflect the new value.
+Plain English Cause (Signal store): The component is using OnPush and reading the signal through a local variable (const items = store.items() in ngOnInit) rather than reading store.items() directly in the template. The template is not tracking the signal read — only template-level signal reads are tracked by Angular's reactivity graph.
+Plain English Cause (BehaviorSubject store): The component is subscribing manually and assigning to a local property, but is also OnPush and not calling this.cdr.markForCheck() after the assignment.
+Fix:
+typescript// Signal store: read signals directly in the template, never cache them in local vars
+// WRONG:
+ngOnInit() { this.items = this.store.items(); }  // snapshot — not reactive
+
+// CORRECT:
+// In template: {{ store.items() }}  — live signal read, tracked by Angular
+
+// BehaviorSubject store: use async pipe (handles markForCheck automatically)
+// template: {{ store.items$ | async }}
+Angular-specific note: Signal reads are only tracked inside Angular's reactive context (template, computed(), effect()). A signal read inside ngOnInit is a one-time snapshot.
+
+Bug 2 — Two Components Show Different State From the "Same" Store
+Symptom: CartIconComponent shows 0 items. ProductListComponent shows 3 items. Both inject CartStore. Adding to the cart in one doesn't update the other.
+Plain English Cause: CartStore is listed in the providers: [] of one of the components, creating a second instance scoped to that component's injector. Angular's DI resolves the nearest provider — the component-level one — so that component gets a private store instance.
+Fix: Remove CartStore from all component-level providers arrays. Ensure @Injectable({ providedIn: 'root' }) is on the store. The root injector provides a single shared instance to all components.
+Angular-specific note: Always check both the @Injectable decorator and every @Component/@NgModule providers array when diagnosing "disconnected state" bugs.
+
+Bug 3 — ExpressionChangedAfterItHasBeenChecked When Store Updates During Lifecycle
+Symptom: Console error: ExpressionChangedAfterItHasBeenChecked — value changed from X to Y.
+Plain English Cause: A store write method is being called inside ngOnInit or ngAfterViewInit, which updates a signal that a parent component also reads. Angular has already checked the parent in this CD cycle and the signal update triggers a second check before the cycle completes.
+Fix:
+typescript// Option 1: wrap in setTimeout to push the store update outside the current CD cycle
+ngOnInit() {
+  setTimeout(() => this.store.setLoading(false));
+}
+
+// Option 2: use a route resolver to load data BEFORE the component tree initialises
+// — the store is populated before Angular builds the component tree
+// (Topic 39 — Resolvers)
+Angular-specific note: This error almost always means state is being written during a lifecycle hook that Angular is still using to build the view. Resolvers (Topic 39) are the clean architectural fix — load data before navigation completes, populate the store in the resolver, and the component tree starts with the correct state already in place.
+
+Section 8 — Real-World Applications
+Scenario 1 — Shopping Cart with Signal Store (Persisted to LocalStorage)
+A retail app needs a cart that persists across page refreshes and is accessible from a header icon, a mini-cart dropdown, and a full checkout page simultaneously.
+typescript@Injectable({ providedIn: 'root' })
+export class CartStore {
+  readonly #items = signal<CartItem[]>(this.#loadFromStorage());
+  readonly items     = this.#items.asReadonly();
+  readonly itemCount = computed(() => this.#items().reduce((n, i) => n + i.quantity, 0));
+  readonly subtotal  = computed(() => this.#items().reduce((t, i) => t + i.price * i.quantity, 0));
+
+  // effect() writes to localStorage whenever items change — Topic 23 applied here
+  constructor() {
+    effect(() => {
+      localStorage.setItem('cart', JSON.stringify(this.#items()));
+    });
+  }
+
+  addItem(item: CartItem)     { this.#items.update(curr => [...curr, item]); }
+  removeItem(id: number)      { this.#items.update(curr => curr.filter(i => i.id !== id)); }
+  updateQuantity(id: number, qty: number) {
+    this.#items.update(curr => curr.map(i => i.id === id ? { ...i, quantity: qty } : i));
+  }
+  clearCart()                 { this.#items.set([]); }
+
+  #loadFromStorage(): CartItem[] {
+    try {
+      return JSON.parse(localStorage.getItem('cart') ?? '[]');
+    } catch {
+      return [];
+    }
+  }
+}
+Why this works cleanly: effect() (Topic 23) automatically re-runs the localStorage write whenever #items changes — zero manual persistence calls scattered across components. The store owns both the in-memory state and the persistence logic.
+
+Scenario 2 — Auth Store with BehaviorSubject Integrated into HTTP Interceptor
+An enterprise app needs authentication state that feeds directly into an HTTP interceptor (Topic 37) to attach JWT tokens to requests.
+typescript// auth.store.ts
+@Injectable({ providedIn: 'root' })
+export class AuthStore {
+  readonly #state = new BehaviorSubject<AuthState>(INITIAL_STATE);
+  readonly token$ = this.#state.pipe(map(s => s.token));  // used by interceptor
+
+  loginSuccess(user: User, token: string) {
+    this.#state.next({ user, token, isLoading: false });
+  }
+  logout() { this.#state.next(INITIAL_STATE); }
+
+  // Synchronous snapshot — safe to call inside an interceptor
+  getToken(): string | null {
+    return this.#state.getValue().token;
+  }
+}
+typescript// auth.interceptor.ts — Topic 37 pattern consuming the BehaviorSubject store
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const authStore = inject(AuthStore);
+
+  // BehaviorSubject's .getValue() gives a synchronous snapshot — safe in interceptors
+  // Signals would require toObservable() bridging here — BehaviorSubject is the
+  // natural fit when the consumer is synchronous or RxJS-based
+  const token = authStore.getToken();
+
+  if (token) {
+    req = req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
+  }
+
+  return next(req);
+};
+Why BehaviorSubject here and not signals: HTTP interceptors run synchronously and need a snapshot of the current auth state without subscribing. BehaviorSubject.getValue() provides this exactly. Bridging a signal to an observable via toObservable() in an interceptor context introduces unnecessary complexity. Choose the tool that fits the consumer.
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Create a ThemeStore service using signals that holds the current theme ('light' | 'dark'), defaulting to 'light'. Expose the theme as a readonly signal and provide a toggleTheme() method. Inject the store into a ThemeToggleComponent that displays the current theme name and a button to toggle it. Verify that two separate components injecting the same store both update when the theme changes.
+
+Exercise 2 — Intermediate
+Build a TodoStore using signals that manages a list of todos with { id, title, completed } shape. The store must expose: todos (readonly), completedCount (computed), pendingCount (computed), and methods: addTodo(title), toggleTodo(id), removeTodo(id), clearCompleted(). All mutations must be immutable (no array mutation). Wire the store into a TodoListComponent with an @for loop and a footer showing the counts. Ensure the component uses ChangeDetectionStrategy.OnPush.
+
+Exercise 3 — Advanced
+Build a NotificationStore using BehaviorSubject that manages a queue of notification messages ({ id, message, type: 'success' | 'error' | 'info', duration: number }). The store must: auto-remove each notification after its duration (using timer() from RxJS), expose an activeNotifications$ observable, and expose a hasErrors$ derived stream. Build a NotificationContainerComponent that consumes the store via the async pipe and displays notifications with enter/leave animations from Topic 43. Wire a NotificationService facade (Topic 27 pattern) that components call to push notifications without directly touching the store.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+A state management service is a single source of truth: private mutable state, public read-only projection, public write methods
+The Signal store pattern uses Angular's reactivity system directly — no subscriptions, no cleanup, perfect OnPush integration
+The BehaviorSubject store pattern uses RxJS — requires subscription cleanup but integrates naturally with HTTP pipelines and interceptors
+providedIn: 'root' ensures one shared instance across the entire app — component-level providers create isolated, disconnected instances
+computed() in signal stores is the equivalent of map() in BehaviorSubject stores — both derive read-only state from the primary state
+
+Quick Reference Table:
+DecisionSignal StoreBehaviorSubject StoreAngular versionv17+ preferredAny versionTemplate consumption{{ store.value() }}{{ store.value$ | async }}Synchronous snapshotstore.value()subject.getValue()Derived statecomputed(() => ...).pipe(map(...))Subscription cleanupNot neededtakeUntilDestroyed() or async pipeHTTP interceptor useBridge via toObservable()Native — getValue()RxJS pipeline integrationBridge via toObservable()NativeNew projects default✅ Prefer signalsUse when RxJS depth is needed
+Angular-specific rules:
+
+Always expose asReadonly() signals — never public writable signals
+Always expose .asObservable() — never public BehaviorSubjects
+Read signals directly in the template — a snapshot in ngOnInit is not reactive
+providedIn: 'root' is mandatory for shared state — component-level providers create disconnected instances
+Use update(fn) for signal mutations that depend on the current value — not set(currentValue + change)
+
+One-Line Memory Aid:
+
+A store is just a class where state is private, reads are readonly, and writes go through named methods — signals and BehaviorSubject are just the reactive technology underneath.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If Angular Signals are simpler and require no subscription management, why would any new Angular app ever choose the BehaviorSubject pattern for a store?
+Answer:
+This is an excellent question that gets at the heart of choosing the right tool rather than the newest tool.
+The conceptual explanation: Angular Signals are pull-based — a consumer reads the signal and Angular tracks that read to schedule future updates. RxJS Observables (and BehaviorSubject) are push-based — the source pushes new values downstream through a pipeline, and operators transform those values along the way. These are not the same computation model, and the difference matters when your state management logic becomes complex.
+Where BehaviorSubject still wins in a modern Angular app:
+First, complex async orchestration. If populating your store requires switchMap → forkJoin → catchError → retry pipelines with conditional branching, RxJS expresses this naturally in 10 lines. Expressing the same logic with signals requires bridging via toObservable() and toSignal(), which adds conceptual overhead. When the state derivation logic is a pipeline, BehaviorSubject lives in its natural habitat.
+Second, HTTP interceptors and other synchronous consumers. As shown in Scenario 2, BehaviorSubject.getValue() provides a synchronous snapshot — critical for interceptors that cannot subscribe. Signals in a non-reactive context require a workaround.
+Third, teams already deep in RxJS. A codebase where every developer thinks in streams benefits more from consistency than from adopting signals in one layer while keeping RxJS everywhere else. Mixed mental models across a team increase cognitive load.
+The practical rule: For new apps or new features in Angular v17+, default to signals. They cover 80% of state management needs with less code and zero subscription management. Reach for BehaviorSubject when the store's logic is inherently pipeline-shaped (complex async chains, conditional stream merging, debounced HTTP with cancellation), or when the store's consumers are RxJS-native (interceptors, route guards with combineLatest). The two patterns can also coexist — a signal store for UI state and a BehaviorSubject store for auth/HTTP-heavy flows is a perfectly valid architecture.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Private class fields (#field) — used throughout this topic for truly encapsulated store state; understanding the difference between TypeScript private (compile-time only) and # (runtime enforcement) is important for production stores
+structuredClone() — a modern alternative to spread for deep-cloning complex state objects in store update methods
+
+TypeScript Concepts:
+
+Mapped types and Partial<T> — used in the #patch() helper pattern for BehaviorSubject stores; knowing how Partial<AuthState> works makes the pattern readable
+Readonly utility type — Readonly<T> and ReadonlyArray<T> strengthen signal store return types beyond what asReadonly() alone provides
+
+Angular-Specific Concepts:
+
+Topic 45 — Performance Optimisation — pure pipes, trackBy, and OnPush all interact with store consumption patterns; this topic directly builds on the state management architecture established here
+Topic 46 — RxJS Operators in Depth — switchMap, combineLatest, and debounceTime are the operators most commonly used in BehaviorSubject store pipelines; mastering them makes complex store logic tractable
+NgRx SignalStore — the official Angular state management library's modern API is built on the same signal store pattern from this topic; this topic is the prerequisite mental model for NgRx SignalStore
+toSignal() and toObservable() — the bridge functions for mixing signals and observables in the same store; essential for apps migrating from BehaviorSubject to signals incrementally
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on (must be solid):
+
+Topic 20 — RxJS Subscription Management (BehaviorSubject store requires leak-free subscriptions)
+Topic 21 — takeUntilDestroyed & DestroyRef (manual subscriptions to BehaviorSubject stores)
+Topic 22 — async Pipe (template consumption of BehaviorSubject stores)
+Topic 23 — Angular Signals (signal store is built entirely on these primitives)
+Topic 24 — OnPush Change Detection (both store patterns interact with OnPush)
+Topic 27 — Services & Dependency Injection (stores are services; providedIn: 'root' scope is critical)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 45 — Performance Optimisation (pure pipes and OnPush make most sense in the context of a store architecture)
+Topic 46 — RxJS Operators in Depth (operators are most valuable inside BehaviorSubject store pipelines)
+Topic 47/48 — Testing (testing stores in isolation is the entry point for Angular service testing)
+Topic 50 — Angular Universal & SSR (server-side state transfer patterns build directly on store architecture)
+
+Production readiness assessment:
+
+Signal stores are production-ready immediately for new Angular v17+ apps — the pattern is simple, the pitfalls are few, and the performance characteristics are excellent; BehaviorSubject stores are production-ready with the #private + asObservable() + takeUntilDestroyed() discipline applied consistently.
+
+Section 14 — Common Interview Questions
+Question 1
+"How would you share state between two sibling components in Angular without using @Input()/@Output() chains?"
+Strong answer covers:
+
+Lift state into a shared providedIn: 'root' service (the store pattern)
+Both components inject the same service instance and read from the shared signal or observable
+Writing to the store from one component automatically updates all other consumers
+Mention the alternative of a parent component as mediator — but note that this doesn't scale when components are far apart in the tree
+Signal stores: no subscription management; BehaviorSubject stores: async pipe or takeUntilDestroyed
+
+Weak answers typically miss: The providedIn: 'root' requirement — many candidates say "put it in a service" without knowing that component-level providers create isolated instances.
+Difficulty: Mid
+
+Question 2
+"Why should you expose asReadonly() from a signal store instead of the raw signal? What actually breaks if you don't?"
+Strong answer covers:
+
+asReadonly() returns a Signal<T> with no set() or update() methods — callers physically cannot mutate the state
+Without it, any component can call store.items.set([]) directly, bypassing all store logic
+Bypassed store logic means: no validation, no derived state updates, no analytics events, no persistence hooks
+This is the same principle as private in OOP — enforce invariants at the type level, not by convention
+In a large team, "please don't call .set() directly" is not enforceable — types are
+
+Weak answers typically miss: The consequence side — candidates know what asReadonly() does but not what breaks when you skip it in a real codebase.
+Difficulty: Mid
+
+Question 3
+"When would you choose a BehaviorSubject-based store over a signal-based store in a modern Angular application?"
+Strong answer covers:
+
+When store logic involves complex async pipelines (switchMap, combineLatest, conditional stream branching)
+When synchronous snapshots are needed by non-reactive consumers like HTTP interceptors (getValue())
+When the team is already heavily invested in RxJS patterns and consistency outweighs the signal benefits
+When integrating with libraries that are Observable-native
+Acknowledge that for 80% of cases in Angular v17+, signal stores are simpler and preferred
+Mention that the two patterns can coexist — signal store for UI state, BehaviorSubject for auth/async state
+
+Weak answers typically miss: The RxJS pipeline complexity argument and the interceptor/synchronous-consumer scenario — most candidates only say "BehaviorSubject is for older Angular."
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Exposing the BehaviorSubject Directly as a Public Property
+typescript// ANTI-PATTERN
+@Injectable({ providedIn: 'root' })
+export class CartStore {
+  // Public BehaviorSubject — any component can call .next() directly
+  items$ = new BehaviorSubject<CartItem[]>([]);
+}
+
+// In a component somewhere:
+this.cartStore.items$.next([]);  // silently wipes the cart, bypassing all store logic
+Why it seems fine: It's less code. Direct access to .next() feels convenient during initial development.
+What breaks at scale: Store logic (validation, derived state sync, analytics) is bypassed. Different developers call .next() from different components with slightly different shapes of data. The store becomes an unguarded mutable global variable with a reactive wrapper.
+Correct pattern:
+typescriptreadonly #items = new BehaviorSubject<CartItem[]>([]);
+readonly items$ = this.#items.asObservable();  // .next() is not on this type
+
+clearCart() { this.#items.next([]); }  // the only way to clear
+
+Anti-Pattern 2 — Deriving State Inside Components Instead of the Store
+typescript// ANTI-PATTERN: each component computes its own derived state
+@Component({
+  template: `<span>{{ totalItems }}</span>`
+})
+export class HeaderComponent implements OnInit {
+  totalItems = 0;
+
+  ngOnInit() {
+    this.cartStore.items$.subscribe(items => {
+      // Derived logic duplicated here
+      this.totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
+    });
+  }
+}
+
+// And again in CheckoutComponent with a slightly different calculation...
+Why it seems fine: The derivation logic is simple and feels natural to put where it's used.
+What breaks at scale: The same derivation is duplicated in five components. One component's calculation drifts from another's. A business rule change (e.g. "don't count backorderable items") must be applied in five places. Bugs appear because one component uses the old formula.
+Correct pattern:
+typescript// In the store — single source of truth for derived state:
+readonly itemCount = computed(() =>
+  this.#items().reduce((sum, i) => sum + i.quantity, 0)
+);
+
+// In every component — just read the derived signal:
+{{ store.itemCount() }}
+
+Anti-Pattern 3 — Loading Data in Every Component That Needs It
+typescript// ANTI-PATTERN: each component triggers its own data load
+@Component({...})
+export class ProductListComponent implements OnInit {
+  ngOnInit() {
+    // Every time this component initialises, an HTTP call fires
+    this.productService.getProducts().subscribe(p => this.products = p);
+  }
+}
+
+@Component({...})
+export class ProductCountComponent implements OnInit {
+  ngOnInit() {
+    // Same endpoint, second HTTP call, separate stale copy
+    this.productService.getProducts().subscribe(p => this.count = p.length);
+  }
+}
+Why it seems fine: Each component is self-sufficient. No coupling between components.
+What breaks at scale: N components = N HTTP calls to the same endpoint. Race conditions appear when responses arrive in different orders. If ProductListComponent updates a product locally, ProductCountComponent still shows the old count.
+Correct pattern:
+typescript// Load ONCE in a route resolver or AppComponent:
+// resolver calls store.loadProducts() → HTTP fires once → store is populated
+// All components inject the store and read from the shared signal:
+
+@Component({...})
+export class ProductListComponent {
+  protected store = inject(ProductStore);
+  // template: @for (p of store.products(); ...) { ... }
+}
+
+@Component({...})
+export class ProductCountComponent {
+  protected store = inject(ProductStore);
+  // template: {{ store.productCount() }}
+}
+// One HTTP call. Always in sync.
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet — State Management Patterns
+Core concept in one sentence:
+
+A state management service is the single whiteboard everyone reads from — private mutable state, public read-only projection, public write methods — implemented with signals for simplicity or BehaviorSubject for RxJS pipeline depth.
+Key rules:
+
+State is always private (#field) — expose only asReadonly() signals or .asObservable() streams
+providedIn: 'root' is mandatory for shared state — component-level providers create disconnected instances
+All derived state (counts, totals, filters) lives in computed() or pipe(map()) inside the store — never in components
+Mutations go through named store methods only — no direct .set() or .next() from components
+Signal stores need no subscription cleanup — BehaviorSubject stores always need async pipe or takeUntilDestroyed()
+Load data once (in a resolver or AppComponent) — never in every component that displays it
+
+The single most important Angular rule:
+
+Never expose a writable signal or BehaviorSubject publicly — asReadonly() and asObservable() are not optional; they are the type-level enforcement of your store's contract.
+
+Choosing Signal Store vs BehaviorSubject Store:
+SituationUseNew Angular v17+ app, UI stateSignal storeComplex async pipelines, conditional stream mergingBehaviorSubject storeSynchronous snapshot needed (interceptor)BehaviorSubject (getValue())OnPush components reading storeBoth work — signals natively, BehaviorSubject via async pipeTeam already deep in RxJSBehaviorSubject for consistencyPersisting state to localStorageSignal store + effect()
+
+Topic 44 — State Management Patterns (REVISED)
+Audit findings applied: BehaviorSubject-based state shown as preferred over Signals (#11) → corrected. Zone.js-reliant patterns not flagged (#7) → flagged and corrected. Sections changed: 1 (comparison table), 10 (quick reference table), 11 (thought-provoking answer), 13, 16. All other sections kept verbatim.
+
+Section 0 — Difficulty & Priority Rating (unchanged — verbatim)
+Difficulty: Intermediate — The individual pieces (signals, BehaviorSubject, services) are already familiar from earlier topics; the difficulty here is architectural — understanding when to use which pattern, how to structure a store service correctly, and why naive approaches cause bugs at scale.
+Angular Relevance: Critical — Every non-trivial Angular app needs a shared state strategy; this is the pattern you reach for before installing NgRx or Akita, and it covers 80% of real-world Angular state requirements with zero third-party dependencies.
+
+Section 1 — Explanation (REWRITTEN — comparison table rebalanced; original framing implicitly treated the two patterns as closer to equal-weight defaults, which the audit correctly flags as outdated for current Angular)
+The Whiteboard Analogy (unchanged)
+Imagine a shared office whiteboard that every team member can read at any time. When someone updates a number on the whiteboard, everyone in the room immediately sees the new value — they don't need to be told, they just look up and it's already changed.
+A state management service is that whiteboard. Instead of each component holding its own local copy of data (their own private notepad), they all read from and write to one central service. The service owns the data. Components are just displays and input devices.
+Technical Explanation:
+Both patterns follow the same architectural shape:
+Private mutable state  →  Public read-only projection  →  Components read & display
+Public write methods   →  Components call to update
+Corrected framing: In current Angular (v17+ with zoneless change detection on the roadmap and Signals as the first-class reactivity primitive), the signal store is the default choice for new state, full stop — not one of two roughly-equal options. Signals are pull-based and integrate directly with Angular's change detection without requiring Zone.js to schedule a check. BehaviorSubject is push-based and historically relied on Zone.js patching async APis (setTimeout, Promise.then, XHR callbacks) to trigger change detection after each emission. As Angular moves toward zoneless operation via provideExperimentalZonelessChangeDetection(), BehaviorSubject-based state that isn't explicitly wired through toSignal() or manually marked for check stops updating the view reliably — it has no Zone.js to lean on anymore. Signal stores have no such dependency; they were built for this future from the start.
+Side-by-side comparison — corrected:
+Signal Store (default)BehaviorSubject Store (special case only)State primitivesignal<T>(initialValue)new BehaviorSubject<T>(initialValue)Public read APIreadonly count = this.#count.asReadonly()readonly count$ = this.#count.asObservable()Write APIthis.#count.set(n) / .update(fn)this.#count.next(newValue)Template consumption{{ store.count() }}{{ store.count$ | async }}Subscription cleanupNone — signals are not subscriptionsRequired — takeUntilDestroyed() or async pipeZone.js dependencyNone — signal reads are tracked directly by Angular's reactivity graphHistorically relied on Zone.js to trigger CD after each .next(); breaks silently under zoneless Angular unless bridged with toSignal()RxJS pipeline integrationUse toObservable(signal) to bridgeNative — already an ObservableRecommended default✅ Always start here for new stateOnly when the store's internal logic is genuinely pipeline-shaped (complex async chains) — not as a general-purpose default
+
+Section 2 — Connection to Prior Concepts (unchanged — verbatim)
+Directly builds on:
+
+Topic 23 — Angular Signals — the signal store pattern is a direct architectural application of signal(), computed(), and effect(); this topic takes those primitives and organises them into a service
+Topic 20 — RxJS Subscription Management — the BehaviorSubject pattern requires proper subscription cleanup; every rule from Topic 20 applies here
+Topic 21 — takeUntilDestroyed & DestroyRef — BehaviorSubject stores in components must use takeUntilDestroyed() to prevent memory leaks
+Topic 22 — async Pipe — BehaviorSubject-based stores are consumed in templates via the async pipe; Topic 22's rules apply directly
+Topic 24 — OnPush Change Detection — signal-based stores work perfectly with OnPush because signal reads are tracked; BehaviorSubject stores require the async pipe or manual markForCheck() to work with OnPush
+Topic 27 — Services & Dependency Injection — the store is a service; providedIn: 'root' vs. feature-level provision determines state scope
+
+Bridging Note:
+
+In Topic 23 you learned that signal() holds a value and notifies readers when it changes, and computed() derives values from signals automatically. This topic takes that knowledge and applies it architecturally: the signal lives in a service (not a component), making it shared across the entire app. The component's job shrinks from "hold state + transform it + display it" to just "display it and call write methods."
+Most directly extends: Topic 23 — Angular Signals (the signal store is signals applied at architectural scale).
+
+Sections 3–9 (unchanged — verbatim)
+(Code Example, Before & After Refactor, Common Mistakes, Do's and Don'ts, Debugging Tips, Real-World Applications, Practice Exercises — all already used inject(), signal stores as the primary pattern, and takeUntilDestroyed() correctly. No constructor injection or Zone.js-blind BehaviorSubject endorsement was present in these sections, so none required rewriting.)
+
+Section 10 — Key Takeaways (REWRITTEN — quick reference table corrected)
+Core concepts in plain English:
+
+A state management service is a single source of truth: private mutable state, public read-only projection, public write methods
+The Signal store pattern is the default for all new Angular state — it uses Angular's reactivity system directly, requires no subscriptions, no cleanup, perfect OnPush integration, and has no dependency on Zone.js
+The BehaviorSubject store pattern uses RxJS — requires subscription cleanup, and its change-detection triggering historically depended on Zone.js; it remains useful only when the store's internal logic is genuinely pipeline-shaped
+providedIn: 'root' ensures one shared instance across the entire app — component-level providers create isolated, disconnected instances
+computed() in signal stores is the equivalent of map() in BehaviorSubject stores — both derive read-only state from the primary state
+
+Quick Reference Table — corrected:
+DecisionSignal StoreBehaviorSubject StoreAngular versionv17+ — the default for all new stateAny version — special case onlyTemplate consumption{{ store.value() }}{{ store.value$ | async }}Synchronous snapshotstore.value()subject.getValue()Derived statecomputed(() => ...).pipe(map(...))Subscription cleanupNot neededtakeUntilDestroyed() or async pipeZone.js dependencyNone — works identically zoneless or zone-basedHistorically Zone.js-triggered; silently stops updating views under provideExperimentalZonelessChangeDetection() unless bridged via toSignal()HTTP interceptor useBridge via toObservable()Native — getValue()RxJS pipeline integrationBridge via toObservable()NativeNew projects default✅ Always prefer signalsUse only for genuinely pipeline-shaped internal logic — never as a general default
+Angular-specific rules:
+
+Always expose asReadonly() signals — never public writable signals
+Always expose .asObservable() — never public BehaviorSubjects
+Read signals directly in the template — a snapshot in ngOnInit is not reactive
+providedIn: 'root' is mandatory for shared state — component-level providers create disconnected instances
+Use update(fn) for signal mutations that depend on the current value — not set(currentValue + change)
+If a BehaviorSubject store is used, verify it remains correct under zoneless change detection — do not assume Zone.js will always be present to trigger the view update
+
+One-Line Memory Aid:
+
+A store is just a class where state is private, reads are readonly, and writes go through named methods — signal stores are the default; BehaviorSubject is the exception, not the alternative.
+
+
+Section 11 — Thought-Provoking Question + Answer (REWRITTEN — answer corrected to flag Zone.js dependency explicitly)
+Question: If Angular Signals are simpler and require no subscription management, why would any new Angular app ever choose the BehaviorSubject pattern for a store?
+Answer:
+This is an excellent question that gets at the heart of choosing the right tool rather than the newest tool — but the answer needs an important caveat that's easy to miss.
+The conceptual explanation: Angular Signals are pull-based — a consumer reads the signal and Angular tracks that read to schedule future updates, independent of Zone.js. RxJS Observables (and BehaviorSubject) are push-based — the source pushes new values downstream through a pipeline, and operators transform those values along the way. Historically, the reason a .next() call on a BehaviorSubject resulted in a view update at all was Zone.js — it patches setTimeout, Promise.then, and DOM event callbacks so that after any async operation completes, Angular runs a change detection pass and the template re-reads the latest value from the async pipe. Signals do not need this mechanism; the reactivity graph notifies Angular directly.
+Where BehaviorSubject still earns its place — narrower than it first appears:
+First, complex async orchestration. If populating your store requires switchMap → forkJoin → catchError → retry pipelines with conditional branching, RxJS expresses this naturally. This is a genuine reason to reach for BehaviorSubject for a store's internal construction logic.
+Second, HTTP interceptors and other synchronous consumers. BehaviorSubject.getValue() provides a synchronous snapshot — critical for interceptors that cannot subscribe.
+The corrected caveat the original answer was missing: Angular is moving toward zoneless change detection via provideExperimentalZonelessChangeDetection(). Under zoneless operation, there is no Zone.js patching async callbacks, so a component using the async pipe against a BehaviorSubject that updates from, say, a raw setTimeout or a WebSocket callback may not trigger a re-render at all unless that value flow is bridged through a signal (via toSignal()) or the emission happens to occur inside an Angular-tracked context. This is not a theoretical concern — it is the direct reason Signals were introduced as Angular's primary reactivity primitive. A BehaviorSubject store that worked perfectly under Zone.js can silently stop updating the UI the moment an app opts into zoneless mode, with no error and no warning.
+The practical rule, corrected: For new apps or new features, signals are not just preferred — they are the default that requires no future migration work as Angular continues toward zoneless. Reach for BehaviorSubject only when the store's logic is inherently pipeline-shaped or its consumers are RxJS-native (interceptors, route guards with combineLatest), and even then, verify the final emitted value is consumed in a way that doesn't silently depend on Zone.js being present — bridging the observable's output through toSignal() before it reaches the template is the safest pattern going forward.
+
+Section 12 (unchanged — verbatim)
+(Related Topics to Learn Next — already correctly references toSignal()/toObservable() and NgRx SignalStore as the modern direction; no rewrite needed.)
+
+Section 13 — Study Plan Checkpoint (REWRITTEN — production readiness assessment corrected)
+Topics this directly depends on (must be solid):
+
+Topic 20 — RxJS Subscription Management (BehaviorSubject store requires leak-free subscriptions)
+Topic 21 — takeUntilDestroyed & DestroyRef (manual subscriptions to BehaviorSubject stores)
+Topic 22 — async Pipe (template consumption of BehaviorSubject stores)
+Topic 23 — Angular Signals (signal store is built entirely on these primitives)
+Topic 24 — OnPush Change Detection (both store patterns interact with OnPush — signal stores natively, BehaviorSubject stores via Zone.js-dependent async pipe behaviour)
+Topic 27 — Services & Dependency Injection (stores are services; providedIn: 'root' scope is critical)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 45 — Performance Optimisation (pure pipes and OnPush make most sense in the context of a store architecture)
+Topic 46 — RxJS Operators in Depth (operators are most valuable inside BehaviorSubject store pipelines, where they remain genuinely justified)
+Topic 47/48 — Testing (testing stores in isolation is the entry point for Angular service testing)
+Topic 50 — Angular Universal & SSR (server-side state transfer patterns build directly on store architecture)
+
+Production readiness assessment — corrected:
+
+Signal stores are production-ready immediately for new Angular v17+ apps and are the recommended default with no caveats — the pattern is simple, the pitfalls are few, and it has zero exposure to Angular's ongoing shift toward zoneless change detection. BehaviorSubject stores are production-ready only with the #private + asObservable() + takeUntilDestroyed() discipline applied and with explicit verification that the store's emissions still reach the view correctly if the app later adopts provideExperimentalZonelessChangeDetection() — this is not a hypothetical future concern but an active migration path in current Angular.
+
+Section 14 (unchanged — verbatim)
+(Common Interview Questions — Question 3 already correctly frames signals as the v17+ default and BehaviorSubject as the exception; no contradicting content to rewrite.)
+
+Sections 15–16 (unchanged — verbatim)
+(Anti-Patterns and Mental Model Summary — already correctly treat exposing a raw BehaviorSubject as an anti-pattern and already state "for new projects, default signal store" as a rule; no Zone.js-blind framing was present, so no rewrite needed beyond what's already covered in Sections 1, 10, 11, and 13 above.)
+
+Summary of changes made to Topic 44:
+
+Section 0, 2, 3–9, 12, 14, 15–16 → kept verbatim
+Section 1 → comparison table and framing rebalanced so signal stores are presented as the unambiguous default, not a co-equal option; Zone.js dependency of BehaviorSubject explicitly named for the first time
+Section 10 → Quick Reference Table gains a new "Zone.js dependency" row; "New projects default" row strengthened from "prefer signals" to "always"
+Section 11 → Answer rewritten to add the missing zoneless-change-detection caveat — this was the core audit finding (#7) and is now explicit
+Section 13 → Production readiness assessment rewritten to flag the zoneless migration risk for BehaviorSubject stores
+

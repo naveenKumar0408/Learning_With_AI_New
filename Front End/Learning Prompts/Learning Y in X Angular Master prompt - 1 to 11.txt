@@ -1,0 +1,119 @@
+I'm learning [Y] in [X].
+
+**Context:** I'm an Angular application developer, so include examples and explanations 
+relevant to Angular wherever applicable.
+
+**Communication Style:** Explain everything in simple, plain English that is easy to 
+understand and hard to forget. Use analogies, real-world comparisons, and multiple 
+explanation methods (visual, story-based, analogy-based) before introducing technical 
+terms. Every explanation should be clear enough that I could explain it to someone else 
+and they would also understand it. Avoid leading with technical jargon — always explain 
+the concept in human terms first, then map it to the technical term.
+
+Please structure your response exactly as follows:
+
+---
+
+## 0. Difficulty & Priority Rating
+Rate [Y] on:
+- **Difficulty:** Beginner / Intermediate / Advanced (with a one-line reason)
+- **Angular Relevance:** Low / Medium / High / Critical (with a one-line reason)
+
+---
+
+## 1. Explanation
+Explain [Y] in plain English first using an analogy or real-world comparison.
+Then explain its purpose, how it works, and when it's commonly used.
+Only introduce technical terms after the concept is already clear.
+
+---
+
+## 2. Connection to Prior Concepts
+Relate [Y] to any previously covered concepts where relevant:
+- How it builds on or connects to prior topics
+- Any important distinctions or overlaps to be aware of
+- A short bridging sentence I can add to my notes
+
+---
+
+## 3. Code Example
+A simple, well-commented code example demonstrating [Y] in plain JS/TS.
+Before each code block, explain in one plain English sentence what the 
+code is about to show. Follow with a real-world Angular-specific example 
+(component, service, or lifecycle hook context).
+
+---
+
+## 4. Before & After Refactor
+Show a realistic "bad practice → good practice" code example related to [Y]:
+- **Before:** What a beginner or legacy codebase might write
+- **After:** The correct, refactored version
+- **Why it matters:** A brief explanation of what changed and the impact
+Use a plain English summary before the code to explain what the problem is.
+
+---
+
+## 5. Common Mistakes & Misconceptions
+Three mistakes or misconceptions beginners often have about [Y], each with:
+- What the mistake is (explained with an analogy if possible)
+- Why it happens
+- How to avoid it
+- An Angular-specific consequence if relevant
+
+---
+
+## 6. Do's and Don'ts
+A quick-reference table of Do's and Don'ts for [Y], aligned with:
+- Angular's official style guide
+- Common conventions in production Angular codebases
+
+---
+
+## 7. Debugging Tips
+Common errors or symptoms related to [Y]:
+- The error message or buggy behavior
+- What causes it (in plain English)
+- How to fix or debug it
+- Angular-specific debugging note if applicable
+
+---
+
+## 8. Real-World Applications
+Two real-world scenarios where [Y] is particularly useful, with at least 
+one being Angular-specific. Explain each scenario in plain English before 
+showing any code.
+
+---
+
+## 9. Practice Exercises
+Three progressively challenging exercises (Beginner → Intermediate → Advanced) 
+to practice [Y]:
+- Problem statements only — no solutions
+- At least one exercise should be Angular-specific
+
+---
+
+## 10. Key Takeaways
+A structured summary I can use as notes, including:
+- Core concept definitions in plain English (bullet points)
+- A quick-reference table where applicable
+- Angular-specific rules to remember
+- A one-line memory aid for the entire topic
+
+---
+
+## 11. Thought-Provoking Question + Answer
+A deep question about [Y] that encourages thinking beyond the basics —
+followed immediately by a thorough answer covering:
+- The conceptual explanation in plain English first
+- An Angular-specific implication or use case
+- A practical rule or best practice to take away
+
+---
+
+## 12. Related Topics to Learn Next
+A categorized list of topics related to [Y] that are relevant to Angular 
+development, so I can add them to my learning list. Group them as:
+- ES6/JS Concepts
+- TypeScript Concepts
+- Angular-Specific Concepts

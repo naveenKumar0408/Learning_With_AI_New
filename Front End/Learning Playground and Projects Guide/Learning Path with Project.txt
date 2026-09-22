@@ -1,0 +1,94 @@
+What These Two Documents Are
+The Angular Study Plan (6-week docx) — This is a fast-track Angular-specific plan. It covers Angular mechanics in 6 weeks at 10–12 hours per week, followed by 5 projects. It assumes you already have solid JS/TS foundations and focuses purely on getting Angular working in your hands quickly.
+The Frontend Mastery Plan (HTML) — This is the comprehensive 20-week plan. It covers Programmer Fundamentals, Angular Core, State & Forms, Architecture, Performance & Security, and Interview Readiness. It is the more complete and more ambitious document. This is the one we have been building on throughout this entire conversation.
+
+Are You On the Right Track?
+Honest answer: Yes — but with one important misalignment you need to correct.
+
+What Is Aligned and Correct
+Everything we have built in this conversation — Topics 1–59, Topics 60–82, DSA D1–D40, the master prompts, the routine, the project plan — maps almost perfectly to the Frontend Mastery Plan. The mastery plan is the blueprint and our learning series is the execution. They are the same journey, just one is the map and the other is the detailed step-by-step path.
+Specifically:
+
+Topics 1–19 cover the Frontend Mastery Plan's Phase 0 JS/TS foundations
+Topics 20–32 cover Phase 1 Angular Core
+Topics 33–53 cover Phase 2 State, Forms & Async
+Topics 54–59 cover NgRx which spans Phases 2 and 3
+Topics 60–65 cover the Programmer Fundamentals track
+Topics 66–78 cover Phases 3 and 4
+Topics 79–82 cover Phase 5 Interview Readiness
+DSA D1–D40 covers the practical DSA track woven throughout
+
+You are on the right track. The planning has been thorough and well-structured.
+
+The One Important Misalignment
+The 6-week Angular Study Plan and the Frontend Mastery Plan have a fundamental difference in philosophy that matters for how you start.
+The 6-week plan says: build first, learn mechanics through projects. It expects you to start building in Week 1 and learn Angular by getting your hands dirty immediately. It is designed for someone who dives in.
+The Frontend Mastery Plan says: understand foundations first, then build. It starts with 2 weeks of Programmer Fundamentals before touching Angular at all.
+Our learning series follows the Mastery Plan approach — Topics 1–19 are JS/TS foundations before any Angular. This is the correct approach for you because you have said multiple times you want deep understanding, not surface familiarity.
+However — and this is the honest part — the 6-week Angular Study Plan has something our series currently lacks: a clear project-first momentum builder.
+The 6-week plan has you building something every single week from Week 1. Our learning series has you studying topics and doing exercises — which is deep and correct — but the project component is less structured and starts later.
+
+The Recommended Correction — One Addition
+Take the 5 projects from the 6-week Angular Study Plan and map them directly into your learning roadmap. These are excellent, well-designed projects and they fit perfectly.
+Here is how they map:
+Project 1 — Personal Finance Tracker
+  Start: Week 9 (after Topics 23-27 — Signals, OnPush, Services & DI)
+  Concepts it reinforces: Topics 23, 24, 25, 26, 27, 33
+
+Project 2 — GitHub User Explorer
+  Start: Week 12 (after Topics 36-38 — HttpClient, Interceptors, Router)
+  Concepts it reinforces: Topics 22, 36, 37, 38, 46
+
+Project 3 — Kanban Task Board
+  Start: Week 16 (after Topics 41-49 — CDK, Custom Directives, Pipes, State)
+  Concepts it reinforces: Topics 41, 42, 44, 45, 49
+
+Project 4 — Full Auth + Dashboard App
+  Start: Week 20 (after Topics 51-59 — full NgRx ecosystem)
+  Concepts it reinforces: Topics 37, 39, 51-59, 75, 76
+  THIS is your portfolio project
+
+Project 5 — Real-time Collaborative Notes
+  Start: Week 28 (after DSA Stage 3 and Topics 60-70)
+  This is your advanced stretch project — not required before job applications
+  Build it after you are employed if needed
+
+The Complete Picture — Your Actual Path
+RIGHT NOW
+  You have: Topics 1–59 PDF/responses
+  You have: Master prompts for Topics 60–82 and D1–D40
+  You have: Daily routine designed and ready
+  You have: Projects 1–5 identified and mapped
+
+WHAT TO DO TODAY
+  Open Topic 1 PDF
+  Create learning-playground Angular project on GitHub
+  Follow the routine starting this week
+
+YOUR LEARNING ORDER
+  Topics 1–8    → JS foundations (Weeks 1–2)
+  Topics 9–19   → TypeScript foundations (Weeks 3–5)
+  Topics 20–22  → RxJS fundamentals (Week 6)
+  Topics 23–32  → Angular Core (Weeks 7–10)
+  ★ Start Project 1 at Week 9
+
+  Topics 33–40  → Forms, HTTP, Router (Weeks 11–14)
+  ★ Start Project 2 at Week 12
+
+  Topics 41–53  → Advanced Angular (Weeks 15–20)
+  ★ Start Project 3 at Week 16
+
+  Topics 54–59  → NgRx ecosystem (Weeks 21–24)
+  Topics 60–65  → Programmer Fundamentals (Weeks 13–18, running parallel)
+  ★ Start Project 4 at Week 20 — this is your portfolio project
+
+  Topics 66–78  → Architecture, Performance, Security (Weeks 19–25)
+  Topics 79–82  → Interview Readiness (Weeks 26–28)
+  DSA D1–D40   → Running parallel from Week 14 onward
+
+  ★ Start applying for Tier C jobs at Week 25
+
+Final Honest Verdict
+You are on the right track. Both documents point to the same destination. The learning series we built together is the most detailed execution of the Frontend Mastery Plan that exists. The 6-week Angular Study Plan is a useful accelerator for the project component — use its 5 projects as your build milestones.
+The only thing left is to stop planning and start Topic 1.
+Everything you need exists. The next action is opening the PDF.

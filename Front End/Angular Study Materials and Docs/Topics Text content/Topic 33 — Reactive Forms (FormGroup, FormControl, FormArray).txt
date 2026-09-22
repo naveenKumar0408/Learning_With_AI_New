@@ -1,0 +1,658 @@
+Topic 33 — Reactive Forms (FormGroup, FormControl, FormArray)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — Reactive Forms introduce a programmatic, model-driven approach that requires understanding class composition, observables, and validation trees working in concert — more moving parts than most Angular topics to this point.
+Angular Relevance: Critical — Reactive Forms are the standard for any non-trivial form in Angular. Login screens, multi-step wizards, dynamic field arrays, real-time validation — all of these live here. If you build Angular apps professionally, you will write Reactive Forms every day.
+
+Section 1 — Explanation
+The Blueprint Analogy
+Imagine you're building a house. You have two approaches:
+Approach A (Template-Driven): You tell the workers verbally what to build as they go. Simple shed? Fine. But if the structure is complex, verbal instructions get messy fast — you can't easily inspect the plan, test it, or change it programmatically.
+Approach B (Reactive/Blueprint-Driven): You draw a precise blueprint before construction. Every room (FormGroup), every fixture (FormControl), every repeated unit like identical apartments (FormArray) is defined explicitly in the blueprint. You can inspect it, validate it, change it programmatically, and test it without ever touching the physical building.
+Reactive Forms are the Blueprint Approach. The form model lives entirely in your TypeScript class — not in the template. The template merely connects to the model. This separation is what makes Reactive Forms testable, scalable, and predictable.
+
+Technical Explanation:
+Reactive Forms are built from three core building blocks:
+Building BlockRoleAnalogyFormControlA single fieldOne input box (one room fixture)FormGroupA collection of controlsA group of related fields (one floor of the house)FormArrayA dynamic list of controls or groupsIdentical repeated apartments on a floorAbstractControlBase class for all threeThe shared blueprint standard all three follow
+The entire form is a tree of these three classes. At runtime, every control tracks:
+
+Its current value
+Its validity status (valid, invalid, pending)
+Its dirty/pristine status (has the user typed anything?)
+Its touched/untouched status (has the user left the field?)
+A valueChanges observable — emitting every time the value changes
+A statusChanges observable — emitting every time validity changes
+
+Because valueChanges is an Observable (Topic 20), you get the full power of RxJS — debouncing, switching, combining — wired directly into your form.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 13 — TypeScript Interfaces & Types — You'll type your form values with interfaces
+Topic 16 — TypeScript Generics — FormControl<string>, FormGroup<{...}> use generics for strict typing
+Topic 20 — RxJS Subscription Management — valueChanges and statusChanges are Observables; you must manage their subscriptions
+Topic 21 — takeUntilDestroyed & DestroyRef — Used to auto-unsubscribe from form observables
+Topic 23 — Angular Signals — Signals and Reactive Forms can be bridged with toSignal(form.valueChanges)
+Topic 24 — OnPush Change Detection — Reactive Forms work cleanly with OnPush because the model is explicit
+Topic 27 — Services & Dependency Injection — FormBuilder is an injectable service
+
+Bridging note: Topics 20 and 21 taught you that observables need cleanup. A FormControl.valueChanges subscription is no different — if you subscribe manually inside a component, you must unsubscribe. This is the most common memory leak in Angular form code.
+Extends most directly: Topic 20 — RxJS Subscription Management, because the entire reactive power of forms flows through observable streams.
+
+Section 3 — Code Example
+Plain TS — Core concept in isolation
+typescriptimport { FormControl, FormGroup, FormArray, Validators } from '@angular/forms';
+
+// --- FormControl: one field ---
+const emailControl = new FormControl('', [Validators.required, Validators.email]);
+
+console.log(emailControl.value);   // ''
+console.log(emailControl.valid);   // false (required + email not met)
+
+emailControl.setValue('user@example.com');
+console.log(emailControl.valid);   // true
+
+// --- FormGroup: related fields grouped together ---
+const loginForm = new FormGroup({
+  email: new FormControl('', [Validators.required, Validators.email]),
+  password: new FormControl('', [Validators.required, Validators.minLength(8)])
+});
+
+console.log(loginForm.value);  // { email: '', password: '' }
+loginForm.patchValue({ email: 'user@example.com' }); // update one field without touching others
+
+// --- FormArray: dynamic list of controls ---
+const tagsArray = new FormArray([
+  new FormControl('angular'),
+  new FormControl('typescript')
+]);
+
+tagsArray.push(new FormControl('rxjs'));   // add a control dynamically
+tagsArray.removeAt(0);                     // remove by index
+console.log(tagsArray.value);             // ['typescript', 'rxjs']
+
+Real Angular Component Example
+typescript// profile-form.component.ts
+import { Component, OnInit, inject } from '@angular/core';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { CommonModule } from '@angular/common';
+
+interface ProfileForm {
+  username: string;
+  email: string;
+  skills: string[];
+}
+
+@Component({
+  selector: 'app-profile-form',
+  standalone: true,
+  imports: [ReactiveFormsModule, CommonModule],
+  template: `
+    <form [formGroup]="profileForm" (ngSubmit)="onSubmit()">
+
+      <!-- Simple FormControl binding via formControlName -->
+      <label>Username</label>
+      <input formControlName="username" />
+
+      <!-- Validation feedback — only show after user has touched the field -->
+      @if (username.invalid && username.touched) {
+        <span class="error">Username is required</span>
+      }
+
+      <label>Email</label>
+      <input formControlName="email" type="email" />
+
+      @if (email.invalid && email.touched) {
+        <span class="error">
+          @if (email.errors?.['required']) { Email is required }
+          @if (email.errors?.['email']) { Must be a valid email }
+        </span>
+      }
+
+      <!-- FormArray: dynamic list of skill inputs -->
+      <div formArrayName="skills">
+        @for (skill of skills.controls; track $index) {
+          <div>
+            <input [formControlName]="$index" placeholder="Skill" />
+            <button type="button" (click)="removeSkill($index)">Remove</button>
+          </div>
+        }
+      </div>
+
+      <button type="button" (click)="addSkill()">+ Add Skill</button>
+
+      <button type="submit" [disabled]="profileForm.invalid">Save</button>
+    </form>
+
+    <!-- Debug panel: see live form state -->
+    <pre>{{ profileForm.value | json }}</pre>
+    <p>Form valid: {{ profileForm.valid }}</p>
+  `
+})
+export class ProfileFormComponent implements OnInit {
+  // FormBuilder is an injectable service that reduces FormGroup/FormControl boilerplate
+  private fb = inject(FormBuilder);
+
+  // Build the form model — this is the "blueprint"
+  profileForm: FormGroup = this.fb.group({
+    username: ['', [Validators.required, Validators.minLength(3)]],
+    email:    ['', [Validators.required, Validators.email]],
+    skills:   this.fb.array([
+      this.fb.control('') // start with one empty skill field
+    ])
+  });
+
+  ngOnInit(): void {
+    // Subscribe to valueChanges with auto-cleanup via takeUntilDestroyed
+    // Must be called in constructor or field initializer for DestroyRef to work
+    // (shown here in ngOnInit for clarity — in practice, move to constructor)
+    this.profileForm.valueChanges
+      .pipe(takeUntilDestroyed())
+      // ERROR: takeUntilDestroyed() must be called in injection context (constructor/field).
+      // This is shown for concept clarity — see Section 7 for the correct placement.
+      .subscribe(value => console.log('Form changed:', value));
+  }
+
+  // Convenience getters — avoids repeating profileForm.get('...') in the template
+  get username() { return this.profileForm.get('username')!; }
+  get email()    { return this.profileForm.get('email')!; }
+  get skills()   { return this.profileForm.get('skills') as FormArray; }
+
+  addSkill(): void {
+    // Push a new empty FormControl into the FormArray
+    this.skills.push(this.fb.control('', Validators.required));
+  }
+
+  removeSkill(index: number): void {
+    this.skills.removeAt(index);
+  }
+
+  onSubmit(): void {
+    if (this.profileForm.valid) {
+      const formValue: ProfileForm = this.profileForm.value;
+      console.log('Submitted:', formValue);
+    }
+  }
+}
+typescript// Correct takeUntilDestroyed placement — in the constructor
+export class ProfileFormComponent {
+  private fb = inject(FormBuilder);
+
+  profileForm = this.fb.group({
+    username: ['', Validators.required],
+    email:    ['', [Validators.required, Validators.email]],
+  });
+
+  constructor() {
+    // ✅ takeUntilDestroyed() works here because we're in injection context
+    this.profileForm.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(value => console.log(value));
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — The Naive Way
+typescript// WRONG: Building forms without FormBuilder, with poor validation access,
+// and with an unmanaged subscription
+
+export class OldFormComponent implements OnInit, OnDestroy {
+  // Manually constructing every control — verbose and error-prone
+  loginForm = new FormGroup({
+    email: new FormControl(''),
+    password: new FormControl('')
+    // No validators added — form is always "valid"
+  });
+
+  private sub: any; // typed as 'any' — loses type safety
+
+  ngOnInit() {
+    // Subscribing directly without cleanup — memory leak guaranteed
+    this.sub = this.loginForm.valueChanges.subscribe(val => {
+      console.log(val);
+    });
+  }
+
+  onSubmit() {
+    // No validity check before accessing value — dangerous
+    console.log(this.loginForm.value);
+  }
+
+  ngOnDestroy() {
+    // Easy to forget; and manual cleanup doesn't scale
+    this.sub.unsubscribe();
+  }
+}
+What breaks:
+
+No validators → form is always valid → invalid data gets submitted
+Manual ngOnDestroy unsubscribe is brittle and often forgotten
+No type safety on the subscription
+
+
+✅ After — The Correct Way
+typescriptexport class NewFormComponent {
+  private fb = inject(FormBuilder);
+
+  // FormBuilder shorthand — less noise, same result
+  loginForm = this.fb.group({
+    email:    ['', [Validators.required, Validators.email]],
+    password: ['', [Validators.required, Validators.minLength(8)]]
+  });
+
+  constructor() {
+    // ✅ Auto-cleanup, typed observable, in injection context
+    this.loginForm.valueChanges
+      .pipe(
+        debounceTime(300),          // RxJS operator — no spam on every keystroke
+        takeUntilDestroyed()        // auto-unsubscribes when component destroys
+      )
+      .subscribe(val => console.log(val));
+  }
+
+  onSubmit() {
+    if (this.loginForm.invalid) return; // ✅ guard before access
+    console.log(this.loginForm.value);
+  }
+}
+Why this refactor matters in Angular:
+
+takeUntilDestroyed() eliminates the ngOnDestroy boilerplate entirely
+Validators make the form's validity state meaningful for [disabled] bindings and submit guards
+FormBuilder reduces noise and makes the structure scannable at a glance
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Forgetting to import ReactiveFormsModule
+What the mistake is: The component renders an input with formControlName but Angular throws: Can't bind to 'formControlName' since it isn't a known property.
+Why developers make it: They add FormGroup to the TS class but forget that the template directives (formControlName, formGroup, formArrayName) live in ReactiveFormsModule, which must be imported.
+How to avoid it: In standalone components, always add ReactiveFormsModule to the imports array. In NgModule apps, import it in the feature module.
+Angular-specific consequence: The form silently doesn't bind — inputs are uncontrolled, values are never captured, and no useful error appears until you look at the console.
+
+Mistake 2 — Calling takeUntilDestroyed() outside the injection context
+What the mistake is: Placing takeUntilDestroyed() inside ngOnInit() instead of the constructor or a field initializer.
+Why developers make it: ngOnInit feels like the "right place to set things up." Developers move subscription code there without realising takeUntilDestroyed() requires the DI injection context, which only exists during construction.
+How to avoid it: Subscribe to valueChanges / statusChanges in the constructor (or in a field initializer). If you need data from ngOnInit, store the data and subscribe in the constructor anyway, or pass DestroyRef manually.
+Angular-specific consequence: Runtime error: takeUntilDestroyed() can only be used within an injection context. The form subscription leaks if the developer falls back to manual unsubscribe in ngOnDestroy and forgets it.
+
+Mistake 3 — Using setValue when patchValue is needed (or vice versa)
+What the mistake is: Calling setValue({ email: 'x@x.com' }) on a FormGroup that has more fields than just email.
+Why developers make it: Both methods look similar. Developers use setValue thinking "I'll just set the email field."
+How to avoid it:
+
+setValue requires every control in the group to be provided — missing any throws an error.
+patchValue updates only the controls you provide — safe for partial updates.
+Rule: prefer patchValue when pre-populating a form from an API response.
+
+Angular-specific consequence: setValue throws at runtime with "Must supply a value for form control with name: 'password'" — visible in production if you're populating a form from a partial API payload.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse FormBuilder (inject(FormBuilder)) to reduce boilerplateManually new FormControl() / new FormGroup() in every componentSubscribe to valueChanges in the constructor with takeUntilDestroyed()Subscribe in ngOnInit without cleanup — guaranteed memory leakUse patchValue when pre-filling from API data (partial updates)Use setValue for partial updates — it throws if any control is missingAdd a validity guard (if (form.invalid) return) before processing onSubmitTrust [disabled] alone — it can be bypassed via developer toolsUse getter accessors (get email() { return this.form.get('email')! }) for cleaner templatesRepeat profileForm.get('email') inline in the template multiple timesType your form value with an interface: this.form.value as ProfileFormUse any for form values — defeats TypeScript's entire purpose
+
+Section 7 — Debugging Tips
+Bug 1 — formControlName must be used with a parent formGroup directive
+Symptom: formControlName must be used with a parent formGroup directive
+Plain English cause: You used formControlName="email" on an input, but forgot to add [formGroup]="myForm" on the parent <form> element. formControlName is a relative reference — it looks up the tree for a formGroup anchor and panics if there isn't one.
+Fix:
+html<!-- ❌ Missing [formGroup] on the form element -->
+<form>
+  <input formControlName="email" />
+</form>
+
+<!-- ✅ Correct -->
+<form [formGroup]="loginForm">
+  <input formControlName="email" />
+</form>
+Angular-specific note: This is also triggered when you nest a FormGroup inside another and forget to add formGroupName="nestedGroupName" on the wrapping element.
+
+Bug 2 — FormArray inputs not binding correctly
+Symptom: Inputs in a @for loop over a FormArray don't update the model — formValue stays stale.
+Plain English cause: The formArrayName directive is missing on the container, or [formControlName]="$index" uses the wrong syntax (some developers write formControlName="0" as a static string instead of [formControlName]="$index").
+Fix:
+html<!-- ❌ formArrayName missing on container -->
+<div>
+  <input [formControlName]="$index" />
+</div>
+
+<!-- ✅ Correct -->
+<div formArrayName="skills">
+  @for (skill of skills.controls; track $index) {
+    <input [formControlName]="$index" />
+  }
+</div>
+Angular-specific note: The formArrayName attribute must match the exact key used in the parent FormGroup definition.
+
+Bug 3 — reset() leaves the form in touched state
+Symptom: After calling form.reset(), validation error messages still appear because controls remain touched.
+Plain English cause: reset() clears values and resets dirty, but by default does not reset the touched state in all versions. Validation feedback tied to .touched keeps showing.
+Fix:
+typescript// ✅ Mark all controls as untouched after reset
+this.profileForm.reset();
+this.profileForm.markAsUntouched();
+this.profileForm.markAsPristine();
+Angular-specific note: If you're using updateOn: 'blur', always pair reset() with markAsUntouched() to fully restore the pre-interaction visual state.
+
+Section 8 — Real-World Applications
+Scenario 1 — User Registration Form with Live Validation
+A registration page needs: username (required, min 3 chars), email (required, valid format), password (required, min 8 chars), confirmPassword (must match password). All validation errors show inline only after the user touches each field.
+typescript@Component({
+  selector: 'app-register',
+  standalone: true,
+  imports: [ReactiveFormsModule, CommonModule],
+  template: `
+    <form [formGroup]="registerForm" (ngSubmit)="register()">
+      <input formControlName="username" placeholder="Username" />
+      @if (f['username'].invalid && f['username'].touched) {
+        <small>Username must be at least 3 characters</small>
+      }
+
+      <input formControlName="email" placeholder="Email" />
+      <input formControlName="password" type="password" placeholder="Password" />
+      <input formControlName="confirmPassword" type="password" placeholder="Confirm Password" />
+
+      @if (registerForm.errors?.['passwordMismatch'] && f['confirmPassword'].touched) {
+        <small>Passwords do not match</small>
+      }
+
+      <button type="submit" [disabled]="registerForm.invalid">Register</button>
+    </form>
+  `
+})
+export class RegisterComponent {
+  private fb = inject(FormBuilder);
+
+  registerForm = this.fb.group(
+    {
+      username:        ['', [Validators.required, Validators.minLength(3)]],
+      email:           ['', [Validators.required, Validators.email]],
+      password:        ['', [Validators.required, Validators.minLength(8)]],
+      confirmPassword: ['', Validators.required]
+    },
+    { validators: this.passwordMatchValidator }  // group-level validator
+  );
+
+  // Convenience accessor for template
+  get f() { return this.registerForm.controls; }
+
+  // Cross-field validator — checks two sibling controls
+  passwordMatchValidator(group: AbstractControl) {
+    const pass    = group.get('password')?.value;
+    const confirm = group.get('confirmPassword')?.value;
+    return pass === confirm ? null : { passwordMismatch: true };
+  }
+
+  register() {
+    if (this.registerForm.invalid) return;
+    console.log(this.registerForm.value);
+  }
+}
+
+Scenario 2 — Dynamic Invoice Line Items with FormArray
+An invoice builder lets users add/remove line items (description + quantity + price), computing a running total reactively.
+typescript@Component({
+  selector: 'app-invoice',
+  standalone: true,
+  imports: [ReactiveFormsModule, CommonModule],
+  template: `
+    <form [formGroup]="invoiceForm">
+      <div formArrayName="lineItems">
+        @for (item of lineItems.controls; track $index) {
+          <div [formGroupName]="$index">
+            <input formControlName="description" placeholder="Item description" />
+            <input formControlName="quantity" type="number" />
+            <input formControlName="price" type="number" />
+            <button type="button" (click)="removeItem($index)">✕</button>
+          </div>
+        }
+      </div>
+      <button type="button" (click)="addItem()">+ Add Line Item</button>
+      <p>Total: {{ total | currency }}</p>
+    </form>
+  `
+})
+export class InvoiceComponent {
+  private fb = inject(FormBuilder);
+
+  invoiceForm = this.fb.group({
+    lineItems: this.fb.array([this.createItem()])
+  });
+
+  get lineItems() { return this.invoiceForm.get('lineItems') as FormArray; }
+
+  get total(): number {
+    return this.lineItems.controls.reduce((sum, ctrl) => {
+      const { quantity, price } = ctrl.value;
+      return sum + (quantity * price || 0);
+    }, 0);
+  }
+
+  createItem(): FormGroup {
+    return this.fb.group({
+      description: ['', Validators.required],
+      quantity:    [1, [Validators.required, Validators.min(1)]],
+      price:       [0, [Validators.required, Validators.min(0)]]
+    });
+  }
+
+  addItem()              { this.lineItems.push(this.createItem()); }
+  removeItem(i: number)  { this.lineItems.removeAt(i); }
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner:
+
+Create a standalone Angular component with a FormGroup containing three fields: firstName, lastName, and age. Add Validators.required to all fields and Validators.min(18) to age. Display a submit button that is disabled when the form is invalid, and log the form value to the console on valid submit.
+Exercise 2 — Intermediate:
+
+Build a "contact list" component using a FormArray of FormGroups. Each group has name (required) and phone (required, must be 10 digits). Allow users to dynamically add and remove contacts. Display the count of valid contacts above the list.
+Exercise 3 — Advanced:
+
+Build a multi-step form wizard with three steps. Step 1: personal details (name, email). Step 2: address (street, city, postcode). Step 3: review and submit. Each step is its own FormGroup nested inside a parent FormGroup. Validate each step before allowing the user to proceed to the next. On the review step, show all entered values in a read-only summary. Pre-populate the form via patchValue from a mock "saved draft" object when the component initialises.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+FormControl = one field. Tracks value, validity, dirty, touched.
+FormGroup = a named set of controls. Valid only if all children are valid.
+FormArray = a dynamic, index-based list of controls or groups.
+FormBuilder = a service shorthand that removes new FormControl() / new FormGroup() boilerplate.
+valueChanges = an Observable on any control/group/array. Subscribe with takeUntilDestroyed().
+patchValue = partial update (safe). setValue = full update (all fields required).
+valid / invalid / pending = validity states. dirty / pristine = user-has-edited states. touched / untouched = user-has-focused states.
+
+Quick reference table:
+Method / PropertyWhat it doessetValue(obj)Sets entire form value — all fields requiredpatchValue(obj)Sets partial form value — missing fields untouchedreset()Clears value and marks pristine/untouchedgetRawValue()Gets value including disabled controls (.value excludes them)markAllAsTouched()Forces all error messages to show at once (submit guard)disable() / enable()Disables/enables the control + removes it from .valueaddControl() / removeControl()Dynamically mutate a FormGrouppush() / removeAt()Dynamically mutate a FormArray
+Angular-specific rules:
+
+Always import ReactiveFormsModule in standalone component imports or the feature NgModule
+Subscribe to valueChanges in the constructor, not ngOnInit, when using takeUntilDestroyed()
+Use markAllAsTouched() in onSubmit() to reveal all validation errors if the user clicks submit without touching fields
+Never trust [disabled] alone as a submit guard — always re-validate in the submit handler
+form.value omits disabled controls; use form.getRawValue() if you need them
+
+One-Line Memory Aid:
+
+Reactive Forms are a TypeScript blueprint of your form — the template just connects to it; all logic, validation, and state live in the class.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If FormGroup.valid is computed from its children, and a FormArray is a child of a FormGroup, what happens to the parent form's validity when you dynamically push() an invalid control into the array?
+Answer:
+Conceptual explanation: Angular's form validity is a live tree. Every node (FormControl, FormGroup, FormArray) computes its valid state bottom-up. When a FormControl changes validity, it notifies its parent FormGroup or FormArray, which recomputes, then notifies its parent — all the way to the root. This propagation happens synchronously.
+So when you push() a new FormControl('', Validators.required) into a FormArray, the new control starts empty and invalid. It immediately marks its parent FormArray as invalid. The FormArray propagates that up to the root FormGroup. The root becomes invalid. If your submit button is bound to [disabled]="form.invalid", it immediately disables — before the user has typed a single character into the new field.
+Angular-specific implication: This is why dynamically-generated forms with FormArray need deliberate UX decisions. If you add a line item and the form immediately becomes invalid (blocking submit), you need to decide:
+
+Should the new item be pre-populated with defaults so it starts valid?
+Should validation on new items only show after the user touches them (.touched check in the template)?
+Should you separate the "unsaved draft" FormArray from the submitted data?
+
+Practical rule: When adding items to a FormArray, either pre-populate with valid defaults or ensure your template validation feedback is gated on .touched — never on .valid alone — so users aren't confused by errors appearing on fields they haven't interacted with yet.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Object.entries / Object.keys — useful when iterating over form values to build API payloads
+Immutability patterns — patching form value from API without mutating original data
+
+TypeScript Concepts:
+
+Mapped Types / Partial<T> — understanding why patchValue accepts a Partial of your model
+Strict Typed Reactive Forms (FormGroup<{...}>) — TypeScript 4.7+ feature that brings full generics to Reactive Forms; eliminates as FormArray casts
+
+Angular-Specific Concepts:
+
+Topic 34 — Form Validation (built-in, custom, async validators) — the natural next step; validators are the most complex part of Reactive Forms
+Topic 35 — Template-Driven Forms — understand the contrast; helps you choose the right tool
+Topic 36 — HttpClient & API Integration — because patchValue from an API response is the most common real-world use
+ControlValueAccessor — how to build a reusable custom form control that participates in Reactive Forms
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 13 — TypeScript Interfaces & Types (typing form values)
+Topic 16 — TypeScript Generics (typed FormControl<T>)
+Topic 20 — RxJS Subscription Management (valueChanges subscriptions)
+Topic 21 — takeUntilDestroyed & DestroyRef (subscription cleanup)
+Topic 27 — Services & Dependency Injection (FormBuilder injection)
+
+This topic unlocks or makes significantly easier:
+
+Topic 34 — Form Validation (validators are meaningless without understanding FormControl)
+Topic 35 — Template-Driven Forms (the contrast becomes clear once you understand the Reactive approach)
+Topic 36 — HttpClient (pre-populating forms from API responses via patchValue)
+Topic 39 — Route Guards (CanDeactivate guard checking form.dirty before navigation)
+Topic 47 — Testing Angular Components (Reactive Forms are far easier to unit-test than Template-Driven)
+
+Production readiness assessment: If you can build a FormArray with dynamic add/remove, add validators, display conditional validation errors, and subscribe to valueChanges without a memory leak — you are production-ready for 90% of real Angular forms. The remaining 10% (async validators, custom ControlValueAccessor components) comes with Topic 34.
+
+Section 14 — Common Interview Questions
+Question 1:
+
+"What is the difference between setValue and patchValue in Reactive Forms, and when would you use each?"
+Strong answer covers:
+
+setValue requires all controls to be supplied — throws if any are missing
+patchValue accepts a partial object — silently ignores missing keys
+Use setValue when you're replacing the entire form (e.g. loading a saved record)
+Use patchValue when pre-filling from a partial API response or updating a subset of fields
+Both work on FormControl, FormGroup, and FormArray
+
+Weak answer misses: The fact that setValue throws on missing fields — not just ignores them.
+Difficulty: Junior
+
+Question 2:
+
+"How do you handle dynamic form fields in Angular — fields that are added or removed at runtime based on user actions?"
+Strong answer covers:
+
+FormArray is the correct primitive for runtime-dynamic lists
+push(control) adds, removeAt(index) removes
+formArrayName directive in the template + [formControlName]="$index" for binding
+FormBuilder.array([]) for cleaner initialization
+Validity of the parent form is automatically affected when array contents change
+
+Weak answer misses: The template binding requirement (formArrayName + [formGroupName] for nested groups) — many candidates know the TypeScript side but can't wire up the template correctly.
+Difficulty: Mid
+
+Question 3:
+
+"How would you implement a cross-field validator — for example, validating that a 'confirmPassword' field matches the 'password' field?"
+Strong answer covers:
+
+Cross-field validators are applied at the FormGroup level, not the FormControl level
+The validator receives the AbstractControl (the group) and can call .get('field') to access siblings
+Return null for valid, return an error object ({ passwordMismatch: true }) for invalid
+The error lives on the group, not on an individual control — so template access is form.errors?.['passwordMismatch']
+For reusability, write as a standalone function and pass to the validators option of fb.group()
+
+Weak answer misses: That the error is set on the group, not on the confirmPassword control — a critical distinction for template error display.
+Difficulty: Mid–Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Subscribing to valueChanges in ngOnInit without cleanup
+typescript// ❌ Anti-pattern
+ngOnInit() {
+  this.searchForm.get('query')!.valueChanges.subscribe(val => {
+    this.searchService.search(val).subscribe(results => {
+      this.results = results;
+    });
+  });
+}
+Why it seems fine: It works during development. Single-page usage never exposes the leak.
+What breaks in production: Every time this component is created and destroyed (e.g. in a router outlet), a new subscription is added but never removed. After 10 navigations, there are 10 active subscriptions all firing search requests simultaneously, causing stale data races and UI thrashing.
+Correct pattern:
+typescriptconstructor() {
+  this.searchForm.get('query')!.valueChanges.pipe(
+    debounceTime(300),
+    switchMap(val => this.searchService.search(val)), // switchMap cancels previous
+    takeUntilDestroyed()
+  ).subscribe(results => this.results = results);
+}
+
+Anti-Pattern 2 — Accessing form.value directly in submit without guarding or markAllAsTouched
+typescript// ❌ Anti-pattern
+onSubmit() {
+  const data = this.registrationForm.value; // always runs regardless of validity
+  this.api.register(data).subscribe();
+}
+Why it seems fine: The submit button has [disabled]="form.invalid" — looks safe. But [disabled] can be toggled in browser DevTools. Also, validation errors only show on touched fields — a user who fills nothing and clicks submit via keyboard/automation sees no feedback.
+What breaks in production: Invalid data reaches the API. The backend rejects it, the UI has no feedback. Users are confused.
+Correct pattern:
+typescriptonSubmit() {
+  if (this.registrationForm.invalid) {
+    this.registrationForm.markAllAsTouched(); // reveal ALL error messages
+    return;
+  }
+  this.api.register(this.registrationForm.value).subscribe();
+}
+
+Anti-Pattern 3 — Rebuilding the entire FormArray on every data change
+typescript// ❌ Anti-pattern
+loadItems(items: Item[]) {
+  // Wipes the entire FormArray and rebuilds it from scratch every time
+  const array = this.form.get('items') as FormArray;
+  array.clear();
+  items.forEach(item => array.push(this.fb.group({ name: item.name })));
+}
+Why it seems fine: It's simple. Works fine for static data.
+What breaks in production: If this runs while the user is typing in one of the dynamic fields (e.g. during a polling interval or after a partial save), the user's in-progress edits are wiped. Also, array.clear() followed by multiple push() calls fires valueChanges and statusChanges on every push — triggering re-renders and any subscribers on every single iteration.
+Correct pattern:
+typescriptloadItems(items: Item[]) {
+  const array = this.form.get('items') as FormArray;
+  // Patch existing controls, only add/remove what changed
+  items.forEach((item, i) => {
+    if (array.at(i)) {
+      array.at(i).patchValue({ name: item.name }, { emitEvent: false });
+    } else {
+      array.push(this.fb.group({ name: item.name }), { emitEvent: false });
+    }
+  });
+  // Remove excess controls if items shrunk
+  while (array.length > items.length) {
+    array.removeAt(array.length - 1, { emitEvent: false });
+  }
+}
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+Reactive Forms define your form as a TypeScript class tree — FormControl → FormGroup → FormArray — and the template simply binds to it; all state, validation, and reactivity live in the class.
+Key rules:
+
+FormControl = one field. FormGroup = named set. FormArray = indexed dynamic list.
+Validity is a live tree: a single invalid child makes the entire parent invalid.
+patchValue = partial update (safe for API responses). setValue = full update (throws on missing fields).
+Always subscribe to valueChanges in the constructor with takeUntilDestroyed().
+Call markAllAsTouched() in onSubmit() to surface all hidden validation errors.
+form.value excludes disabled controls — use form.getRawValue() to include them.
+
+The single most important Angular rule:
+
+Never subscribe to valueChanges without takeUntilDestroyed() — every unmanaged form subscription is a memory leak waiting to happen in production.
+
+Choosing between setValue and patchValue:
+SituationUsePre-filling from a full API responsesetValuePre-filling from a partial API responsepatchValueUpdating one field programmaticallypatchValueResetting the entire form to known defaultssetValue or reset(defaultValues)Updating a single FormControlcontrol.setValue(value) directly
+
+Say "next" for Topic 34 — Form Validation (built-in validators, custom validators, async validators), or "continue" if I stopped mid-topic.You said: NextNextMay 15

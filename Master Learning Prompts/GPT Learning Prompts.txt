@@ -1,0 +1,25 @@
+🧠 Learning Prompts
+“Explain this concept like I’m a senior dev preparing for system design interviews: [topic]”
+“Give me real-world use cases of [technology] in production systems”
+“What mistakes do developers make in [topic]?”
+🧩 Problem Solving Prompts
+“Don’t give me the answer, guide me step by step to solve this problem”
+“Give me hints progressively for this LeetCode problem”
+“How should I think about solving this problem?”
+🏗️ System Design Prompts
+“Design a scalable system for [problem] with trade-offs”
+“What would a senior engineer consider while designing [system]?”
+“Review my system design and give brutal feedback”
+💻 Coding Improvement Prompts
+“Refactor this code like a senior engineer”
+“What’s wrong with this implementation?”
+“Make this code production-grade”
+🚀 Career Growth Prompts
+“What skills am I missing if I’m stuck at mid-level developer?”
+“Give me a weekly plan to become a senior engineer in 6 months”
+“Mock interview me for a full stack role”
+🤖 AI Usage Prompts (IMPORTANT)
+“Generate production-ready boilerplate for [feature]”
+“Review this code for bugs, performance and scalability”
+“Suggest improvements like a senior architect”
+

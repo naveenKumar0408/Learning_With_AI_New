@@ -1,0 +1,30 @@
+PDF GENERATION ORDER — FOLLOW THIS EXACTLY
+StepGo to this chatTopics it coversSections it hasOutput filename1Retrofit Chat 1Topics 1–1313–16 onlyAngular_Topics_1_to_13_Sections_13_to_16.pdf2Retrofit Chat 2Topics 13–19, 25, 2613–16 onlyAngular_Topics_13_to_26_Sections_13_to_16.pdf3Original Chat (this one)Topics 1–260–12Already have Topics 1–11. Generate Angular_Topics_12_to_26_Sections_0_to_12.pdf4Content Chat 1Topics 20–24, 270–16Angular_Topics_20_to_27.pdf5Content Chat 2Topics 28–320–16Angular_Topics_28_to_32.pdf6Content Chat 3Topics 33–370–16Angular_Topics_33_to_37.pdf7Content Chat 4Topics 38–410–16Angular_Topics_38_to_41.pdf8Content Chat 5Topics 42–470–16Angular_Topics_42_to_47.pdf9Content Chat 6Topics 48–530–16Angular_Topics_48_to_53.pdf10Content Chat 7Topics 54–590–16Angular_Topics_54_to_59.pdf
+
+Three important things to do in EVERY chat before pasting the prompt:
+Thing 1 — Say this first line before the prompt:
+
+"Do not start until I say GO. Read this entire instruction first."
+
+Then paste the prompt. Then say GO.
+This prevents Claude from starting before it has read all the instructions.
+Thing 2 — If the PDF build gets cut off mid-way:
+Say exactly this:
+
+"The build was cut off. Continue from where you stopped. Do not rebuild what is already done. Merge the completed parts and the remaining parts into one final PDF."
+
+Thing 3 — After the PDF is downloaded, verify it:
+Scroll to the last page and check the last topic is there. Scroll to the middle and spot-check one section. If anything is missing say:
+
+"Topic X is missing from the PDF. Add it and regenerate."
+
+
+After all PDFs are generated — the merge step:
+Once you have all individual PDFs downloaded, start one final new chat and say:
+
+"I need to merge multiple PDFs into one master document. I will upload them one by one. Merge them in the order I upload them. Do not alter any content. Just merge and output one combined PDF."
+
+Then upload each PDF in the correct topic order. This gives you one complete 59-topic reference document for printing.
+
+Token conservation tip:
+The simple plain text PDF uses roughly 20–30% of the tokens that the styled Head First version used. Each chat should be able to generate its PDF in one session without hitting limits. If a chat is already near its limit from the original conversation, the build may still get tight — in that case the "continue from where you stopped" instruction above handles it.

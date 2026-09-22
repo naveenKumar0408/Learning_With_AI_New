@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete Learning System · Angular + DSA + Routine</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: #2a2a38;
+    --border2: #1e1e2a;
+    --accent: #6ee7b7;
+    --accent2: #f59e0b;
+    --accent3: #818cf8;
+    --accent4: #fb7185;
+    --accent5: #38bdf8;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --muted2: #4a4a60;
+    --mastery: #6ee7b7;
+    --dsa: #818cf8;
+    --office: #f59e0b;
+    --wfh: #38bdf8;
+    --rest: #fb7185;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    margin-bottom: 72px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 48px;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 4px 12px;
+    margin-bottom: 24px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(30px, 5vw, 52px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin-bottom: 16px;
+  }
+
+  h1 em {
+    color: var(--accent);
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-weight: 400;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    max-width: 580px;
+    line-height: 1.8;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 32px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item { display: flex; flex-direction: column; gap: 4px; }
+  .meta-label { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .meta-value { font-size: 13px; color: var(--accent2); font-weight: 500; }
+
+  /* ── SECTION HEADERS ── */
+  .section { margin-bottom: 72px; }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .section-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted2);
+  }
+
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .section-line { flex: 1; height: 1px; background: var(--border); }
+
+  /* ── PHILOSOPHY BOX ── */
+  .philosophy {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 28px 32px;
+    margin-bottom: 64px;
+    position: relative;
+  }
+
+  .philosophy::before {
+    content: '\201C';
+    position: absolute;
+    top: -20px;
+    left: 24px;
+    font-family: 'Instrument Serif', serif;
+    font-size: 80px;
+    color: var(--accent);
+    opacity: 0.25;
+    line-height: 1;
+  }
+
+  .philosophy p {
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  .philosophy .author {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 12px;
+    letter-spacing: 0.1em;
+    font-family: 'DM Mono', monospace;
+    font-style: normal;
+  }
+
+  /* ── OVERVIEW CARDS ── */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 48px;
+  }
+
+  .overview-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .overview-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .overview-card.mastery::before { background: var(--mastery); }
+  .overview-card.dsa::before { background: var(--dsa); }
+  .overview-card.routine::before { background: var(--accent2); }
+
+  .overview-card .oc-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .overview-card.mastery .oc-label { color: var(--mastery); }
+  .overview-card.dsa .oc-label { color: var(--dsa); }
+  .overview-card.routine .oc-label { color: var(--accent2); }
+
+  .overview-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .overview-card p {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .overview-card .oc-stat {
+    margin-top: 14px;
+    font-size: 22px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+  }
+
+  .overview-card.mastery .oc-stat { color: var(--mastery); }
+  .overview-card.dsa .oc-stat { color: var(--dsa); }
+  .overview-card.routine .oc-stat { color: var(--accent2); }
+
+  .overview-card .oc-stat span {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+
+  /* ── TOPIC LISTS ── */
+  .topic-group { margin-bottom: 32px; }
+
+  .topic-group-title {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border2);
+    margin-bottom: 10px;
+  }
+
+  .topic-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 6px;
+  }
+
+  .topic-item {
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 11px;
+  }
+
+  .topic-item::before {
+    content: '→';
+    color: var(--muted2);
+    flex-shrink: 0;
+    font-size: 10px;
+    margin-top: 1px;
+  }
+
+  .topic-item strong {
+    display: block;
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 1px;
+  }
+
+  .topic-item span {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .topic-num {
+    font-size: 9px;
+    color: var(--muted2);
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-weight: 500;
+  }
+
+  .mastery-topic .topic-num { color: var(--mastery); opacity: 0.7; }
+  .dsa-topic .topic-num { color: var(--dsa); opacity: 0.7; }
+
+  /* ── STAGE HEADERS ── */
+  .stage-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 28px 0 14px;
+  }
+
+  .stage-badge {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid;
+    font-weight: 600;
+  }
+
+  .stage-badge.s1 { color: var(--accent); border-color: var(--accent); background: rgba(110,231,183,0.06); }
+  .stage-badge.s2 { color: var(--accent5); border-color: var(--accent5); background: rgba(56,189,248,0.06); }
+  .stage-badge.s3 { color: var(--accent3); border-color: var(--accent3); background: rgba(129,140,248,0.06); }
+  .stage-badge.s4 { color: var(--accent2); border-color: var(--accent2); background: rgba(245,158,11,0.06); }
+  .stage-badge.s5 { color: var(--accent4); border-color: var(--accent4); background: rgba(251,113,133,0.06); }
+
+  .stage-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .stage-line { flex: 1; height: 1px; background: var(--border2); }
+
+  /* ── ROUTINE SECTION ── */
+  .day-type-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .day-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .day-card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .day-card-header h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .day-card.office .day-card-header { border-top: 3px solid var(--office); }
+  .day-card.wfh .day-card-header { border-top: 3px solid var(--wfh); }
+  .day-card.office .day-card-header h3 { color: var(--office); }
+  .day-card.wfh .day-card-header h3 { color: var(--wfh); }
+
+  .day-total {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+
+  .day-card.office .day-total { background: rgba(245,158,11,0.1); color: var(--office); }
+  .day-card.wfh .day-total { background: rgba(56,189,248,0.1); color: var(--wfh); }
+
+  .time-block {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .time-block:last-child { border-bottom: none; }
+
+  .tb-time {
+    padding: 12px 16px;
+    font-size: 10px;
+    color: var(--accent2);
+    border-right: 1px solid var(--border2);
+    display: flex;
+    align-items: flex-start;
+    padding-top: 14px;
+    line-height: 1.4;
+  }
+
+  .tb-content {
+    padding: 12px 16px;
+  }
+
+  .tb-badge {
+    display: inline-block;
+    font-size: 9px;
+    padding: 2px 7px;
+    letter-spacing: 0.06em;
+    margin-bottom: 5px;
+    font-weight: 500;
+  }
+
+  .tb-badge.learn { background: rgba(110,231,183,0.1); color: var(--mastery); border: 1px solid rgba(110,231,183,0.2); }
+  .tb-badge.dsa { background: rgba(129,140,248,0.1); color: var(--dsa); border: 1px solid rgba(129,140,248,0.2); }
+  .tb-badge.work { background: rgba(107,107,128,0.1); color: var(--muted); border: 1px solid var(--border2); }
+  .tb-badge.gym { background: rgba(251,113,133,0.1); color: var(--accent4); border: 1px solid rgba(251,113,133,0.2); }
+  .tb-badge.review { background: rgba(245,158,11,0.1); color: var(--accent2); border: 1px solid rgba(245,158,11,0.2); }
+  .tb-badge.optional { background: rgba(56,189,248,0.08); color: var(--accent5); border: 1px solid rgba(56,189,248,0.2); }
+  .tb-badge.deep { background: rgba(110,231,183,0.15); color: var(--mastery); border: 1px solid rgba(110,231,183,0.3); }
+
+  .tb-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .tb-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* ── WEEKLY SCHEDULE ── */
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 40px;
+  }
+
+  .week-day {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 14px 10px;
+    text-align: center;
+  }
+
+  .week-day .wd-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .week-day .wd-type {
+    font-size: 9px;
+    padding: 2px 6px;
+    margin-bottom: 10px;
+    display: inline-block;
+  }
+
+  .week-day.office-day { border-top: 2px solid var(--office); }
+  .week-day.wfh-day { border-top: 2px solid var(--wfh); }
+  .week-day.rest-day { border-top: 2px solid var(--muted2); }
+
+  .week-day.office-day .wd-name { color: var(--office); }
+  .week-day.wfh-day .wd-name { color: var(--wfh); }
+  .week-day.rest-day .wd-name { color: var(--muted); }
+
+  .week-day.office-day .wd-type { background: rgba(245,158,11,0.1); color: var(--office); }
+  .week-day.wfh-day .wd-type { background: rgba(56,189,248,0.1); color: var(--wfh); }
+  .week-day.rest-day .wd-type { background: rgba(107,107,128,0.1); color: var(--muted); }
+
+  .wd-focus {
+    font-size: 9px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .wd-hours {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    margin-top: 8px;
+  }
+
+  .week-day.office-day .wd-hours { color: var(--office); }
+  .week-day.wfh-day .wd-hours { color: var(--wfh); }
+  .week-day.rest-day .wd-hours { color: var(--muted2); }
+
+  .wd-hours small {
+    font-size: 9px;
+    font-weight: 400;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+  }
+
+  .wd-pill {
+    display: inline-block;
+    font-size: 8px;
+    padding: 1px 6px;
+    margin: 2px 1px;
+    border-radius: 2px;
+  }
+
+  .wd-pill.m { background: rgba(110,231,183,0.12); color: var(--mastery); }
+  .wd-pill.d { background: rgba(129,140,248,0.12); color: var(--dsa); }
+  .wd-pill.r { background: rgba(245,158,11,0.1); color: var(--accent2); }
+
+  /* ── RULES ── */
+  .rules-list { list-style: none; counter-reset: rules; }
+
+  .rules-list li {
+    counter-increment: rules;
+    display: flex;
+    gap: 20px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--border2);
+    align-items: flex-start;
+  }
+
+  .rules-list li:last-child { border-bottom: none; }
+
+  .rules-list li::before {
+    content: counter(rules, decimal-leading-zero);
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--border);
+    flex-shrink: 0;
+    min-width: 32px;
+  }
+
+  .rule-body strong {
+    display: block;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .rule-body p {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  /* ── LOG TEMPLATE ── */
+  .log-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent3);
+    padding: 24px 28px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .log-box .log-title {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent3);
+    margin-bottom: 16px;
+  }
+
+  .log-field {
+    margin-bottom: 12px;
+  }
+
+  .log-field .lf-label {
+    font-size: 10px;
+    color: var(--accent3);
+    margin-bottom: 3px;
+    font-weight: 500;
+  }
+
+  .log-field .lf-value {
+    font-size: 11px;
+    color: var(--muted);
+    padding-left: 12px;
+    border-left: 1px solid var(--border);
+    line-height: 1.6;
+  }
+
+  /* ── TOTALS TABLE ── */
+  .totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 32px;
+  }
+
+  .totals-table th {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .totals-table td {
+    font-size: 11px;
+    color: var(--text);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .totals-table tr:last-child td {
+    border-bottom: none;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--accent);
+    background: rgba(110,231,183,0.04);
+    border-top: 1px solid var(--border);
+  }
+
+  .totals-table .day-label { color: var(--muted); }
+  .totals-table .type-badge {
+    font-size: 9px;
+    padding: 2px 7px;
+    display: inline-block;
+  }
+
+  .totals-table .hrs {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  /* ── PROMPT BOXES ── */
+  .prompt-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 0;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .prompt-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .prompt-header h4 {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .prompt-box.mastery-prompt .prompt-header { border-top: 2px solid var(--mastery); }
+  .prompt-box.mastery-prompt .prompt-header h4 { color: var(--mastery); }
+  .prompt-box.dsa-prompt .prompt-header { border-top: 2px solid var(--dsa); }
+  .prompt-box.dsa-prompt .prompt-header h4 { color: var(--dsa); }
+
+  .prompt-tag {
+    font-size: 9px;
+    padding: 2px 8px;
+    letter-spacing: 0.06em;
+  }
+
+  .mastery-prompt .prompt-tag { background: rgba(110,231,183,0.1); color: var(--mastery); }
+  .dsa-prompt .prompt-tag { background: rgba(129,140,248,0.1); color: var(--dsa); }
+
+  .prompt-body {
+    padding: 20px;
+  }
+
+  .prompt-section { margin-bottom: 16px; }
+
+  .ps-title {
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .ps-content {
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  .ps-content ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .ps-content ul li {
+    padding: 3px 0;
+    padding-left: 14px;
+    position: relative;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.55;
+  }
+
+  .ps-content ul li::before {
+    content: '·';
+    position: absolute;
+    left: 0;
+    color: var(--muted2);
+  }
+
+  .ps-content .highlight { color: var(--accent); }
+  .ps-content .highlight2 { color: var(--accent3); }
+
+  /* ── SECTION FORMAT CARDS ── */
+  .format-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+  }
+
+  .format-item {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    padding: 12px 14px;
+  }
+
+  .fi-num {
+    font-size: 9px;
+    color: var(--muted2);
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+  }
+
+  .fi-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .fi-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ── TIMELINE ── */
+  .timeline-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+    margin-bottom: 48px;
+  }
+
+  .ts-phase {
+    padding: 14px 10px;
+    text-align: center;
+    border: 1px solid transparent;
+  }
+
+  .ts-phase .tp-weeks {
+    font-size: 10px;
+    font-weight: 500;
+    margin-bottom: 5px;
+  }
+
+  .ts-phase .tp-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+    color: var(--text);
+  }
+
+  .ts-phase.p0 { background: rgba(110,231,183,0.07); border-color: rgba(110,231,183,0.2); }
+  .ts-phase.p0 .tp-weeks { color: var(--mastery); }
+  .ts-phase.p1 { background: rgba(129,140,248,0.07); border-color: rgba(129,140,248,0.2); }
+  .ts-phase.p1 .tp-weeks { color: var(--dsa); }
+  .ts-phase.p2 { background: rgba(56,189,248,0.07); border-color: rgba(56,189,248,0.2); }
+  .ts-phase.p2 .tp-weeks { color: var(--accent5); }
+  .ts-phase.p3 { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.2); }
+  .ts-phase.p3 .tp-weeks { color: var(--accent2); }
+  .ts-phase.p4 { background: rgba(251,113,133,0.07); border-color: rgba(251,113,133,0.2); }
+  .ts-phase.p4 .tp-weeks { color: var(--accent4); }
+  .ts-phase.p5 { background: rgba(110,231,183,0.04); border-color: rgba(110,231,183,0.1); }
+  .ts-phase.p5 .tp-weeks { color: var(--mastery); opacity: 0.6; }
+
+  /* ── ALERT BOX ── */
+  .alert {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .alert strong { color: var(--accent2); }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-size: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade { animation: fadeUp 0.5s ease forwards; opacity: 0; }
+  .fade:nth-child(1) { animation-delay: 0.05s; }
+  .fade:nth-child(2) { animation-delay: 0.12s; }
+  .fade:nth-child(3) { animation-delay: 0.19s; }
+  .fade:nth-child(4) { animation-delay: 0.26s; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 680px) {
+    .overview-grid { grid-template-columns: 1fr; }
+    .day-type-grid { grid-template-columns: 1fr; }
+    .week-grid { grid-template-columns: repeat(4, 1fr); }
+    .timeline-strip { grid-template-columns: repeat(3, 1fr); }
+    .topic-grid { grid-template-columns: 1fr; }
+    .format-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header fade">
+    <div class="tag">Complete Learning System · Angular + DSA · 2026</div>
+    <h1>Your <em>Complete</em><br>Learning <em>Blueprint</em></h1>
+    <p class="subtitle">Angular Mastery (Topics 60–82) + DSA & Problem Solving (D1–D40) + Daily Routine — one integrated system built around your hybrid work life, your gym, and your 30–45 min daily commitment.</p>
+    <div class="meta-row">
+      <div class="meta-item"><span class="meta-label">Total Topics</span><span class="meta-value">23 + 40 = 63</span></div>
+      <div class="meta-item"><span class="meta-label">Timeline</span><span class="meta-value">~6 Months</span></div>
+      <div class="meta-item"><span class="meta-label">Daily DSA Time</span><span class="meta-value">30–45 min</span></div>
+      <div class="meta-item"><span class="meta-label">Weekly Total</span><span class="meta-value">12–13 Hours</span></div>
+      <div class="meta-item"><span class="meta-label">Target</span><span class="meta-value">Tier C → Tier B</span></div>
+    </div>
+  </div>
+
+  <!-- PHILOSOPHY -->
+  <div class="philosophy fade">
+    <p>Consistency over intensity. 30 minutes every day for 6 months is not the same developer who started. 3-hour sessions twice a week for 2 months and burns out — is exactly the same developer who started.</p>
+    <div class="author">— The anti-burnout principle</div>
+  </div>
+
+  <!-- OVERVIEW CARDS -->
+  <div class="overview-grid fade">
+    <div class="overview-card mastery">
+      <div class="oc-label">// Mastery Plan</div>
+      <h3>Angular + Fundamentals</h3>
+      <p>Clean Code, SOLID, Design Patterns, Architecture, Performance, Security, Auth, a11y, System Design, Interview Prep</p>
+      <div class="oc-stat">23 <span>topics remaining</span></div>
+    </div>
+    <div class="overview-card dsa">
+      <div class="oc-label">// DSA Series</div>
+      <h3>Problem Solving</h3>
+      <p>Thinking Foundations → Data Structures → Core Patterns → Applied Practice → System Design. Built for complete beginners.</p>
+      <div class="oc-stat">40 <span>topics total</span></div>
+    </div>
+    <div class="overview-card routine">
+      <div class="oc-label">// Daily Routine</div>
+      <h3>Hybrid Work Optimised</h3>
+      <p>Commute blocks for reading. WFH mornings for deep work. Gym protected. Sunday fully off. Built around your real life.</p>
+      <div class="oc-stat">12–13 <span>hrs/week</span></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 01 — MASTERY PLAN TOPICS 60–82 -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section fade">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <span class="section-title">Mastery Plan — Topics 60–82</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="timeline-strip">
+      <div class="ts-phase p0"><div class="tp-weeks">Topics 60–65</div><div class="tp-name">PROGRAMMER<br>FUNDAMENTALS</div></div>
+      <div class="ts-phase p1"><div class="tp-weeks">Topics 66–70</div><div class="tp-name">SCALE &<br>PATTERNS</div></div>
+      <div class="ts-phase p2"><div class="tp-weeks">Topics 71–77</div><div class="tp-name">PERFORMANCE<br>& SECURITY</div></div>
+      <div class="ts-phase p3"><div class="tp-weeks">Topic 78</div><div class="tp-name">SYSTEM<br>DESIGN</div></div>
+      <div class="ts-phase p4"><div class="tp-weeks">Topics 79–82</div><div class="tp-name">INTERVIEW<br>READY</div></div>
+      <div class="ts-phase p5"><div class="tp-weeks">Ongoing</div><div class="tp-name">BUILD &<br>APPLY</div></div>
+    </div>
+
+    <!-- Programmer Fundamentals -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s1">Programmer Fundamentals</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item mastery-topic"><span class="topic-num">60</span><div><strong>Clean Code Principles</strong><span>Naming, small functions, SRP, code-as-documentation. Angular: components, services, reducers.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">61</span><div><strong>SOLID Principles</strong><span>SRP, OCP, LSP, ISP, DIP — each with Angular violation + refactor. Most interview-critical fundamentals topic.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">62</span><div><strong>Design Patterns in Practice</strong><span>Observer, Strategy, Factory, Facade, Singleton — recognised in Angular code, not memorised.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">63</span><div><strong>Big O & Practical Complexity</strong><span>O(1), O(n), O(n²) in frontend context. NgRx Entity, selectors, trackBy — real Angular decisions.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">64</span><div><strong>Recursion & Tree Traversal</strong><span>Recursive thinking, component tree, hierarchical Angular templates and menu components.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">65</span><div><strong>Data Structures for Frontend</strong><span>Arrays vs Maps vs Sets. NgRx Entity dictionary, RxJS data flow, form array structures.</span></div></div>
+      </div>
+    </div>
+
+    <!-- Scale & Patterns -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s2">Scale, Patterns & Architecture</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item mastery-topic"><span class="topic-num">66</span><div><strong>Module & Standalone Architecture</strong><span>NgModules vs standalone, feature/core/shared structure, migration strategies, NX awareness.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">67</span><div><strong>Design Patterns Applied in Angular</strong><span>Facade (NgRx), Repository (API layer), Adapter (response mapping). Real code, not slides.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">68</span><div><strong>Component Reusability & CVA</strong><span>ng-content projection, dynamic components, ControlValueAccessor — the most underused Angular feature.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">69</span><div><strong>CSS Architecture & Styling Systems</strong><span>BEM, CSS custom properties, design tokens concept, scalable responsive systems.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">70</span><div><strong>Angular Component Styling</strong><span>ViewEncapsulation modes, host styling, component-scoped styles, design token integration.</span></div></div>
+      </div>
+    </div>
+
+    <!-- Performance & Security -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s3">Performance & Security</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item mastery-topic"><span class="topic-num">71</span><div><strong>Core Web Vitals & Angular</strong><span>LCP, CLS, INP — what they measure, how Angular affects them, Lighthouse tooling.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">72</span><div><strong>Angular Performance Profiling</strong><span>Chrome DevTools, Angular DevTools, slow CD cycles, Zone.js, flame charts, memory leaks.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">73</span><div><strong>Bundle Optimization in Angular</strong><span>Tree shaking, preloading strategies, webpack-bundle-analyzer, differential loading.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">74</span><div><strong>Web Security for Frontend</strong><span>XSS, bypassSecurityTrust risks, CSRF, CORS, Content Security Policy — Angular specific.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">75</span><div><strong>Auth Concepts</strong><span>JWT, HttpOnly cookies vs localStorage, OAuth 2.0, OIDC, refresh tokens. Framework agnostic.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">76</span><div><strong>Auth Implementation in Angular</strong><span>Token service, interceptors, route guards, refresh token handling, silent refresh pattern.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">77</span><div><strong>Accessibility (a11y) in Angular</strong><span>ARIA roles, keyboard nav, focus management, CDK FocusTrap, LiveAnnouncer, A11yModule.</span></div></div>
+      </div>
+    </div>
+
+    <!-- System Design + Interview -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s4">System Design + Interview Readiness</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item mastery-topic"><span class="topic-num">78</span><div><strong>Frontend System Design</strong><span>Modularisation framework, state strategy, API layer, auth architecture, performance planning.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">79</span><div><strong>Programmer Fundamentals Interview Prep</strong><span>Big O in Angular context, SOLID in code reviews, design patterns in interview answers.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">80</span><div><strong>Angular Interview Mastery</strong><span>Top 30 Angular questions: change detection, signals vs RxJS, NgRx, performance, testing.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">81</span><div><strong>Behavioural & War Stories (STAR)</strong><span>3 war stories: hard bug, performance win, architecture decision. Practiced until natural.</span></div></div>
+        <div class="topic-item mastery-topic"><span class="topic-num">82</span><div><strong>Portfolio & Career Positioning</strong><span>Clean READMEs, deployment, technical writing for GitHub, making your work hireable.</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 02 — DSA TOPICS D1–D40 -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <span class="section-title">DSA & Problem Solving — D1–D40</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="alert">
+      <strong>Starting point:</strong> Zero independent problem-solving experience. Every stage builds on the previous. No stage-skipping. Stage 1 feels easy — do it anyway. It becomes the foundation everything else stands on.
+    </div>
+
+    <!-- Stage 1 -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s1">Stage 1 — Thinking Foundations</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item dsa-topic"><span class="topic-num">D1</span><div><strong>How to Read a Problem</strong><span>Extract inputs, outputs, constraints. Write your own example before reading theirs.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D2</span><div><strong>Brute Force First, Always</strong><span>Working solution before optimising. The mindset that unlocks independent thinking.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D3</span><div><strong>How to Spot Patterns</strong><span>5 questions to ask every problem. Pattern recognition as a skill — not knowledge.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D4</span><div><strong>Complexity Thinking in Practice</strong><span>Reason about time and space complexity before writing a line of code.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D5</span><div><strong>The Problem Solving Framework</strong><span>Read → Example → Brute Force → Optimise → Code → Test. Your north star process.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D6</span><div><strong>Debugging Your Own Code</strong><span>Trace through your solution, catch your own bugs, think like the compiler.</span></div></div>
+      </div>
+    </div>
+
+    <!-- Stage 2 -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s2">Stage 2 — Foundations</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item dsa-topic"><span class="topic-num">D7</span><div><strong>Arrays & Two Pointer Pattern</strong><span>Most fundamental structure + most powerful basic pattern. In-place ops, two directions.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D8</span><div><strong>Strings & String Manipulation</strong><span>String as character array, anagram detection, palindrome checking. High Tier C frequency.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D9</span><div><strong>Hash Maps & Hash Sets</strong><span>O(1) lookup, frequency counting, duplicate detection. Most useful DS for interviews.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D10</span><div><strong>The Sliding Window Pattern</strong><span>Fixed and variable window. Expand and shrink logic. One mechanic, many problem types.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D11</span><div><strong>Prefix Sums</strong><span>Precomputation for range queries. Converts O(n) repeated calculations to O(1).</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D12</span><div><strong>Stacks & the Stack Pattern</strong><span>LIFO thinking, valid parentheses family, monotonic stack concept.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D13</span><div><strong>Queues & the Queue Pattern</strong><span>FIFO thinking, BFS foundation, sliding window maximum.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D14</span><div><strong>Linked Lists</strong><span>Node structure, slow and fast pointers, cycle detection, reversal.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D15</span><div><strong>Sorting — What You Need to Know</strong><span>Which sort when, what built-in sort does, how sorted input changes your options.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D16</span><div><strong>Binary Search</strong><span>Not just sorted arrays — binary search as a thinking pattern for elimination.</span></div></div>
+      </div>
+    </div>
+
+    <!-- Stage 3 -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s3">Stage 3 — Core Patterns</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item dsa-topic"><span class="topic-num">D17</span><div><strong>Recursion Foundations</strong><span>Call stack mental model, base cases, when recursion is the natural solution.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D18</span><div><strong>Trees — Structure & Traversal</strong><span>Binary tree, DFS (pre/in/post), BFS level-order, height and depth.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D19</span><div><strong>Trees — Common Problem Patterns</strong><span>Path problems, ancestor problems, tree validation, symmetric trees, diameter.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D20</span><div><strong>Binary Search Trees</strong><span>BST properties, in-order gives sorted output, BST validation.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D21</span><div><strong>Graphs — Structure & Representation</strong><span>Adjacency list vs matrix, directed vs undirected. Mental model before algorithms.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D22</span><div><strong>Graph Traversal — DFS & BFS</strong><span>Connected components, island counting, shortest path in unweighted graphs.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D23</span><div><strong>Dynamic Programming — Mental Model</strong><span>Remembering answers to subproblems. Memoisation vs tabulation. Is this a DP problem?</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D24</span><div><strong>DP — 1D Problems</strong><span>Fibonacci, climbing stairs, house robber, coin change. Entry-level DP patterns.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D25</span><div><strong>DP — 2D Problems</strong><span>Grid-based DP, unique paths, minimum path sum. 1D thinking extended to two dimensions.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D26</span><div><strong>Heaps & Priority Queues</strong><span>Min/max heap concept, top-K problems, median of a stream. High Tier B relevance.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D27</span><div><strong>Backtracking</strong><span>Decision tree mental model, permutations, combinations, subsets.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D28</span><div><strong>Greedy Algorithms</strong><span>Locally optimal → globally optimal. Greedy vs DP decision framework.</span></div></div>
+      </div>
+    </div>
+
+    <!-- Stage 4 -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s4">Stage 4 — Applied Practice</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item dsa-topic"><span class="topic-num">D29</span><div><strong>Problem Classification Practice</strong><span>20 unseen problems — classify into pattern families without solving. Pure recognition.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D30</span><div><strong>Two Pointer — Applied</strong><span>10 problems increasing in difficulty. When does two pointer apply?</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D31</span><div><strong>Sliding Window — Applied</strong><span>10 problems. Fixed vs variable window decision. Edge cases.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D32</span><div><strong>Tree Problems — Applied</strong><span>10 problems mixing DFS, BFS, BST. Choose the right traversal.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D33</span><div><strong>Graph Problems — Applied</strong><span>10 problems. Problem → graph translation. Recognising hidden graphs.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D34</span><div><strong>DP Problems — Applied</strong><span>10 problems 1D through 2D. Identify the subproblem — don't memorise solutions.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D35</span><div><strong>Mixed Pattern Problems</strong><span>10 problems with no pattern hints. Real interview simulation.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D36</span><div><strong>Timed Practice Sessions</strong><span>45 minutes, 2 problems, full debrief. Solving correctly under time pressure.</span></div></div>
+      </div>
+    </div>
+
+    <!-- Stage 5 -->
+    <div class="topic-group">
+      <div class="stage-header">
+        <div class="stage-badge s5">Stage 5 — System Design</div>
+        <div class="stage-line"></div>
+      </div>
+      <div class="topic-grid">
+        <div class="topic-item dsa-topic"><span class="topic-num">D37</span><div><strong>System Design Fundamentals</strong><span>Requirements, capacity estimation, high-level design, component breakdown. Interview structure.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D38</span><div><strong>Frontend System Design Patterns</strong><span>Component architecture, state selection, API layer, caching, auth flow. Angular-weighted.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D39</span><div><strong>Designing Real Systems</strong><span>Real-time dashboard, collaborative editor, e-commerce page. Full walkthroughs.</span></div></div>
+        <div class="topic-item dsa-topic"><span class="topic-num">D40</span><div><strong>System Design Interview Practice</strong><span>Clarifying questions, handling "it depends", right level of detail. Mock practice.</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 03 — DAILY ROUTINE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <span class="section-title">Daily Routine — Office vs WFH</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="day-type-grid">
+
+      <!-- OFFICE DAY -->
+      <div class="day-card office">
+        <div class="day-card-header">
+          <h3>🏢 Office Day</h3>
+          <div class="day-total">2 – 2.5 hrs learning</div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">6:00 – 6:45</div>
+          <div class="tb-content">
+            <div class="tb-badge work">MORNING PREP</div>
+            <div class="tb-title">Wake, Freshen, Breakfast</div>
+            <div class="tb-desc">No phone. No news. Body first, brain second. Learning does not start here.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">7:00 – 8:00</div>
+          <div class="tb-content">
+            <div class="tb-badge learn">COMMUTE AM</div>
+            <div class="tb-title">Block 1 — Theory & Review</div>
+            <div class="tb-desc">Read topic documentation or notes. Review yesterday's exercise attempts. On DSA days — re-read the thinking walkthrough. No coding. Reading and absorbing only.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">11:00 – 7:00</div>
+          <div class="tb-content">
+            <div class="tb-badge work">WORK</div>
+            <div class="tb-title">Full Focus on Work</div>
+            <div class="tb-desc">No learning guilt. Your job is your live lab. Note when you apply a concept from the series — that counts as reinforcement.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">7:00 – 8:00</div>
+          <div class="tb-content">
+            <div class="tb-badge review">COMMUTE PM</div>
+            <div class="tb-title">Block 2 — Processing & Recall</div>
+            <div class="tb-desc">Write your own summary of the morning reading in phone notes. DSA: think through the practice problem mentally — no code yet. Answer: "What did I read? What did I understand? What is still unclear?"</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">8:00 – 11:00</div>
+          <div class="tb-content">
+            <div class="tb-badge gym">GYM + DINNER</div>
+            <div class="tb-title">Fully Off — Protected Recovery</div>
+            <div class="tb-desc">Non-negotiable. No learning. This is your physical and mental reset. Cutting it costs more than it gains.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">11:00 – 11:30</div>
+          <div class="tb-content">
+            <div class="tb-badge optional">OPTIONAL</div>
+            <div class="tb-title">Micro Session — Only If Alert</div>
+            <div class="tb-desc">If genuinely energised: write tomorrow's learning intention, 10-min note review, or brute force approach in plain English for tomorrow's DSA problem. If tired — skip entirely and sleep. Tired brain retains nothing.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WFH DAY -->
+      <div class="day-card wfh">
+        <div class="day-card-header">
+          <h3>🏠 WFH Day</h3>
+          <div class="day-total">2 hrs guaranteed</div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">7:30 – 8:00</div>
+          <div class="tb-content">
+            <div class="tb-badge work">MORNING</div>
+            <div class="tb-title">Wake + Morning Routine</div>
+            <div class="tb-desc">Freshen, coffee, breakfast. 30 minutes. Settle physically before opening anything learning-related. Wake target: 7:30am.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">8:00 – 9:30</div>
+          <div class="tb-content">
+            <div class="tb-badge deep">DEEP BLOCK ★</div>
+            <div class="tb-title">90-Min Deep Learning Session</div>
+            <div class="tb-desc">
+              Most important block of the week. Fresh mind, no pressure, no fatigue.<br><br>
+              <strong style="color:var(--accent5);font-size:10px;">0–10 min:</strong> Review yesterday's log. Fix one unclear thing.<br>
+              <strong style="color:var(--accent5);font-size:10px;">10–60 min:</strong> New topic — read actively, annotate, question, connect.<br>
+              <strong style="color:var(--accent5);font-size:10px;">60–90 min:</strong> Practice. DSA: attempt the problem independently. Mastery: build the code example from memory.
+            </div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">9:30 – 10:00</div>
+          <div class="tb-content">
+            <div class="tb-badge work">BUFFER</div>
+            <div class="tb-title">Transition to Work Mode</div>
+            <div class="tb-desc">Close learning material. Tea or coffee. Check Slack and email now — not before. This buffer protects your deep block from early work pull.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">10:00 – 7:00</div>
+          <div class="tb-content">
+            <div class="tb-badge work">WORK</div>
+            <div class="tb-title">Full Focus on Work</div>
+            <div class="tb-desc">Same as office days. Note any concept applications throughout the day.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">7:00 – 8:00</div>
+          <div class="tb-content">
+            <div class="tb-badge work">PERSONAL</div>
+            <div class="tb-title">Wind Down + Personal Time</div>
+            <div class="tb-desc">Dinner, decompress. This hour is yours — not learning, not gym yet.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">8:00 – 11:00</div>
+          <div class="tb-content">
+            <div class="tb-badge gym">GYM + DINNER</div>
+            <div class="tb-title">Fully Off — Protected Recovery</div>
+            <div class="tb-desc">Identical to office days. Fully protected. Non-negotiable.</div>
+          </div>
+        </div>
+
+        <div class="time-block">
+          <div class="tb-time">11:00 – 11:30</div>
+          <div class="tb-content">
+            <div class="tb-badge review">REVIEW LOG</div>
+            <div class="tb-title">Close the Loop — Not Optional</div>
+            <div class="tb-desc">Write: what you learned, what clicked, what is still unclear, what you applied at work, tomorrow's intention. 5 minutes. The habit that separates developers who retain from those who constantly relearn.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 04 — WEEKLY SCHEDULE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <span class="section-title">Weekly Schedule — Series Rotation</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="week-grid">
+      <div class="week-day office-day">
+        <div class="wd-name">MON</div>
+        <div class="wd-type">Office</div>
+        <div class="wd-focus">Commute: read Mastery Plan topic. Evening: process + summarise.</div>
+        <div><span class="wd-pill m">Mastery</span></div>
+        <div class="wd-hours">2<small>hrs</small></div>
+      </div>
+
+      <div class="week-day wfh-day">
+        <div class="wd-name">TUE</div>
+        <div class="wd-type">WFH</div>
+        <div class="wd-focus">8–9:30am deep block: full DSA topic + practice attempt.</div>
+        <div><span class="wd-pill d">DSA</span></div>
+        <div class="wd-hours">2<small>hrs</small></div>
+      </div>
+
+      <div class="week-day office-day">
+        <div class="wd-name">WED</div>
+        <div class="wd-type">Office</div>
+        <div class="wd-focus">Commute: re-read DSA topic notes. Evening: think through practice problem.</div>
+        <div><span class="wd-pill d">DSA</span></div>
+        <div class="wd-hours">2<small>hrs</small></div>
+      </div>
+
+      <div class="week-day wfh-day">
+        <div class="wd-name">THU</div>
+        <div class="wd-type">WFH</div>
+        <div class="wd-focus">8–9:30am deep block: full Mastery Plan topic + code exercise.</div>
+        <div><span class="wd-pill m">Mastery</span></div>
+        <div class="wd-hours">2<small>hrs</small></div>
+      </div>
+
+      <div class="week-day office-day">
+        <div class="wd-name">FRI</div>
+        <div class="wd-type">Office</div>
+        <div class="wd-focus">Review only. Re-read this week's topics. Write week summary. No new topics.</div>
+        <div><span class="wd-pill r">Review</span></div>
+        <div class="wd-hours">2<small>hrs</small></div>
+      </div>
+
+      <div class="week-day wfh-day">
+        <div class="wd-name">SAT</div>
+        <div class="wd-type">Flexible</div>
+        <div class="wd-focus">Whichever series had a harder week. Rebuild unclear topics from memory.</div>
+        <div><span class="wd-pill m">Either</span></div>
+        <div class="wd-hours">2<small>hrs</small></div>
+      </div>
+
+      <div class="week-day rest-day">
+        <div class="wd-name">SUN</div>
+        <div class="wd-type">Rest</div>
+        <div class="wd-focus">Full rest. No learning. No guilt. Consolidation happens neurologically during rest.</div>
+        <div><span class="wd-pill r" style="background:rgba(107,107,128,0.1);color:var(--muted);">Off</span></div>
+        <div class="wd-hours">0<small>hrs</small></div>
+      </div>
+    </div>
+
+    <!-- Totals table -->
+    <table class="totals-table">
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>Type</th>
+          <th>Focus</th>
+          <th>Learning Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Monday</td>
+          <td><span class="type-badge" style="background:rgba(245,158,11,0.1);color:var(--office);">Office</span></td>
+          <td style="color:var(--muted)">Mastery Plan — commute read + process</td>
+          <td><span class="hrs" style="color:var(--office)">2–2.5</span> hrs</td>
+        </tr>
+        <tr>
+          <td>Tuesday</td>
+          <td><span class="type-badge" style="background:rgba(56,189,248,0.1);color:var(--wfh);">WFH</span></td>
+          <td style="color:var(--muted)">DSA — deep block + practice</td>
+          <td><span class="hrs" style="color:var(--wfh)">2</span> hrs</td>
+        </tr>
+        <tr>
+          <td>Wednesday</td>
+          <td><span class="type-badge" style="background:rgba(245,158,11,0.1);color:var(--office);">Office</span></td>
+          <td style="color:var(--muted)">DSA — commute review + mental solve</td>
+          <td><span class="hrs" style="color:var(--office)">2–2.5</span> hrs</td>
+        </tr>
+        <tr>
+          <td>Thursday</td>
+          <td><span class="type-badge" style="background:rgba(56,189,248,0.1);color:var(--wfh);">WFH</span></td>
+          <td style="color:var(--muted)">Mastery Plan — deep block + code exercise</td>
+          <td><span class="hrs" style="color:var(--wfh)">2</span> hrs</td>
+        </tr>
+        <tr>
+          <td>Friday</td>
+          <td><span class="type-badge" style="background:rgba(245,158,11,0.1);color:var(--office);">Office</span></td>
+          <td style="color:var(--muted)">Review only — no new topics ever</td>
+          <td><span class="hrs" style="color:var(--office)">2</span> hrs</td>
+        </tr>
+        <tr>
+          <td>Saturday</td>
+          <td><span class="type-badge" style="background:rgba(56,189,248,0.08);color:var(--wfh);">Flexible</span></td>
+          <td style="color:var(--muted)">Catch-up or reinforce harder series</td>
+          <td><span class="hrs" style="color:var(--wfh)">2</span> hrs</td>
+        </tr>
+        <tr>
+          <td>Sunday</td>
+          <td><span class="type-badge" style="background:rgba(107,107,128,0.1);color:var(--muted);">Rest</span></td>
+          <td style="color:var(--muted)">Full rest — non-negotiable</td>
+          <td><span class="hrs" style="color:var(--muted2)">0</span> hrs</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="color:var(--accent)">Weekly Total</td>
+          <td><span class="hrs">12–13</span> hrs/week</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 05 — DAILY LOG TEMPLATE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <span class="section-title">Daily Learning Log Template</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="alert">
+      <strong>Non-negotiable habit.</strong> 5 minutes every session. The "Still Unclear" field is the most important line — it becomes the first thing you resolve in your next session, not something you carry forward indefinitely.
+    </div>
+
+    <div class="log-box">
+      <div class="log-title">// Daily Learning Log — Copy This Every Session</div>
+      <div class="log-field">
+        <div class="lf-label">DATE & SERIES</div>
+        <div class="lf-value">[date] · [Mastery Plan / DSA Series]</div>
+      </div>
+      <div class="log-field">
+        <div class="lf-label">TOPIC</div>
+        <div class="lf-value">[Topic number and name]</div>
+      </div>
+      <div class="log-field">
+        <div class="lf-label">WHAT I COVERED</div>
+        <div class="lf-value">[2–3 sentences in your own words — not copied from the topic]</div>
+      </div>
+      <div class="log-field">
+        <div class="lf-label">WHAT CLICKED</div>
+        <div class="lf-value">[The one thing that finally made sense — be specific]</div>
+      </div>
+      <div class="log-field">
+        <div class="lf-label">STILL UNCLEAR ⚠️</div>
+        <div class="lf-value">[Be specific — vague confusion cannot be resolved. "I don't understand X when Y happens" not "I'm confused"]</div>
+      </div>
+      <div class="log-field">
+        <div class="lf-label">APPLIED AT WORK</div>
+        <div class="lf-value">[Any concept you used or noticed in your actual work today — even small observations count]</div>
+      </div>
+      <div class="log-field">
+        <div class="lf-label">TOMORROW'S INTENTION</div>
+        <div class="lf-value">[Exactly what you will cover in the next session — specific topic and section]</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 06 — THE 5 RULES -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <span class="section-title">The 5 Rules That Make This Work</span>
+      <div class="section-line"></div>
+    </div>
+
+    <ul class="rules-list">
+      <li>
+        <div class="rule-body">
+          <strong>Never move the gym</strong>
+          <p>It is your physical and mental recovery. Every developer who cuts recovery to study more ends up burning out and stopping entirely. The gym stays — always.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-body">
+          <strong>Commute time is not wasted time</strong>
+          <p>2 hours of daily commute on office days = 10 hours per week of learning time most developers throw away on social media. Protect it with the same seriousness as a scheduled meeting.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-body">
+          <strong>The WFH morning block is sacred</strong>
+          <p>Do not let it drift to 10am. Do not let Slack pull you in early. 8:00–9:30am is learning time. Your employer gets you from 10am. Those 90 minutes are the highest-value learning time in your entire week.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-body">
+          <strong>Friday is never a new topic day</strong>
+          <p>Friday is always review and consolidation. This is the rule that prevents the "I learned 10 things this week and retained none of them" problem. Review → fix unclear → only then advance.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-body">
+          <strong>A missed day has one rule: continue</strong>
+          <p>Acknowledge it, log it, start the next session as if nothing happened. No catching up. No doubling sessions. No guilt spiral. The developer who does 30 minutes every day for 6 months is not the same developer who started.</p>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 07 — MASTER PROMPTS REFERENCE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <span class="section-title">Master Prompts — Quick Reference</span>
+      <div class="section-line"></div>
+    </div>
+
+    <!-- Mastery Prompt -->
+    <div class="prompt-box mastery-prompt">
+      <div class="prompt-header">
+        <h4>Mastery Plan Prompt — Topics 60–82</h4>
+        <span class="prompt-tag">16 SECTIONS</span>
+      </div>
+      <div class="prompt-body">
+        <div class="prompt-section">
+          <div class="ps-title">Start with</div>
+          <div class="ps-content">"FRONTEND MASTERY LEARNING SERIES — CONTINUATION FROM TOPIC 59"</div>
+        </div>
+        <div class="prompt-section">
+          <div class="ps-title">Key rules for this prompt</div>
+          <div class="ps-content">
+            <ul>
+              <li>Section 3 MUST include a plain JS/TS example AND an Angular-specific example for every topic — including non-Angular ones like SOLID and Clean Code</li>
+              <li>Section 8 MUST include at least one scenario inside an Angular codebase</li>
+              <li>One topic at a time — wait for "next", "Topic X", or "continue"</li>
+              <li>Stop cleanly at end of a finished section if too long — never cut a section in half</li>
+              <li>Connect to prior Topics 1–59 by number where relevant</li>
+            </ul>
+          </div>
+        </div>
+        <div class="prompt-section">
+          <div class="ps-title">16 sections every topic</div>
+          <div class="ps-content">
+            <span class="highlight">S0</span> Difficulty & Priority · <span class="highlight">S1</span> Explanation + Named Analogy · <span class="highlight">S2</span> Prior Concepts · <span class="highlight">S3</span> Code Examples (plain + Angular) · <span class="highlight">S4</span> Before & After Refactor · <span class="highlight">S5</span> 3 Mistakes · <span class="highlight">S6</span> Do's & Don'ts · <span class="highlight">S7</span> 3 Debug Tips · <span class="highlight">S8</span> Real-World Apps · <span class="highlight">S9</span> 3 Exercises · <span class="highlight">S10</span> Key Takeaways · <span class="highlight">S11</span> Deep Question + Answer · <span class="highlight">S12</span> Related Topics · <span class="highlight">S13</span> Study Checkpoint · <span class="highlight">S14</span> 3 Interview Questions · <span class="highlight">S15</span> 3 Anti-Patterns · <span class="highlight">S16</span> Mental Model Summary
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DSA Prompt -->
+    <div class="prompt-box dsa-prompt">
+      <div class="prompt-header">
+        <h4>DSA & Problem Solving Prompt — D1–D40</h4>
+        <span class="prompt-tag">14 SECTIONS</span>
+      </div>
+      <div class="prompt-body">
+        <div class="prompt-section">
+          <div class="ps-title">Start with</div>
+          <div class="ps-content">"DSA & PROBLEM SOLVING LEARNING SERIES"</div>
+        </div>
+        <div class="prompt-section">
+          <div class="ps-title">Critical rules for this prompt</div>
+          <div class="ps-content">
+            <ul>
+              <li>Section 9 practice problems have NO solutions, NO hints, EVER — independent solving is the entire point</li>
+              <li>Section 6 (Thinking Process Walkthrough) is unique to this series — the internal monologue of a strong problem solver</li>
+              <li>Brute force always comes before optimisation — Section 4 before Section 5</li>
+              <li>Problems in Section 9 must only use concepts covered up to that topic — no forward dependencies</li>
+              <li>Section 13 (Stage Checkpoint) only appears after the final topic in each stage</li>
+            </ul>
+          </div>
+        </div>
+        <div class="prompt-section">
+          <div class="ps-title">14 sections every topic</div>
+          <div class="ps-content">
+            <span class="highlight2">S0</span> Difficulty & Interview Relevance · <span class="highlight2">S1</span> Explanation + Named Analogy + Diagram · <span class="highlight2">S2</span> Pattern Recognition Signal · <span class="highlight2">S3</span> Prior Topic Connections · <span class="highlight2">S4</span> Brute Force First · <span class="highlight2">S5</span> Optimised Solution + Trace · <span class="highlight2">S6</span> Thinking Process Walkthrough · <span class="highlight2">S7</span> 3 Mistakes · <span class="highlight2">S8</span> Do's & Don'ts · <span class="highlight2">S9</span> 4 Practice Problems (no solutions) · <span class="highlight2">S10</span> Key Takeaways + Complexity Sheet · <span class="highlight2">S11</span> Deep Question + Answer · <span class="highlight2">S12</span> Interview Simulation · <span class="highlight2">S13</span> Stage Checkpoint (end of stage only)
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>Complete Learning System · Angular Mastery + DSA + Daily Routine · 2026</span>
+    <span>Consistency over intensity. Every single day.</span>
+  </div>
+
+</div>
+</body>
+</html>

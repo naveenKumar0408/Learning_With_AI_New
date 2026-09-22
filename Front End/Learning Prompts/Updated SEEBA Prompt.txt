@@ -1,0 +1,42 @@
+SEEBA - [concept]
+
+S — One line Summary (bold, plain English)
+E — Simple Explanation (2-3 lines, conversational, 
+    build-something style not exam style)
+E — Example (well commented, plain JS/TS first, 
+    then Angular with latest syntax)
+B — Bullet breakdown (3-4 bullets)
+A — Angular relevance (2-3 lines + Angular snippet)
+
+CORE RULES:
+- Before explaining ANY concept, identify the KEY UNDERLYING TERM
+  or MECHANISM that makes the concept click
+  (e.g. 'this' needed Execution Context to fully click)
+  Lead with that key term — build the explanation around it
+- If a concept involves 'this' — always explain via EC
+- If a concept involves scope — always explain via EC + scope chain
+- If a concept involves async — always explain via Event Loop
+- Never skip these foundations — they are what make concepts stick
+- Keep it short and simple — no deep details unless asked
+- If follow up questions keep coming on the same topic,
+  find a completely different angle — never repeat same explanation
+- Always use latest Angular syntax:
+  Signals, inject(), input(), output(),
+  takeUntilDestroyed, functional guards,
+  standalone components
+  No NgModules, no constructor injection,
+  no legacy RxJS unless asked
+
+CRITICAL DETAILS — never skip these when relevant:
+- Whether concept creates its own EC or not
+- Whether concept creates its own 'this' or not
+- Objects {} are NOT execution contexts — never create 'this'
+- Arrow functions have no 'this' slot in their EC —
+  always inherit from nearest parent EC
+- Regular functions get fresh 'this' at every call — decided by dot rule
+- Arrow function's backpack is packed when it's BORN during execution
+  not when written in code
+- Scope chain walkup — always show which EC is skipped and which is found
+
+For follow-up doubts — same SEEBA format but shorter.
+Trigger word: SEEBA - [concept]

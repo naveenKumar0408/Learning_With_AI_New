@@ -1,0 +1,835 @@
+Topic 53 — NgRx Selectors In Depth
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate-Advanced — The basic createSelector API is simple; the difficulty is understanding why memoisation works the way it does, what breaks it, how to compose selectors correctly at scale, and how poorly written selectors silently destroy the performance advantages NgRx is supposed to provide.
+Angular Relevance: Critical — Selectors are the most performance-critical piece of NgRx; a single incorrectly written selector can cause every OnPush component in your app to re-render on every action dispatch, completely negating the change detection optimisations you paired NgRx with in the first place.
+
+Section 1 — Explanation
+The Spreadsheet Formula Analogy
+Imagine a large Excel spreadsheet representing your application state. Raw data lives in cells (the store slices). You don't show users the raw cells — you show them computed formula cells that derive meaningful values: totals, filtered lists, formatted strings.
+Excel is smart about recalculation. If cell A1 changes, only formulas that depend on A1 recalculate. A formula depending only on B1 and C1 doesn't rerun just because A1 changed. This is memoisation — recalculate only when the inputs you depend on actually change.
+NgRx selectors are those formula cells. createSelector(inputA, inputB, projector) tells NgRx: "this selector depends on inputA and inputB — only rerun the projector function when inputA or inputB produces a new value." If an unrelated slice of state changes (an action updates the cart while you're displaying the user list), the user list selector's projector never runs. The component never re-renders. This is the performance contract selectors make — and it only holds if you follow the rules.
+Technical Explanation
+createSelector uses referential equality (===) to check whether its input selectors produced new values. If all inputs return the same references as the previous call, the cached result is returned immediately without running the projector.
+This works because NgRx reducers (Topic 51) always return new object references on change — a new reference means new data, the same reference means nothing changed. The selector chain tracks this all the way from the raw state slice to the final derived value.
+The memoisation chain:
+Store emits new state
+  → Feature selector checks: is state['users'] a new reference?
+    → If NO: return cached result, stop here
+    → If YES: run next selector
+      → selectAllUsers checks: is users array a new reference?
+        → If NO: return cached result
+        → If YES: run projector → derive filtered list → cache result → emit
+Every level in this chain can short-circuit. This is why composing selectors from smaller selectors is better than writing one large selector — more opportunities for early short-circuit.
+Quick Reference Table
+APIPurposeKey behaviourcreateFeatureSelector<T>(key)Get top-level feature sliceEntry point for all feature selectorscreateSelector(inputs..., projector)Derive data from inputsMemoised — projector only runs on new input referencescreateSelectorFactory(memoize)Custom memoisation strategyUsed when default referential equality isn't appropriatestore.select(selector)Subscribe to a selectorReturns Observable — emits only when selector result changesselector.projector(args)Call projector directlyUsed in unit tests to test derivation logic in isolationselector.release()Clear memoised resultRarely needed — use when selector with props is recreated
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 51 — NgRx Core Concepts: Basic createSelector and createFeatureSelector were introduced there. This topic goes significantly deeper — composition, memoisation mechanics, factory selectors, and performance pitfalls.
+Topic 24 — OnPush Change Detection: Selectors and OnPush are designed as a pair. OnPush components only re-render when their input references change or an Observable they subscribe to emits. Memoised selectors emit only when their derived value changes — making OnPush effectively free when selectors are written correctly.
+Topic 23 — Angular Signals: NgRx 17+ introduced selectSignal() — store.selectSignal(selector) returns a Signal instead of an Observable, integrating NgRx state directly into the Signals reactivity system. Understanding Signals makes this integration meaningful.
+Topic 14 — readonly & Immutability: Selectors depend on referential equality — which depends on reducers returning new references on change. If a reducer mutates state in place, the selector's input reference doesn't change, the projector never runs, and the component freezes. Immutability is the prerequisite for memoisation to work.
+Topic 52 — NgRx Effects: Effects use withLatestFrom(store.select(selector)) to read current state — understanding selector composition determines how efficiently Effects access the state they need.
+
+Bridging note: In Topic 24 you learned that OnPush only checks a component when its Observable input emits a new value. In Topic 51 you learned that selectors return Observables. The connection is that a correctly memoised selector emits only when its specific derived data changes, not on every store emission — meaning an OnPush component watching a selector re-renders exactly as often as its data actually changes, and never more. This is the performance model the entire NgRx + OnPush combination is built on.
+Most directly extends: Topic 51 — NgRx Core Concepts (extends the basic selector introduction to production-level composition and memoisation understanding).
+
+Section 3 — Code Example
+Plain TS — Memoisation mechanics in isolation
+typescript// Understanding what createSelector does under the hood
+function createSelectorManual<S, R1, Result>(
+  input1: (state: S) => R1,
+  projector: (r1: R1) => Result
+) {
+  let lastInput1: R1 | undefined;
+  let lastResult: Result | undefined;
+
+  return (state: S): Result => {
+    const newInput1 = input1(state);
+
+    // Referential equality check — same reference = skip projector
+    if (newInput1 === lastInput1 && lastResult !== undefined) {
+      console.log('Cache hit — returning memoised result');
+      return lastResult;
+    }
+
+    console.log('Cache miss — running projector');
+    lastResult = projector(newInput1);
+    lastInput1 = newInput1;
+    return lastResult;
+  };
+}
+
+// Demonstrate:
+const state = { users: [{ id: 1, name: 'Alice' }], loading: false };
+const selectUsers = (s: typeof state) => s.users;
+const selectUserCount = createSelectorManual(selectUsers, users => users.length);
+
+selectUserCount(state); // 'Cache miss — running projector' → 1
+selectUserCount(state); // 'Cache hit — returning memoised result' → 1
+
+// Simulate an unrelated state change (loading changes, users array doesn't)
+const state2 = { ...state, loading: true }; // new state object, same users reference
+selectUserCount(state2); // 'Cache hit' — users reference unchanged, projector skipped
+
+Real Angular — Full selector composition hierarchy
+typescript// users/store/users.selectors.ts
+import {
+  createFeatureSelector,
+  createSelector,
+  createSelectorFactory,
+  defaultMemoize
+} from '@ngrx/store';
+import { UsersState } from './users.reducer';
+
+// ── Level 1: Feature selector ─────────────────────────────────────
+// Entry point — always the first selector in a feature
+const selectUsersState = createFeatureSelector<UsersState>('users');
+
+// ── Level 2: Slice selectors — one per state property ────────────
+// These are the building blocks for everything above them.
+// Keep these single-property — they short-circuit the most aggressively.
+export const selectAllUsers = createSelector(
+  selectUsersState,
+  state => state.users
+);
+
+export const selectUsersLoading = createSelector(
+  selectUsersState,
+  state => state.loading
+);
+
+export const selectUsersError = createSelector(
+  selectUsersState,
+  state => state.error
+);
+
+export const selectSearchQuery = createSelector(
+  selectUsersState,
+  state => state.searchQuery
+);
+
+export const selectSelectedUserId = createSelector(
+  selectUsersState,
+  state => state.selectedUserId
+);
+
+// ── Level 3: Derived selectors — composed from Level 2 ───────────
+
+// This projector only reruns when BOTH users AND searchQuery change.
+// If only loading changes, this projector never runs.
+export const selectFilteredUsers = createSelector(
+  selectAllUsers,      // input 1
+  selectSearchQuery,   // input 2
+  (users, query) => {  // projector — runs only when either input changes
+    if (!query.trim()) return users;
+    const lower = query.toLowerCase();
+    return users.filter(u =>
+      u.name.toLowerCase().includes(lower) ||
+      u.email.toLowerCase().includes(lower)
+    );
+  }
+);
+
+// Counts — derived from filtered list, not from raw users.
+// If filter changes the list, this updates. If unrelated state changes, it doesn't.
+export const selectFilteredUserCount = createSelector(
+  selectFilteredUsers,
+  users => users.length
+);
+
+// ── Level 4: View model selectors — one per component ────────────
+// Combine everything a specific component needs into one selector.
+// Component subscribes to ONE selector, not five.
+export const selectUsersPageViewModel = createSelector(
+  selectFilteredUsers,
+  selectUsersLoading,
+  selectUsersError,
+  selectFilteredUserCount,
+  selectSearchQuery,
+  // Projector receives each input's result as a positional argument
+  (users, loading, error, count, query) => ({
+    users,
+    loading,
+    error,
+    count,
+    query,
+    // Derived boolean — computed in selector, not in template
+    hasResults: users.length > 0,
+    isEmpty: !loading && users.length === 0 && !error
+  })
+);
+
+// ── Parameterised selector — selecting a single item by ID ────────
+
+// PATTERN 1: Factory function (recommended for NgRx 16+)
+// Returns a new selector each time, memoised per call
+export const selectUserById = (id: number) =>
+  createSelector(
+    selectAllUsers,
+    users => users.find(u => u.id === id) ?? null
+  );
+
+// Usage in component:
+// this.user$ = this.store.select(selectUserById(this.userId));
+
+// PATTERN 2: Using selectSelectedUserId from state
+// More idiomatic — the ID lives in the store, not in the component
+export const selectSelectedUser = createSelector(
+  selectAllUsers,
+  selectSelectedUserId,
+  (users, selectedId) =>
+    selectedId !== null
+      ? users.find(u => u.id === selectedId) ?? null
+      : null
+);
+
+// ── Cross-feature selector — combining two feature slices ─────────
+// Requires importing the other feature's selectors
+import { selectCartItems } from '../../cart/store/cart.selectors';
+
+// This selector crosses feature boundaries — it knows about both users and cart
+// Use sparingly — creates coupling between features
+export const selectCurrentUserCartSummary = createSelector(
+  selectSelectedUser,    // from users feature
+  selectCartItems,       // from cart feature
+  (user, cartItems) => ({
+    userName: user?.name ?? 'Guest',
+    itemCount: cartItems.length,
+    totalValue: cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  })
+);
+
+Component consuming the view model selector
+typescript// users-page.component.ts
+import { Component, inject } from '@angular/core';
+import { Store } from '@ngrx/store';
+import { AsyncPipe } from '@angular/common';
+import { selectUsersPageViewModel } from './store/users.selectors';
+
+@Component({
+  selector: 'app-users-page',
+  standalone: true,
+  imports: [AsyncPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (vm$ | async; as vm) {
+      <div class="search-bar">
+        <input [value]="vm.query" (input)="onSearch($event)" />
+        <span>{{ vm.count }} results</span>
+      </div>
+
+      @if (vm.loading) { <app-spinner /> }
+      @if (vm.error)   { <app-error [message]="vm.error" /> }
+
+      @if (vm.isEmpty) {
+        <p>No users found for "{{ vm.query }}"</p>
+      }
+
+      @for (user of vm.users; track user.id) {
+        <app-user-card [user]="user" />
+      }
+    }
+  `
+})
+export class UsersPageComponent {
+  readonly #store = inject(Store);
+
+  // ONE selector subscription for the entire component
+  // Previously: five separate store.select() calls
+  vm$ = this.#store.select(selectUsersPageViewModel);
+
+  onSearch(event: Event): void {
+    const query = (event.target as HTMLInputElement).value;
+    this.#store.dispatch(UsersActions.userSearched({ query }));
+  }
+}
+
+Using selectSignal (NgRx 17+)
+typescript// Modern pattern — selector as a Signal instead of Observable
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <!-- No async pipe needed — Signals integrate directly with template -->
+    @if (vm().loading) { <app-spinner /> }
+    @for (user of vm().users; track user.id) {
+      <app-user-card [user]="user" />
+    }
+  `
+})
+export class UsersPageComponent {
+  readonly #store = inject(Store);
+
+  // selectSignal returns a Signal — reads like any other Signal in the template
+  // Angular tracks it automatically — no async pipe, no subscription management
+  vm = this.#store.selectSignal(selectUsersPageViewModel);
+}
+
+Custom memoisation with createSelectorFactory
+typescript// Default memoisation uses === for all comparisons.
+// For selectors that return arrays, === checks the array reference,
+// not the contents. Sometimes you need deep equality.
+
+import { createSelectorFactory, resultMemoize } from '@ngrx/store';
+import { isEqual } from 'lodash'; // deep equality
+
+// Custom selector factory using deep equality for the result
+// Use sparingly — deep equality is expensive
+const createDeepEqualSelector = createSelectorFactory(projector =>
+  resultMemoize(projector, isEqual) // compare results with deep equality
+);
+
+// Use when the projector might return a new array reference with identical contents
+export const selectSortedUserIds = createDeepEqualSelector(
+  selectAllUsers,
+  // This returns a new array reference every time (sort creates a new array)
+  // Without deep equality, it would emit on every action even if IDs are identical
+  users => [...users].sort((a, b) => a.id - b.id).map(u => u.id)
+);
+
+Section 4 — Before & After Refactor
+❌ Before — Inline selectors and template logic
+typescript// WRONG: Inline computation in component and template
+@Component({
+  template: `
+    <!-- Template method call — runs on EVERY change detection cycle -->
+    <span>{{ getFilteredCount() }} users</span>
+
+    <!-- Complex filtering logic in template — not memoised, not testable -->
+    @for (
+      user of (users$ | async)?.filter(u =>
+        u.name.includes(searchQuery) && u.role === 'admin'
+      );
+      track user.id
+    ) {
+      <app-user-card [user]="user" />
+    }
+  `
+})
+export class UsersComponent {
+  readonly #store = inject(Store);
+  // Five separate subscriptions — five separate emissions to track
+  users$       = this.#store.select(state => state['users']['users']);
+  loading$     = this.#store.select(state => state['users']['loading']);
+  error$       = this.#store.select(state => state['users']['error']);
+  searchQuery  = '';
+
+  getFilteredCount(): number {
+    // Called on every CD cycle — not memoised, recalculates every time
+    return this.users.filter(u => u.name.includes(this.searchQuery)).length;
+  }
+}
+What breaks: Filtering runs on every change detection cycle (every action dispatch, every mouse move with default CD), method calls are never memoised, inline lambdas in store.select() create new function references every render so NgRx can't memoise them, and five separate subscriptions mean five potential emissions per state update.
+✅ After — Composed view model selector
+typescript// CORRECT: All derivation in selectors, component is a pure view
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (vm$ | async; as vm) {
+      <span>{{ vm.count }} users</span>
+      @for (user of vm.users; track user.id) {
+        <app-user-card [user]="user" />
+      }
+    }
+  `
+})
+export class UsersComponent {
+  readonly #store = inject(Store);
+  // ONE subscription, all derivation memoised in selectors
+  vm$ = this.#store.select(selectUsersPageViewModel);
+}
+Why this matters in Angular: The filtering and counting projectors only run when the users array or search query actually changes — not on every mouse move, not on every unrelated state update, not on every animation frame. With OnPush, the component re-renders only when vm$ emits a new object — which only happens when the memoised result changes.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using inline lambda functions in store.select()
+What it looks like:
+typescript// ❌ Inline lambda — new function reference every time
+users$ = this.store.select(state => state['users'].users);
+
+// Or worse — with computation inline:
+filteredUsers$ = this.store.select(
+  state => state['users'].users.filter(u => u.active)
+);
+Why developers make it: It's concise — one line, no separate selector file. Feels like a shortcut that "does the same thing".
+How to avoid it: Always use createSelector in a dedicated selectors file. The named selector is a stable function reference — NgRx can memoise it. The inline lambda is a new function on every render — NgRx cannot memoise it.
+Angular-specific consequence: The filter() computation runs on every single action dispatched anywhere in the app. With 10 components doing this, every action (including unrelated ones like cart updates, router navigation, analytics events) triggers 10 filter computations simultaneously. This silently degrades performance proportionally to the number of components and the cost of each computation — invisible in dev with small datasets, severe in production with real data volumes.
+
+Mistake 2 — Creating new object or array references in a projector unnecessarily
+What it looks like:
+typescript// ❌ Returns a new object reference every time, even if data is identical
+export const selectUserSummary = createSelector(
+  selectAllUsers,
+  users => ({               // NEW object literal every call
+    count: users.length,
+    hasAdmins: users.some(u => u.role === 'admin')
+  })
+);
+Why developers make it: The logic is correct — it calculates the right values. The problem is invisible.
+How to avoid it: The selector's projector returns a new object {} every call. NgRx memoises based on whether the result changed by reference. A new object literal {} is always a new reference — even if its contents are identical. This means store.select(selectUserSummary) emits on every action that touches the users feature, even if count and hasAdmins haven't changed.
+The fix: use primitive return values where possible, or use createSelectorFactory with resultMemoize and deep equality for unavoidable object returns:
+typescript// CORRECT: Return primitives when possible — primitives compare by value
+export const selectUserCount = createSelector(selectAllUsers, users => users.length);
+export const selectHasAdmins = createSelector(selectAllUsers, users => users.some(u => u.role === 'admin'));
+// Both primitives — memoised correctly by value comparison
+Angular-specific consequence: Every OnPush component subscribed to selectUserSummary re-renders on every action that touches the users state, even when the count and hasAdmins values are unchanged. The OnPush optimisation is completely defeated — the component re-renders as often as it would with default change detection.
+
+Mistake 3 — Recreating parameterised selectors inside component methods
+What it looks like:
+typescript// ❌ New selector instance created on every call
+@Component({
+  template: `
+    <!-- getUserSelector() called on every CD cycle -->
+    @if (store.select(getUserSelector()) | async; as user) {
+      {{ user.name }}
+    }
+  `
+})
+export class UserCardComponent {
+  @Input() userId!: number;
+
+  getUserSelector() {
+    // New selector instance on every call — no memoisation
+    return createSelector(selectAllUsers, users => users.find(u => u.id === this.userId));
+  }
+}
+Why developers make it: Parameterised selectors need the ID — it feels natural to create them inside the component where the ID is available.
+How to avoid it: Create the selector once in a component property, not in a method:
+typescript@Component({})
+export class UserCardComponent implements OnInit {
+  @Input() userId!: number;
+  readonly #store = inject(Store);
+
+  user$!: Observable<User | null>;
+
+  ngOnInit(): void {
+    // Create once in ngOnInit — stable reference, properly memoised
+    this.user$ = this.#store.select(selectUserById(this.userId));
+  }
+}
+Angular-specific consequence: A new selector instance is created on every change detection cycle. Each new instance has an empty memo cache. The projector runs every single time. For a list of 100 user cards, 100 filter operations run on every action dispatch — a serious performance problem at scale.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TCompose selectors in layers: feature → slice → derived → view modelWrite one large selector that does all derivation in a single projectorReturn primitive values from projectors when possible (strings, numbers, booleans)Return new object or array literals from projectors — they break referential equality memoisationCreate parameterised selectors once in ngOnInit or as a class propertyCall createSelector() inside template-bound methods — creates new instances every CD cycleUse store.selectSignal(selector) in Signal-based components for template-friendly reactivityUse inline lambdas in store.select(state => ...) — NgRx cannot memoise anonymous functionsWrite one view model selector per component that combines all needed stateSubscribe to five separate selectors and combine them in the template with async pipeTest projector logic directly with selector.projector(mockInput)Test selectors by setting up the full store — the projector is a pure function, test it as one
+
+Section 7 — Debugging Tips
+Bug 1 — Component re-renders on every action even with OnPush
+Symptom: You have ChangeDetectionStrategy.OnPush but the component re-renders constantly. Opening Redux DevTools shows actions like @ngrx/router-store/navigated or [Analytics] Event Tracked are causing re-renders.
+Plain English cause: A selector is returning a new object or array reference on every call even when its data hasn't changed. This could be a new {} literal in the projector, a .map() or .filter() that always produces a new array, or an inline lambda in store.select().
+Fix checklist:
+
+Open Redux DevTools and identify which actions trigger the re-render
+Add tap(result => console.log('Selector emitted:', result)) to your selector's Observable to see how often it emits
+Check if your projector returns a primitive vs an object/array
+If it returns an object: either split into primitive selectors or use createSelectorFactory with deep equality
+
+Angular-specific note: NgRx DevTools doesn't show you which components re-rendered — for that, use Angular DevTools' component profiler to see change detection cycles per component alongside Redux DevTools for action tracking.
+
+Bug 2 — createFeatureSelector returns undefined causing selector chain to break
+Symptom: A selector returns undefined, and derived selectors throw Cannot read properties of undefined (reading 'users').
+Plain English cause: The feature key string doesn't match. Either provideState('users', reducer) was never called for this route, or the key passed to createFeatureSelector<UsersState>('users') has a typo compared to the key in provideState.
+Fix:
+typescript// In the browser console, run:
+// store.pipe(take(1)).subscribe(state => console.log(Object.keys(state)));
+// This lists all registered feature keys — confirm 'users' is in the list
+
+// Or in a component temporarily:
+this.store.pipe(take(1)).subscribe(state => console.log(state));
+Confirm the key exists and matches exactly — case-sensitive.
+Angular-specific note: Lazy-loaded features only register their state when the route is first visited. If you're testing from a URL that bypasses the lazy route, the feature state isn't registered and createFeatureSelector returns undefined correctly — the feature hasn't been initialised yet.
+
+Bug 3 — Parameterised selector emitting stale data when the ID changes
+Symptom: A component receives a new userId Input, but continues showing data for the old user.
+Plain English cause: The parameterised selector was created with the old ID in ngOnInit and was never recreated when the Input changed. The Observable is still selecting for the previous ID.
+Fix: Use ngOnChanges to recreate the selector when the ID changes:
+typescriptngOnChanges(changes: SimpleChanges): void {
+  if (changes['userId']) {
+    // Recreate the selector with the new ID
+    this.user$ = this.#store.select(selectUserById(this.userId));
+  }
+}
+Or use the router store pattern (Topic 57) to put the ID in the store and use selectSelectedUserId — then the selector doesn't need to be recreated because the ID is reactive state.
+Angular-specific note: This bug is particularly common with @Input() components used inside @for loops where the same component instance is reused with different data. Angular reuses component instances in loops for performance — ngOnInit only runs once, but ngOnChanges runs on every Input change.
+
+Section 8 — Real-World Applications
+Scenario 1 — Dashboard with expensive computed metrics
+A financial dashboard computes portfolio statistics from thousands of price records. The computation is expensive — it must only run when prices actually change, not on every action:
+typescript// finance/store/portfolio.selectors.ts
+
+const selectPortfolioState = createFeatureSelector<PortfolioState>('portfolio');
+
+const selectAllPositions = createSelector(
+  selectPortfolioState, state => state.positions
+);
+
+const selectLivePrices = createSelector(
+  selectPortfolioState, state => state.prices
+);
+
+const selectTimeRange = createSelector(
+  selectPortfolioState, state => state.selectedTimeRange
+);
+
+// Expensive computation — only runs when positions OR prices change
+// NOT when timeRange, loading, or any other state changes
+export const selectPortfolioValue = createSelector(
+  selectAllPositions,
+  selectLivePrices,
+  (positions, prices) => {
+    // Simulating an expensive O(n) computation
+    return positions.reduce((total, pos) => {
+      const price = prices[pos.ticker] ?? 0;
+      return total + pos.shares * price;
+    }, 0);
+  }
+);
+
+// Depends on portfolioValue AND timeRange — only reruns when EITHER changes
+export const selectPerformanceMetric = createSelector(
+  selectPortfolioValue,
+  selectTimeRange,
+  (currentValue, timeRange) => {
+    // Complex performance calculation based on time range
+    const baseline = getBaselineValue(timeRange); // expensive lookup
+    return {
+      percentChange: ((currentValue - baseline) / baseline) * 100,
+      absoluteChange: currentValue - baseline,
+      trend: currentValue > baseline ? 'up' : 'down'
+    };
+  }
+);
+
+// Dashboard view model — combines everything the dashboard needs
+export const selectDashboardViewModel = createSelector(
+  selectPortfolioValue,
+  selectPerformanceMetric,
+  selectAllPositions,
+  (value, performance, positions) => ({
+    totalValue: value,
+    performance,
+    positionCount: positions.length,
+    // Computed inline for primitives — safe because comparison is by value
+    hasGain: performance.percentChange > 0
+  })
+);
+
+Scenario 2 — Multi-step form with validation state derived from store
+A complex form wizard has validation state computed from multiple store slices:
+typescript// form/store/form.selectors.ts
+
+export const selectStep1Valid = createSelector(
+  selectFormState,
+  state =>
+    state.personalInfo.name.length > 0 &&
+    state.personalInfo.email.includes('@')
+);
+
+export const selectStep2Valid = createSelector(
+  selectFormState,
+  state =>
+    state.addressInfo.street.length > 0 &&
+    state.addressInfo.postcode.length >= 5
+);
+
+export const selectStep3Valid = createSelector(
+  selectFormState,
+  state => state.paymentInfo.cardNumber.length === 16
+);
+
+// Composed — only reruns when any step validity changes
+export const selectFormIsValid = createSelector(
+  selectStep1Valid,
+  selectStep2Valid,
+  selectStep3Valid,
+  (s1, s2, s3) => s1 && s2 && s3
+);
+
+export const selectCurrentStep = createSelector(
+  selectFormState, state => state.currentStep
+);
+
+// View model for the form navigation footer
+export const selectFormNavigationViewModel = createSelector(
+  selectStep1Valid,
+  selectStep2Valid,
+  selectStep3Valid,
+  selectFormIsValid,
+  selectCurrentStep,
+  (s1Valid, s2Valid, s3Valid, formValid, currentStep) => ({
+    canProceed: currentStep === 1 ? s1Valid
+               : currentStep === 2 ? s2Valid
+               : s3Valid,
+    canSubmit: formValid,
+    currentStep,
+    stepsComplete: [s1Valid, s2Valid, s3Valid]
+  })
+);
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Create a BookStore feature with state containing books: Book[], selectedGenre: string, and priceRange: { min: number; max: number }. Write four slice selectors, one composed selectFilteredBooks selector that filters by both genre and price range, and one selectFilteredBookCount that counts the filtered results. Verify in the browser that the filter projector only runs when books, selectedGenre, or priceRange changes — not when unrelated state changes.
+Exercise 2 — Intermediate
+Build a selectProductPageViewModel selector for an e-commerce product page that combines: the selected product (by ID stored in state), related products (same category, excluding the selected one), whether the product is in the user's wishlist, and the current cart item count. All five inputs must come from different slice selectors. Write a unit test that calls selector.projector(mockProduct, mockRelated, false, 3) directly — without setting up a real store.
+Exercise 3 — Advanced
+You have a DataTableState with: rows: Row[], sortColumn: string, sortDirection: 'asc' | 'desc', filterText: string, currentPage: number, and pageSize: number. Build a complete selector hierarchy where: level 1 selectors extract each raw slice, level 2 selectors compute selectFilteredRows (filter by text) and selectSortedRows (sort the filtered rows), and level 3 computes selectPagedRows (slice to current page) and selectTotalPages. Build a selectTableViewModel that composes everything. Demonstrate that changing currentPage does not re-trigger the filter or sort projectors — only the paging projector reruns.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+Selectors are memoised pure functions — they cache their last result and only recompute when their input references change
+Memoisation works because reducers always return new references on change — the same reference means nothing changed
+Compose selectors in layers: feature → raw slice → derived → view model; more layers = more short-circuit opportunities
+Returning new object/array literals from projectors breaks memoisation — use primitives or createSelectorFactory with deep equality
+View model selectors combine everything a component needs into one subscription — cleaner components, fewer emissions
+
+Quick Reference Table — Selector rules:
+RuleCorrectWrongSelector creationcreateSelector(inputs, projector) in selectors fileInline lambda in store.select(state => ...)Projector return typePrimitives or stable object referencesNew {} or [] literalsParameterised selectorCreated once in ngOnInit or ngOnChangesRecreated in template-bound method every cycleComponent subscriptionsOne view model selectorFive separate store.select() callsTestingselector.projector(mockA, mockB)Full store setup for projector logic
+Angular-specific rules:
+
+Always use ChangeDetectionStrategy.OnPush alongside NgRx — selectors and OnPush are a matched pair
+Use store.selectSignal(selector) in Signal-based components — eliminates async pipe and subscription management
+Never use store.select(state => state['feature'].slice) inline — always create named selectors
+Test selector projectors directly — they are pure functions and don't need TestBed
+
+One-Line Memory Aid:
+
+Selectors are Excel formula cells — they only recalculate when the cells they depend on change, and the more you compose them in layers, the more aggressively they can skip recalculation.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: NgRx memoisation is based on referential equality — but what happens when you have a selector that sorts an array? Sorting always produces a new array reference even if the order is unchanged. Does this mean sorted selectors always break memoisation and emit on every action?
+Answer:
+Yes — and this is one of the most important selector design problems in real NgRx applications. A naive sorted selector breaks memoisation completely:
+typescript// ❌ Always returns a new array reference — always emits
+export const selectSortedUsers = createSelector(
+  selectAllUsers,
+  users => [...users].sort((a, b) => a.name.localeCompare(b.name))
+  // [...users] = new array, .sort() = mutates new array, returns it
+  // New reference every call → selector emits on every action that touches users
+);
+There are three production-grade solutions, each with different trade-offs:
+Solution 1 — createSelectorFactory with resultMemoize and deep equality:
+typescriptimport { createSelectorFactory, resultMemoize } from '@ngrx/store';
+import { isEqual } from 'lodash';
+
+const createDeepEqualSelector = createSelectorFactory(projector =>
+  resultMemoize(projector, isEqual)
+);
+
+export const selectSortedUsers = createDeepEqualSelector(
+  selectAllUsers,
+  users => [...users].sort((a, b) => a.name.localeCompare(b.name))
+);
+// Now emits only when the sorted result is deeply different from the previous
+// Trade-off: deep equality comparison is O(n) — expensive for large arrays
+Solution 2 — Sort only IDs, look up objects separately:
+typescript// Sort only primitives (IDs) — cheap to compare
+export const selectSortedUserIds = createSelector(
+  selectAllUsers,
+  users => [...users]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(u => u.id) // [3, 1, 2] — array of numbers
+);
+// Use createSelectorFactory with resultMemoize to compare ID arrays
+Solution 3 — Store sort state in the reducer, sort on write:
+typescript// Sort when data enters the store (in the reducer), not in the selector
+on(loadUsersSuccess, (state, { users }) => ({
+  ...state,
+  // Store pre-sorted — selector just reads, no sorting needed
+  users: [...users].sort((a, b) => a.name.localeCompare(b.name))
+}))
+// Selector is now a simple slice selector — perfect memoisation
+Practical rule: For static sort order, sort in the reducer on write — selectors stay simple and memoisation is perfect. For user-controlled sort order (clicking column headers), use createSelectorFactory with resultMemoize and deep equality, but be aware of the performance cost for large datasets. For very large datasets, consider sorting only IDs and using virtual scroll (Topic 49) to limit the rendered range.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Referential equality and structural sharing — understanding why {...obj} creates a new reference even with identical values explains why selector memoisation works and when it breaks
+
+TypeScript Concepts:
+
+Conditional types and ReturnType — ReturnType<typeof selectUsersPageViewModel> extracts the view model type from a selector for use in component @Input types without duplication
+
+Angular-Specific Concepts:
+
+Topic 54 — NgRx Entity: Entity provides its own pre-built selectors (selectAll, selectEntities, selectTotal) — understanding how those selectors are memoised explains why Entity is more performant than manual array management in reducers
+Topic 55 — NgRx Component Store: Component Store's select() method works identically to global store selectors — same memoisation rules, same projector patterns, narrower scope
+Topic 58 — NgRx Testing: Testing selectors with selector.projector() directly is the most important NgRx testing pattern — this topic prepares you for that
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on:
+
+Topic 14 — readonly & Immutability (referential equality requires immutable state)
+Topic 23 — Angular Signals (selectSignal integration)
+Topic 24 — OnPush Change Detection (selectors + OnPush is the performance model)
+Topic 51 — NgRx Core Concepts (basic createSelector — this topic extends it deeply)
+
+Topics this unlocks:
+
+Topic 54 — NgRx Entity (Entity's built-in selectors follow exactly these composition patterns)
+Topic 55 — NgRx Component Store (select() in Component Store uses the same memoisation model)
+Topic 57 — NgRx Router Store (router selectors compose with feature selectors using these patterns)
+Topic 58 — NgRx Testing (selector.projector() testing pattern — the practical application of everything here)
+Topic 59 — NgRx Best Practices (selector organisation is a major best practices topic)
+
+Production readiness assessment: A developer who composes selectors in layers, never uses inline lambdas in store.select(), builds view model selectors per component, and understands why object literals in projectors break memoisation is writing production-quality NgRx that genuinely delivers the performance benefits the library promises.
+
+Section 14 — Common Interview Questions
+Question 1
+"How does NgRx selector memoisation work, and what can break it?"
+Strong answer covers:
+
+Selectors use referential equality (===) to compare input values between calls
+If all inputs return the same references, the projector is skipped and the cached result is returned
+This works because reducers always return new references on change
+Three things that break it: inline lambdas in store.select() (new function reference each time), object/array literals in projectors (always new reference), and mutations in reducers (same reference despite changed data)
+Fix for unavoidable new references: createSelectorFactory with resultMemoize and deep equality
+
+Weak answers miss: The connection to reducer immutability — memoisation depends entirely on reducers returning new references, which in turn depends on never mutating state.
+Difficulty: Mid-Senior
+
+Question 2
+"What is a view model selector and why would you use one instead of multiple separate store.select() calls in a component?"
+Strong answer covers:
+
+A view model selector combines all state a specific component needs into one derived object
+Benefits: one Observable subscription instead of many, one emission instead of many per state change, all derivation logic in a testable pure function outside the component
+The component template becomes a pure rendering layer with no logic
+Trade-off: the view model object is a new reference on every emission — must ensure individual input selectors return primitives or stable references to control emission frequency
+store.selectSignal(viewModelSelector) integrates directly with Signal-based templates
+
+Weak answers miss: The emission frequency trade-off — a view model that returns a new object on every action dispatch defeats OnPush if the input selectors aren't correctly composed.
+Difficulty: Mid
+
+Question 3
+"A component with OnPush change detection is re-rendering on every action dispatch despite using NgRx selectors. Walk me through how you'd diagnose this."
+Strong answer covers:
+
+Step 1: Angular DevTools profiler — confirm the component is actually re-rendering (not just a console log firing)
+Step 2: Add tap(v => console.log('selector emitted', v)) to the selector Observable — confirm it emits on every action
+Step 3: Check whether the selector's projector returns a primitive or an object/array literal
+Step 4: Check whether store.select() is using an inline lambda instead of a named selector
+Step 5: If projector returns an object — use createSelectorFactory with deep equality or split into primitive selectors
+Step 6: Check whether the reducer is mutating state — same reference but changed data confuses the layer above
+
+Weak answers miss: The inline lambda case — most candidates jump to "object literal in projector" and miss that store.select(state => state.feature.users) is equally culpable.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Deriving data in the component instead of in a selector
+typescript// ❌ Anti-pattern: computation in the component
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <span>Active: {{ activeUserCount }}</span>
+    @for (user of adminUsers; track user.id) { ... }
+  `
+})
+export class UsersComponent {
+  readonly #store = inject(Store);
+  users: User[] = [];
+  activeUserCount = 0;  // derived in component
+  adminUsers: User[] = [];  // derived in component
+
+  constructor() {
+    this.#store.select(selectAllUsers).subscribe(users => {
+      this.users = users;
+      // Computed in the subscription callback — not memoised
+      this.activeUserCount = users.filter(u => u.active).length;
+      this.adminUsers = users.filter(u => u.role === 'admin');
+    });
+  }
+}
+Why it seems fine: Clean separation — selector gets data, component transforms it. Filter logic is simple.
+What actually breaks at scale: Every action that touches user state triggers the subscription, which runs two .filter() calls and updates two component properties, triggering two change detection checks. With default CD (forgetting OnPush), every action in the app causes this. The computation is also invisible to DevTools and impossible to test without instantiating the component.
+Correct pattern: Move both derivations into named selectors. The component holds one Observable, renders one vm$ | async, and contains zero computation.
+
+Anti-Pattern 2 — Sharing a memoised selector instance across components with different parameters
+typescript// ❌ Anti-pattern: module-level parameterised selector used by multiple components
+// In selectors file — created once at module level
+export const selectUserById = createSelector(
+  selectAllUsers,
+  // This selector is created ONCE — it remembers one ID at a time
+  // When Component A selects ID 1 and Component B selects ID 2,
+  // they share the same memo cache — they constantly invalidate each other
+  (users) => (id: number) => users.find(u => u.id === id) ?? null
+);
+
+// In component:
+user$ = this.store.select(selectUserById).pipe(
+  map(fn => fn(this.userId)) // calling the function returned by the selector
+);
+Why it seems fine: It feels like a reusable, parameterised selector. The single createSelector at the top looks clean.
+What actually breaks: The single memoised selector instance has one cache slot. Component A calls it with ID 1, caches result. Component B calls it with ID 2 — cache miss, runs projector, caches for ID 2. Component A renders again — cache miss (last call was for ID 2), runs projector again. Two components constantly invalidating each other's cache = projector runs on every render for both components = zero memoisation benefit.
+Correct pattern: Use the factory function pattern — each component creates its own selector instance with its own independent cache:
+typescript// In selectors file:
+export const selectUserById = (id: number) => createSelector(
+  selectAllUsers,
+  users => users.find(u => u.id === id) ?? null
+);
+
+// In component ngOnInit — creates a dedicated selector instance:
+this.user$ = this.store.select(selectUserById(this.userId));
+
+Anti-Pattern 3 — Bypassing selectors with direct store state access for "quick" reads
+typescript// ❌ Anti-pattern: reading state directly for one-time access in an Effect or method
+@Injectable()
+export class SomeEffects {
+  confirmDelete$ = createEffect(() =>
+    this.#actions$.pipe(
+      ofType(UserActions.deleteConfirmed),
+      switchMap(({ userId }) => {
+        // Direct store access — bypasses selector memoisation,
+        // creates an imperative subscription, not reactive
+        let userName = '';
+        this.#store
+          .pipe(take(1))
+          .subscribe(state => {
+            userName = state['users'].users.find((u: User) => u.id === userId)?.name ?? '';
+          });
+
+        return this.#dialog.confirm(`Delete ${userName}?`).pipe(
+          switchMap(confirmed => confirmed
+            ? this.#usersApi.delete(userId)
+            : EMPTY
+          )
+        );
+      })
+    )
+  );
+}
+Why it seems fine: take(1) gets the current value immediately. It works. It's only one read.
+What actually breaks: Accessing state['users'] as a string key bypasses TypeScript type safety — a renamed feature key causes a runtime undefined with no compile error. The nested subscribe creates the subscription management problem from Topic 20. And the pattern establishes a precedent that spreads — once developers see direct state access, they use it everywhere, gradually removing all the benefits of the selector layer.
+Correct pattern: Always use withLatestFrom(this.#store.select(selectUserById(userId))) in Effects to read state reactively, with full type safety, using the selector's memoisation:
+typescriptconfirmDelete$ = createEffect(() =>
+  this.#actions$.pipe(
+    ofType(UserActions.deleteConfirmed),
+    withLatestFrom(this.#store.select(selectAllUsers)),
+    switchMap(([{ userId }, users]) => {
+      const userName = users.find(u => u.id === userId)?.name ?? '';
+      return this.#dialog.confirm(`Delete ${userName}?`).pipe(
+        switchMap(confirmed => confirmed ? this.#usersApi.delete(userId) : EMPTY)
+      );
+    })
+  )
+);
+
+Section 16 — Mental Model Summary
+Core concept in one sentence: NgRx selectors are memoised pure functions that short-circuit recomputation when their input references haven't changed — they are the performance engine of NgRx, and every decision about how you write them directly determines whether OnPush change detection actually works as intended.
+Key rules:
+
+Compose selectors in layers: feature selector → slice selectors → derived selectors → view model selector
+Projectors should return primitives where possible — object/array literals always produce new references and break memoisation
+Never use inline lambdas in store.select() — use named selectors from a selectors file
+Create parameterised selectors once per component instance (in ngOnInit) — not in template-bound methods
+Use store.selectSignal(selector) in Signal-based components — eliminates async pipe entirely
+Test projectors directly with selector.projector(mockA, mockB) — they are pure functions and require no store setup
+
+The single most important Angular rule:
+
+Returning a new object or array literal from a projector breaks memoisation — the selector emits on every action that touches its inputs, OnPush stops working, and your app renders as frequently as with default change detection — silently, with no warning.
+
+Side-by-side comparison — Correct vs incorrect selector patterns:
+CorrectIncorrectSelector locationNamed export in selectors fileInline lambda in componentProjector returnPrimitives or stable referencesNew {} or [] literalsParameterisedFactory: selectById(id) in ngOnInitMethod: getSelector() in templateComponent subscriptionsOne view model selectorMultiple store.select() callsState reading in EffectswithLatestFrom(store.select(...))Nested store.pipe(take(1)).subscribe()

@@ -1,0 +1,1015 @@
+Topic 58 — NgRx Testing (Store, Effects, Selectors, Component Store)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Advanced — NgRx Testing requires you to hold five distinct testing contexts in your head simultaneously (Store, Effects, Selectors, Component Store, SignalStore), each with its own setup pattern, mock strategy, and assertion style — and the bugs it catches are the silent, production-breaking kind that unit tests alone miss.
+Angular Relevance: Critical — Every NgRx pattern you have learned in Topics 51–57 is only production-safe if it is tested; untested reducers silently mutate state, untested effects silently swallow errors or run forever, and untested selectors silently recompute on every action — NgRx Testing is the verification layer that makes the entire NgRx architecture trustworthy.
+
+Section 1 — Explanation
+The Flight Simulator Analogy
+A commercial airline does not let pilots fly a new aircraft type by reading the manual and then boarding 300 passengers. They spend hours in a flight simulator — a controlled environment that mimics every system of the real aircraft, lets the pilot make mistakes, and verifies the correct response to every scenario before a real flight.
+NgRx Testing is your flight simulator for application state.
+
+MockStore is the simulator cockpit — it looks and feels like the real NgRx store, but you control every instrument reading (state slice, selector result) directly. No real reducers run, no real effects fire.
+provideMockActions is the simulated air traffic control — you feed exactly the actions you want the effect to receive, in the exact sequence, and verify what it transmits back.
+Selector projector testing is instrument calibration — you test the pure function inside the selector directly, with no store involved at all.
+ComponentStore testing is a ground-level systems check — you provide the real store (not a mock) with a mock service, and verify that methods, updaters, and effects produce the correct state transitions.
+
+Each testing context is a different simulator module — same aircraft, different systems under test.
+Quick Reference — Testing Tool by NgRx Layer
+LayerPrimary ToolKey SetupReducerPlain function call — no Angular neededreducer(initialState, action)Selectorselector.projector(mockInputs)No store, no TestBedStore (component test)MockStore + provideMockStore()TestBed.configureTestingModuleEffectsprovideMockActions() + ReplaySubjectTestBed + real or mock servicesComponent StoreReal ComponentStore + mock serviceTestBed with providersSignalStoreReal SignalStore + mock serviceTestBed with providersRouter Store effectsMockStore + dispatch routerNavigatedActionMock selectRouteParam via overrideSelector
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 47 — Testing Angular Components: fixture.detectChanges(), MockStore in TestBed, fakeAsync/tick, and data-testid querying — all patterns from Topic 47 that now apply to NgRx-connected components.
+Topic 48 — Testing Services & HTTP: HttpClientTestingModule, httpController.verify(), req.flush(), and testing both happy and error paths — all directly reused when testing NgRx Effects that make HTTP calls.
+Topic 51 — NgRx Core Concepts: Reducers are pure functions — testing them requires no Angular setup, just reducer(state, action). Understanding the reducer contract makes the tests obvious.
+Topic 52 — NgRx Effects: Effects are the most complex NgRx layer to test — provideMockActions, ReplaySubject, and the inner/outer Observable structure are the testing surface for Topic 52's patterns.
+Topic 53 — NgRx Selectors In Depth: The selector.projector() method tests the pure derivation function directly — understanding that selectors are composed pure functions (Topic 53) makes this testing approach obvious.
+Topic 55 — NgRx Component Store and Topic 56 — NgRx SignalStore: Both are tested by providing the real store class in TestBed with mocked services — the testing pattern mirrors the DI pattern from Topics 55/56.
+
+The single topic it extends most directly: Topic 48 — Testing Services & HTTP.
+NgRx Effects are services that make HTTP calls — the HttpClientTestingModule + req.flush() pattern from Topic 48 is applied directly inside Effect tests. The only addition is provideMockActions to control the action stream.
+Bridging note: In Topic 48, you tested services by providing HttpClientTestingModule and flushing requests manually. In NgRx Effect tests, you do exactly that — plus you feed actions into the effect via a ReplaySubject controlled by provideMockActions. The HTTP testing layer is identical; only the trigger mechanism changes.
+
+Section 3 — Code Example
+All examples use this shared domain:
+ts// user.model.ts
+export interface User { id: string; name: string; email: string; }
+
+// user.actions.ts
+export const UsersPageActions = createActionGroup({
+  source: 'Users Page',
+  events: { 'Page Opened': emptyProps() }
+});
+
+export const UsersApiActions = createActionGroup({
+  source: 'Users API',
+  events: {
+    'Users Loaded': props<{ users: User[] }>(),
+    'Users Load Failed': props<{ error: string }>(),
+  }
+});
+
+// user.reducer.ts
+interface UsersState { users: User[]; loading: boolean; error: string | null; }
+const initialState: UsersState = { users: [], loading: false, error: null };
+
+export const usersReducer = createReducer(
+  initialState,
+  on(UsersApiActions.usersLoaded, (state, { users }) =>
+    ({ ...state, users, loading: false })),
+  on(UsersApiActions.usersLoadFailed, (state, { error }) =>
+    ({ ...state, error, loading: false })),
+);
+
+// user.selectors.ts
+export const selectUsersState = createFeatureSelector<UsersState>('users');
+export const selectAllUsers = createSelector(selectUsersState, s => s.users);
+export const selectLoading = createSelector(selectUsersState, s => s.loading);
+export const selectAdminUsers = createSelector(
+  selectAllUsers,
+  users => users.filter(u => u.email.endsWith('@admin.com'))
+);
+
+Testing 1 — Reducer (no Angular setup needed)
+ts// user.reducer.spec.ts
+import { usersReducer } from './user.reducer';
+import { UsersApiActions } from './user.actions';
+
+describe('usersReducer', () => {
+  const initialState = { users: [], loading: false, error: null };
+
+  it('should return the initial state for an unknown action', () => {
+    // Pass an unknown action — reducer must return state unchanged
+    const action = { type: 'UNKNOWN_ACTION' } as any;
+    const result = usersReducer(initialState, action);
+    expect(result).toBe(initialState); // toBe checks reference equality — must be same object
+  });
+
+  it('should store users and clear loading on usersLoaded', () => {
+    const users = [{ id: '1', name: 'Alice', email: 'alice@example.com' }];
+    const loadingState = { ...initialState, loading: true };
+
+    const result = usersReducer(
+      loadingState,
+      UsersApiActions.usersLoaded({ users })
+    );
+
+    expect(result.users).toEqual(users);    // toEqual: deep equality for arrays
+    expect(result.loading).toBe(false);
+    expect(result).not.toBe(loadingState);  // Must return a NEW object reference
+  });
+
+  it('should store the error message on usersLoadFailed', () => {
+    const result = usersReducer(
+      initialState,
+      UsersApiActions.usersLoadFailed({ error: 'Network error' })
+    );
+
+    expect(result.error).toBe('Network error');
+    expect(result.loading).toBe(false);
+  });
+});
+
+Testing 2 — Selectors via selector.projector()
+ts// user.selectors.spec.ts
+import { selectAllUsers, selectAdminUsers } from './user.selectors';
+
+describe('User Selectors', () => {
+  const users: User[] = [
+    { id: '1', name: 'Alice', email: 'alice@admin.com' },
+    { id: '2', name: 'Bob',   email: 'bob@example.com' },
+  ];
+
+  it('selectAllUsers projector should return users from state slice', () => {
+    // projector() calls the selector's pure function directly
+    // No store, no TestBed, no Angular — just a function call
+    const result = selectAllUsers.projector({ users, loading: false, error: null });
+    expect(result).toEqual(users);
+  });
+
+  it('selectAdminUsers projector should filter to admin emails only', () => {
+    // selectAdminUsers depends on selectAllUsers — test the projector with its INPUT
+    // (the output of selectAllUsers), not with raw state
+    const result = selectAdminUsers.projector(users); // Input is User[], not UsersState
+    expect(result).toHaveSize(1);
+    expect(result[0].name).toBe('Alice');
+  });
+
+  it('selectAdminUsers projector should return empty array when no admins', () => {
+    const nonAdminUsers = [{ id: '2', name: 'Bob', email: 'bob@example.com' }];
+    const result = selectAdminUsers.projector(nonAdminUsers);
+    expect(result).toHaveSize(0);
+  });
+});
+
+Testing 3 — NgRx Store in a component test with MockStore
+ts// users.component.spec.ts
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideMockStore, MockStore } from '@ngrx/store/testing';
+import { UsersComponent } from './users.component';
+import { selectAllUsers, selectLoading } from './user.selectors';
+import { UsersPageActions } from './user.actions';
+
+describe('UsersComponent', () => {
+  let fixture: ComponentFixture<UsersComponent>;
+  let store: MockStore;
+
+  const mockUsers: User[] = [
+    { id: '1', name: 'Alice', email: 'alice@example.com' },
+  ];
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [UsersComponent], // Standalone component in imports[]
+      providers: [
+        provideMockStore({
+          // Optional initial state — selectors use this if not overridden
+          initialState: { users: { users: [], loading: false, error: null } },
+        }),
+      ],
+    }).compileComponents();
+
+    store = TestBed.inject(MockStore);
+    fixture = TestBed.createComponent(UsersComponent);
+  });
+
+  afterEach(() => {
+    // Reset overridden selectors between tests — prevents state leaking
+    store.resetSelectors();
+  });
+
+  it('should dispatch pageOpened on init', () => {
+    // Spy on the store's dispatch method
+    const dispatchSpy = spyOn(store, 'dispatch');
+
+    fixture.detectChanges(); // Triggers ngOnInit
+
+    expect(dispatchSpy).toHaveBeenCalledWith(UsersPageActions.pageOpened());
+  });
+
+  it('should render users from the store', () => {
+    // Override the selector to return mock data — bypasses real selector logic
+    store.overrideSelector(selectAllUsers, mockUsers);
+    store.overrideSelector(selectLoading, false);
+    store.refreshState(); // Apply overrides — triggers emissions to subscribed components
+
+    fixture.detectChanges(); // Update DOM after state change
+
+    const userElements = fixture.nativeElement.querySelectorAll('[data-testid="user-name"]');
+    expect(userElements).toHaveSize(1);
+    expect(userElements[0].textContent).toContain('Alice');
+  });
+
+  it('should show loading indicator when loading is true', () => {
+    store.overrideSelector(selectLoading, true);
+    store.overrideSelector(selectAllUsers, []);
+    store.refreshState();
+
+    fixture.detectChanges();
+
+    const loader = fixture.nativeElement.querySelector('[data-testid="loading"]');
+    expect(loader).toBeTruthy();
+  });
+});
+
+Testing 4 — NgRx Effects
+ts// user.effects.spec.ts
+import { TestBed } from '@angular/core/testing';
+import { provideMockActions } from '@ngrx/effects/testing';
+import { provideMockStore } from '@ngrx/store/testing';
+import {
+  HttpClientTestingModule,
+  HttpTestingController,
+} from '@angular/common/http/testing';
+import { ReplaySubject, of, throwError } from 'rxjs';
+import { UserEffects } from './user.effects';
+import { UserService } from './user.service';
+import { UsersPageActions, UsersApiActions } from './user.actions';
+
+describe('UserEffects', () => {
+  let effects: UserEffects;
+  let actions$: ReplaySubject<Action>;
+  let userService: jasmine.SpyObj<UserService>;
+
+  const mockUsers: User[] = [{ id: '1', name: 'Alice', email: 'alice@example.com' }];
+
+  beforeEach(() => {
+    // ReplaySubject: records emissions and replays them to new subscribers
+    // Used because Effects subscribe to actions$ after TestBed setup
+    actions$ = new ReplaySubject<Action>(1);
+
+    const userServiceSpy = jasmine.createSpyObj('UserService', ['getAll']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        UserEffects,
+        // provideMockActions connects actions$ to the Effects action stream
+        provideMockActions(() => actions$),
+        // provideMockStore — effects may read from the store via withLatestFrom
+        provideMockStore(),
+        { provide: UserService, useValue: userServiceSpy },
+      ],
+    });
+
+    effects = TestBed.inject(UserEffects);
+    userService = TestBed.inject(UserService) as jasmine.SpyObj<UserService>;
+  });
+
+  describe('loadUsers$', () => {
+    it('should dispatch usersLoaded on success', (done) => {
+      // Arrange — service returns mock data
+      userService.getAll.and.returnValue(of(mockUsers));
+
+      // Act — emit the trigger action into the action stream
+      actions$.next(UsersPageActions.pageOpened());
+
+      // Assert — subscribe to the effect's output Observable
+      effects.loadUsers$.subscribe(action => {
+        expect(action).toEqual(UsersApiActions.usersLoaded({ users: mockUsers }));
+        done(); // Signal Jasmine the async test is complete
+      });
+    });
+
+    it('should dispatch usersLoadFailed on HTTP error', (done) => {
+      // Arrange — service throws
+      userService.getAll.and.returnValue(
+        throwError(() => new Error('Network error'))
+      );
+
+      actions$.next(UsersPageActions.pageOpened());
+
+      effects.loadUsers$.subscribe(action => {
+        expect(action).toEqual(
+          UsersApiActions.usersLoadFailed({ error: 'Network error' })
+        );
+        done();
+      });
+    });
+  });
+});
+
+Testing 5 — Effects with HttpClientTestingModule (real HTTP interception)
+ts// When you want to test the HTTP layer directly (not just mock the service)
+describe('UserEffects with real HTTP', () => {
+  let effects: UserEffects;
+  let actions$: ReplaySubject<Action>;
+  let httpController: HttpTestingController;
+
+  beforeEach(() => {
+    actions$ = new ReplaySubject<Action>(1);
+
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule], // Replaces real HTTP with fake backend
+      providers: [
+        UserEffects,
+        UserService,                       // Real service — uses HttpClient internally
+        provideMockActions(() => actions$),
+        provideMockStore(),
+      ],
+    });
+
+    effects = TestBed.inject(UserEffects);
+    httpController = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    // Topic 48 rule: verify no unexpected requests
+    httpController.verify();
+  });
+
+  it('should call /api/users and dispatch usersLoaded', (done) => {
+    actions$.next(UsersPageActions.pageOpened());
+
+    // Effect subscribes and makes the HTTP call
+    effects.loadUsers$.subscribe(action => {
+      expect(action).toEqual(
+        UsersApiActions.usersLoaded({ users: [{ id: '1', name: 'Alice', email: '' }] })
+      );
+      done();
+    });
+
+    // Flush the pending HTTP request — triggers the Observable chain
+    const req = httpController.expectOne('/api/users');
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: '1', name: 'Alice', email: '' }]);
+  });
+});
+
+Testing 6 — NgRx Component Store
+ts// data-table.store.spec.ts
+import { TestBed } from '@angular/core/testing';
+import { of, throwError } from 'rxjs';
+import { DataTableStore } from './data-table.store';
+import { UserService } from './user.service';
+
+describe('DataTableStore', () => {
+  let store: DataTableStore;
+  let userService: jasmine.SpyObj<UserService>;
+
+  const mockUsers: User[] = [
+    { id: '1', name: 'Alice', email: 'alice@example.com' },
+    { id: '2', name: 'Bob',   email: 'bob@example.com' },
+  ];
+
+  beforeEach(() => {
+    const spy = jasmine.createSpyObj('UserService', ['getAll']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        DataTableStore,                        // Real Component Store
+        { provide: UserService, useValue: spy }
+      ],
+    });
+
+    store = TestBed.inject(DataTableStore);
+    userService = TestBed.inject(UserService) as jasmine.SpyObj<UserService>;
+  });
+
+  it('should initialize with empty state', () => {
+    // Read Signals directly — no async pipe, no subscription needed
+    expect(store.users()).toEqual([]);      // Signal read with ()
+    expect(store.loading()).toBe(false);
+    expect(store.error()).toBeNull();
+  });
+
+  it('should update users after loadUsers effect succeeds', (done) => {
+    userService.getAll.and.returnValue(of(mockUsers));
+
+    store.loadUsers(); // Trigger the effect
+
+    // Effect is async — wait for the Observable to resolve
+    setTimeout(() => {
+      expect(store.users()).toEqual(mockUsers);
+      expect(store.loading()).toBe(false);
+      done();
+    });
+  });
+
+  it('should set error state when loadUsers effect fails', (done) => {
+    userService.getAll.and.returnValue(
+      throwError(() => new Error('Service unavailable'))
+    );
+
+    store.loadUsers();
+
+    setTimeout(() => {
+      expect(store.error()).toBe('Service unavailable');
+      expect(store.loading()).toBe(false);
+      done();
+    });
+  });
+
+  it('setFilter updater should update filter and reset page', () => {
+    // Updaters are synchronous — no async handling needed
+    store.setFilter('alice');
+    expect(store.filter()).toBe('alice');
+  });
+
+  it('filteredUsers selector should filter by current filter value', () => {
+    // Set state, then read computed Signal
+    userService.getAll.and.returnValue(of(mockUsers));
+    store.loadUsers();
+
+    setTimeout(() => {
+      store.setFilter('alice');
+      // filteredUsers is a computed Signal — reads synchronously
+      expect(store.filteredUsers()).toHaveSize(1);
+      expect(store.filteredUsers()[0].name).toBe('Alice');
+    });
+  });
+});
+
+Testing 7 — NgRx SignalStore
+ts// user.store.spec.ts
+import { TestBed } from '@angular/core/testing';
+import { of, throwError } from 'rxjs';
+import { UserStore } from './user.store';
+import { UserService } from './user.service';
+
+describe('UserStore (SignalStore)', () => {
+  let store: InstanceType<typeof UserStore>;
+  let userService: jasmine.SpyObj<UserService>;
+
+  const mockUsers: User[] = [
+    { id: '1', name: 'Alice', email: 'alice@example.com' },
+  ];
+
+  beforeEach(() => {
+    const spy = jasmine.createSpyObj('UserService', ['getAll']);
+    // Prevent withHooks.onInit from auto-firing during setup
+    spy.getAll.and.returnValue(of([]));
+
+    TestBed.configureTestingModule({
+      providers: [
+        UserStore,
+        { provide: UserService, useValue: spy },
+      ],
+    });
+
+    store = TestBed.inject(UserStore);
+    userService = TestBed.inject(UserService) as jasmine.SpyObj<UserService>;
+  });
+
+  it('should initialize with empty state', () => {
+    // Signals read directly — same as Component Store testing
+    expect(store.users()).toEqual([]);
+    expect(store.loading()).toBe(false);
+  });
+
+  it('loadUsers method should populate users on success', (done) => {
+    userService.getAll.and.returnValue(of(mockUsers));
+
+    store.loadUsers(); // Calls rxMethod
+
+    setTimeout(() => {
+      expect(store.users()).toEqual(mockUsers);
+      expect(store.loading()).toBe(false);
+      done();
+    });
+  });
+
+  it('loadUsers should set error on failure', (done) => {
+    userService.getAll.and.returnValue(
+      throwError(() => new Error('API down'))
+    );
+
+    store.loadUsers();
+
+    setTimeout(() => {
+      expect(store.error()).toBe('API down');
+      done();
+    });
+  });
+
+  it('setFilter method should update filter state', () => {
+    store.setFilter('alice');
+    expect(store.filter()).toBe('alice');
+  });
+
+  it('filteredUsers computed should react to filter changes', (done) => {
+    userService.getAll.and.returnValue(of(mockUsers));
+    store.loadUsers();
+
+    setTimeout(() => {
+      store.setFilter('alice');
+      expect(store.filteredUsers()).toHaveSize(1);
+      done();
+    });
+  });
+});
+
+Testing 8 — Router Store Effect
+ts// user.effects.spec.ts — testing a routerNavigatedAction-triggered effect
+import { routerNavigatedAction } from '@ngrx/router-store';
+import { selectUserId } from './router.selectors';
+
+describe('UserEffects — loadUserOnNavigation$', () => {
+  let effects: UserEffects;
+  let actions$: ReplaySubject<Action>;
+  let store: MockStore;
+  let userService: jasmine.SpyObj<UserService>;
+
+  beforeEach(() => {
+    actions$ = new ReplaySubject<Action>(1);
+    const spy = jasmine.createSpyObj('UserService', ['getById']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        UserEffects,
+        provideMockActions(() => actions$),
+        provideMockStore(),
+        { provide: UserService, useValue: spy },
+      ],
+    });
+
+    effects = TestBed.inject(UserEffects);
+    store = TestBed.inject(MockStore);
+    userService = TestBed.inject(UserService) as jasmine.SpyObj<UserService>;
+  });
+
+  it('should dispatch userLoaded when navigating to a user route', (done) => {
+    const mockUser = { id: '42', name: 'Alice', email: '' };
+
+    // Override the router selector to simulate /users/42
+    store.overrideSelector(selectUserId, '42');
+    store.refreshState();
+
+    userService.getById.and.returnValue(of(mockUser));
+
+    // Dispatch the router navigation completed action
+    actions$.next(routerNavigatedAction({
+      payload: { event: {} as any, routerState: {} as any }
+    }));
+
+    effects.loadUserOnNavigation$.subscribe(action => {
+      expect(action).toEqual(UsersApiActions.userLoaded({ user: mockUser }));
+      done();
+    });
+  });
+
+  it('should not dispatch when no userId in route', () => {
+    // Simulate navigating to a route without a user ID
+    store.overrideSelector(selectUserId, undefined);
+    store.refreshState();
+
+    const dispatchedActions: Action[] = [];
+    effects.loadUserOnNavigation$.subscribe(a => dispatchedActions.push(a));
+
+    actions$.next(routerNavigatedAction({
+      payload: { event: {} as any, routerState: {} as any }
+    }));
+
+    // Effect filtered out — nothing dispatched
+    expect(dispatchedActions).toHaveSize(0);
+  });
+});
+
+Section 4 — Before & After Refactor
+Before — Testing a component with real Store and real selectors
+ts// ❌ BEFORE — uses real Store with real reducers
+beforeEach(async () => {
+  await TestBed.configureTestingModule({
+    imports: [UsersComponent, StoreModule.forRoot({ users: usersReducer })],
+  }).compileComponents();
+
+  store = TestBed.inject(Store);
+});
+
+it('should show users', () => {
+  // Must dispatch real actions to trigger real reducers to set up state
+  store.dispatch(UsersApiActions.usersLoaded({ users: mockUsers }));
+  fixture.detectChanges();
+  // Depends on correct reducer logic — not just component logic
+});
+What breaks:
+
+The test is now testing the reducer AND the component simultaneously — if the reducer has a bug, component tests fail for unrelated reasons
+Setting up complex initial state requires dispatching multiple actions in the right order
+Test is slow — real reducers run on every action
+Cannot test the component with impossible state (e.g. loading: true with users: [...] simultaneously) to verify edge-case rendering
+
+After — MockStore with overrideSelector
+ts// ✅ AFTER — MockStore bypasses reducers entirely
+beforeEach(async () => {
+  await TestBed.configureTestingModule({
+    imports: [UsersComponent],
+    providers: [provideMockStore({ initialState: {} })],
+  }).compileComponents();
+  store = TestBed.inject(MockStore);
+});
+
+it('should show users', () => {
+  // Set exactly the state the test needs — no reducer required
+  store.overrideSelector(selectAllUsers, mockUsers);
+  store.overrideSelector(selectLoading, false);
+  store.refreshState();
+  fixture.detectChanges();
+
+  const items = fixture.nativeElement.querySelectorAll('[data-testid="user-item"]');
+  expect(items).toHaveSize(mockUsers.length);
+});
+Why this refactor matters in Angular:
+
+Component tests now test only the component's rendering and event dispatching — not reducer logic
+Any state combination can be injected directly — no action sequencing required
+Tests run faster — no real reducer computation
+store.resetSelectors() in afterEach ensures overrides don't leak between tests
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Asserting inside subscribe without calling done() — the silent green test
+What:
+tsit('should dispatch usersLoaded', () => { // No done parameter
+  userService.getAll.and.returnValue(of(mockUsers));
+  actions$.next(UsersPageActions.pageOpened());
+
+  effects.loadUsers$.subscribe(action => {
+    // This assertion NEVER RUNS if the Observable doesn't emit synchronously
+    expect(action.type).toBe(UsersApiActions.usersLoaded.type);
+    // Test passes (green) even if subscribe block never executes
+  });
+});
+Why developers make it: The test passes — Jasmine exits before the async callback runs, never executing the assertion. A passing test feels correct.
+How to avoid it: Always use done callback for Observable-based assertions, fakeAsync + tick() for timer-based effects, or the firstValueFrom() pattern to convert to a Promise:
+tsit('should dispatch usersLoaded', async () => {
+  userService.getAll.and.returnValue(of(mockUsers));
+  actions$.next(UsersPageActions.pageOpened());
+
+  const action = await firstValueFrom(effects.loadUsers$);
+  expect(action).toEqual(UsersApiActions.usersLoaded({ users: mockUsers }));
+});
+Angular-specific consequence: Your entire Effects test suite appears green but tests nothing — every assertion in every subscribe callback is silently skipped. This is Topic 48's most critical rule applied to Effects.
+
+Mistake 2 — Forgetting store.resetSelectors() in afterEach — leaking overrides between tests
+What:
+tsit('test A', () => {
+  store.overrideSelector(selectAllUsers, [mockUser]);
+  store.refreshState();
+  // Test passes — selectAllUsers returns [mockUser]
+});
+
+it('test B', () => {
+  // No override set — but selectAllUsers STILL returns [mockUser] from test A's override
+  store.refreshState();
+  fixture.detectChanges();
+  // This test is now testing with test A's state — silent incorrect result
+});
+Why developers make it: overrideSelector sounds like a per-call setting. It is actually persistent — it stays active until explicitly reset.
+How to avoid it:
+tsafterEach(() => {
+  store.resetSelectors(); // Required — clears all overrideSelector calls
+});
+Angular-specific consequence: Tests pass in isolation but fail when run in sequence — the classic "tests are order-dependent" problem. CI runs all tests together; local runs may only run one file. The bug hides locally and surfaces in CI.
+
+Mistake 3 — Testing selector composition logic through MockStore instead of selector.projector()
+What:
+ts// ❌ Testing a selector via the store — not testing the selector, testing the store
+it('should return admin users', () => {
+  store.setState({ users: { users: mockUsers, loading: false, error: null } });
+  let result: User[] = [];
+  store.select(selectAdminUsers).subscribe(u => result = u);
+  store.refreshState();
+  expect(result).toHaveSize(1);
+});
+Why developers make it: Using the store feels complete — it tests the full pipeline. But it conflates two things: the selector's pure function logic AND the store's selector registration.
+How to avoid it: Test selector logic directly via projector() — no store, no TestBed:
+ts// ✅ Test the pure function directly
+it('should return admin users', () => {
+  const result = selectAdminUsers.projector(mockUsers);
+  expect(result).toHaveSize(1);
+});
+Angular-specific consequence: Store-based selector tests are slower, require TestBed setup for a pure function test, and hide the actual input-output contract of the selector. When the selector breaks, the error message points to the store rather than the projector function — harder to debug.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TTest reducers as plain functions — reducer(state, action) — no Angular, no TestBedImport StoreModule.forRoot() in reducer tests — reducers are pure functions needing no Angular setupTest selector projectors via selector.projector(mockInputs) — pure function, no storeTest selectors by setting up MockStore state — slower and conflates store registration with derivation logicUse provideMockStore() in component tests and overrideSelector() for precise state controlUse real StoreModule.forRoot() in component tests — forces reducer sequencing to set up stateAlways call store.resetSelectors() in afterEach — clears overrides between testsOmit resetSelectors() — selector overrides leak between tests, causing order-dependent failuresUse done callback, firstValueFrom(), or fakeAsync+tick() for all Effect assertionsAssert inside subscribe() without done — Jasmine exits before the callback runs, giving a false greenUse ReplaySubject<Action>(1) for actions$ — replays the last emission to late subscribersUse Subject<Action> for actions$ — if the effect subscribes after the action is emitted, it misses it
+
+Section 7 — Debugging Tips
+Bug 1 — Effect test is green but the assertion never runs
+Symptom: Test passes, but removing the expect() line also passes — the assertion is never reached.
+Cause: Assertion is inside a subscribe callback without a done parameter. Jasmine marks the test complete before the Observable emits.
+Fix: Convert the Observable assertion to use firstValueFrom() with async/await, or add done to the test function and call it inside the subscribe:
+ts// ✅ Option A — async/await with firstValueFrom
+it('should dispatch correctly', async () => {
+  userService.getAll.and.returnValue(of(mockUsers));
+  actions$.next(UsersPageActions.pageOpened());
+  const action = await firstValueFrom(effects.loadUsers$);
+  expect(action.type).toBe(UsersApiActions.usersLoaded.type);
+});
+Angular-specific note: This is the single most common NgRx testing bug — and the most dangerous because the test suite appears fully green while testing nothing.
+
+Bug 2 — MockStore selector returns undefined despite overrideSelector
+Symptom: Template renders nothing; logging store.select(selectAllUsers) in the component shows undefined.
+Cause: store.refreshState() was not called after overrideSelector(), so the store has not emitted the overridden value yet.
+Fix: Always call store.refreshState() after every overrideSelector() call, and always call fixture.detectChanges() after refreshState():
+tsstore.overrideSelector(selectAllUsers, mockUsers); // Set override
+store.refreshState();                               // Emit new value
+fixture.detectChanges();                            // Update DOM
+Angular-specific note: With ChangeDetectionStrategy.OnPush, forgetting fixture.detectChanges() after refreshState() means the DOM never updates — the component is correct but the DOM assertion fails. Always call both in sequence.
+
+Bug 3 — Component Store or SignalStore test shows stale state after calling an effect method
+Symptom: You call store.loadUsers(), assert immediately, and get the initial (empty) state.
+Cause: rxMethod and Component Store's effect() are asynchronous — the HTTP Observable resolves on the next microtask. Asserting synchronously after calling the method reads state before the effect completes.
+Fix: Wrap the assertion in setTimeout(() => { expect(...); done(); }) to defer to the next macrotask, or use fakeAsync + tick() if the service returns a synchronous Observable:
+tsit('should populate users', fakeAsync(() => {
+  userService.getAll.and.returnValue(of(mockUsers)); // Synchronous Observable
+
+  store.loadUsers();
+  tick(); // Flush all pending microtasks and macrotasks
+
+  expect(store.users()).toEqual(mockUsers);
+}));
+Angular-specific note: fakeAsync + tick() only works when the Observable is synchronous (e.g. of(data)). For truly async services (real timers, real HTTP), use done + setTimeout. Never mix fakeAsync with real async Observables — it throws Error: 1 timer(s) still in the queue.
+
+Section 8 — Real-World Applications
+Scenario 1 — Testing an optimistic update Effect
+An optimistic delete Effect removes a contact immediately, calls the API, and restores if the API fails (the Topic 54 advanced exercise pattern).
+tsdescribe('ContactEffects — deleteContact$', () => {
+  it('should dispatch contactRestored if API delete fails', (done) => {
+    const contact = { id: '1', name: 'Alice', email: '' };
+
+    // Set up store state with the contact already present
+    store.overrideSelector(selectContactEntities, { '1': contact });
+    store.refreshState();
+
+    // API fails
+    contactService.delete.and.returnValue(
+      throwError(() => new Error('Server error'))
+    );
+
+    actions$.next(ContactsPageActions.removeContactClicked({ id: '1' }));
+
+    // Collect all dispatched actions — optimistic delete dispatches TWO actions
+    const dispatched: Action[] = [];
+    effects.deleteContact$.subscribe({
+      next: a => dispatched.push(a),
+      complete: () => {
+        // First: optimistic remove
+        expect(dispatched[0]).toEqual(
+          ContactsApiActions.contactRemovedOptimistically({ id: '1' })
+        );
+        // Second: restore on failure
+        expect(dispatched[1]).toEqual(
+          ContactsApiActions.contactRestored({ contact })
+        );
+        done();
+      }
+    });
+  });
+});
+
+Scenario 2 — Testing a SignalStore with withHooks.onInit
+The withHooks.onInit fires automatically when the store is provided in TestBed. This means your mock service must be set up before TestBed.inject(UserStore) is called — otherwise onInit fires with an unprepared spy.
+tsdescribe('UserStore — onInit auto-load', () => {
+  it('should call loadUsers automatically on store creation', () => {
+    const spy = jasmine.createSpyObj('UserService', ['getAll']);
+    // Set up BEFORE inject — onInit fires during injection
+    spy.getAll.and.returnValue(of([]));
+
+    TestBed.configureTestingModule({
+      providers: [UserStore, { provide: UserService, useValue: spy }],
+    });
+
+    TestBed.inject(UserStore); // onInit fires here
+
+    // Verify the service was called during store initialization
+    expect(spy.getAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('should prevent auto-load in tests that need clean state', () => {
+    // Option: override onInit in a testing-specific subclass
+    // Or: configure spy to return empty before injection, reset after
+
+    const spy = jasmine.createSpyObj('UserService', ['getAll']);
+    spy.getAll.and.returnValue(of([])); // Return empty — prevents state pollution
+
+    TestBed.configureTestingModule({
+      providers: [UserStore, { provide: UserService, useValue: spy }],
+    });
+
+    const store = TestBed.inject(UserStore);
+    spy.getAll.and.returnValue(of(mockUsers)); // Now configure for actual test
+
+    store.loadUsers(); // Manually trigger a second load for the real test
+    // Assert after async resolves...
+  });
+});
+
+Section 9 — Practice Exercises
+Beginner
+Write a complete test suite for the usersReducer covering: (1) unknown action returns the same state reference (toBe, not toEqual); (2) usersLoaded stores users and sets loading: false; (3) usersLoadFailed stores the error message. Then write projector tests for selectAllUsers and selectAdminUsers without any TestBed setup. No component, no store, no Angular — just function calls.
+Intermediate
+Write a MockStore-based test suite for a UsersComponent that: (1) dispatches UsersPageActions.pageOpened() in ngOnInit; (2) renders a [data-testid="user-name"] element for each user from selectAllUsers; (3) shows a [data-testid="loading"] element when selectLoading is true; (4) hides the loading indicator when selectLoading is false. Use overrideSelector and refreshState for all state setup. Include resetSelectors() in afterEach.
+Advanced
+Write a full Effect test suite for a deleteUser$ Effect that: (1) uses concatMap (ordered writes — Topic 52 rule); (2) dispatches userDeletedOptimistically immediately; (3) calls userService.delete(id); (4) dispatches userDeleteConfirmed on success; (5) dispatches userRestored with the original user on failure. Test all three paths: success, failure, and the case where two delete actions are dispatched in quick succession (verifying concatMap queues them rather than cancelling). Use ReplaySubject, provideMockActions, firstValueFrom or done correctly for each assertion.
+
+Section 10 — Key Takeaways
+Core concepts:
+
+Reducers are pure functions — test them with reducer(state, action), no Angular setup required
+Selector projectors are pure functions — test them with selector.projector(mockInputs), no store or TestBed required
+Component tests use MockStore + overrideSelector() to control state precisely without dispatching through real reducers
+Effect tests use provideMockActions(() => actions$) with a ReplaySubject<Action> to control the action stream; service dependencies are mocked with jasmine.createSpyObj
+Component Store and SignalStore are tested by providing the real store class in TestBed with a mocked service — effects and updaters run against the real store logic
+Always call store.resetSelectors() in afterEach — selector overrides persist between tests if not cleared
+Always use done, firstValueFrom(), or fakeAsync+tick() for async assertions — never assert inside subscribe() without done
+
+Quick reference:
+What to testToolKey ruleReducerreducer(state, action)toBe for unchanged state (same ref), toEqual for changedSelectorselector.projector(mockInputs)Test each layer's projector independentlyComponent + StoreMockStore + overrideSelectorAlways refreshState() + detectChanges() after overrideEffect (mocked service)ReplaySubject + provideMockActions + spyAlways done or firstValueFrom for assertionsEffect (real HTTP)HttpClientTestingModule + req.flush()httpController.verify() in afterEachComponent StoreReal store + mock service in TestBedsetTimeout/fakeAsync for async effect assertionsSignalStoreReal store + mock service in TestBedMock service before TestBed.inject if withHooks.onInit auto-loads
+Angular-specific rules:
+
+Never use real StoreModule.forRoot() in component tests — MockStore is always the right tool
+Always store.resetSelectors() in afterEach — overrides are persistent, not per-test
+Use ReplaySubject<Action>(1) for mock actions — not Subject — because Effects subscribe after the action is emitted
+For withHooks.onInit stores: configure the mock service return value before TestBed.inject(Store) — onInit fires during injection
+Always test both happy path AND error path for every Effect
+
+One-Line Memory Aid:
+
+Test reducers and selector projectors as plain functions with no Angular; test Effects with ReplaySubject + provideMockActions; test Component Store and SignalStore with the real store class and a mocked service — and always use done or firstValueFrom for async assertions or your tests are silently lying.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If MockStore.overrideSelector() bypasses the real selector logic entirely and just returns a hardcoded value, does that mean you can write a completely broken selector and all your component tests still pass?
+Answer:
+Yes — and this is a deliberate design trade-off, not a bug.
+MockStore with overrideSelector is designed to test the component in isolation — specifically, how the component renders and behaves given a particular state. The selector's correctness is a separate concern tested separately via selector.projector().
+This separation is the same principle as mocking a service in a component test (Topic 47): you mock UserService.getAll() to return of(mockUsers) so the component test isn't sensitive to service implementation details. overrideSelector does the same thing — it mocks the selector so the component test isn't sensitive to selector implementation details.
+The implication: you need both types of tests.
+
+selector.projector() tests verify the selector correctly derives data from state
+overrideSelector component tests verify the component correctly renders given that data
+
+A broken selector with passing component tests means: your projector tests would catch it. If you have no projector tests, you have a gap — not a sign that overrideSelector is wrong, but a sign that your selector test suite is incomplete.
+The practical rule: For every createSelector() call in your app, there should be at least one selector.projector() test covering the derivation logic. For every component that subscribes to a selector, use overrideSelector in the component test. The two test types are complementary, not redundant.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+ReplaySubject vs Subject vs BehaviorSubject — understanding why ReplaySubject(1) is required for mock actions (Effects subscribe after the action emits) connects to Topic 20's RxJS subscription timing concepts
+firstValueFrom() vs toPromise() — firstValueFrom is the modern RxJS 7+ way to convert an Observable to a Promise for async/await test assertions; toPromise() is deprecated
+
+TypeScript Concepts:
+
+jasmine.SpyObj<T> typing — strongly-typed spies catch mismatched method names at compile time; understanding generic spy types makes Effect test setup safer (Topic 16 — Generics)
+ReturnType<> for mock inference — inferring the return type of a service method helps write correctly typed and.returnValue() spy setups
+
+Angular-Specific Concepts:
+
+Topic 59 — NgRx Best Practices: Testing strategy (what to test, what to mock, where to draw the line) is a central NgRx architecture question — directly builds on the patterns established in this topic
+Topic 47 — Testing Angular Components (review): The fixture.detectChanges(), fakeAsync, and data-testid patterns from Topic 47 are the DOM-side of every NgRx component test
+Topic 48 — Testing Services & HTTP (review): The HttpClientTestingModule + req.flush() + httpController.verify() pattern from Topic 48 is the HTTP-side of every Effect test using real HTTP interception
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on:
+
+Topic 47 — Testing Angular Components (MockStore setup, detectChanges, fakeAsync, data-testid)
+Topic 48 — Testing Services & HTTP (HttpClientTestingModule, req.flush, verify, done callback)
+Topic 51 — NgRx Core Concepts (reducers as pure functions, understanding what to test)
+Topic 52 — NgRx Effects (the effect structure being tested — switchMap placement, error handling)
+Topic 53 — NgRx Selectors In Depth (projector() as a pure function, layered selector composition)
+Topic 55 — NgRx Component Store (the store class being tested in Section 6)
+Topic 56 — NgRx SignalStore (the store class being tested in Section 7)
+Topic 57 — NgRx Router Store (dispatching routerNavigatedAction in effect tests)
+
+Topics this unlocks:
+
+Topic 59 — NgRx Best Practices: The testing strategy (what to unit test, what to integration test, how to structure NgRx test suites) is a core part of NgRx production architecture
+
+Production readiness assessment: The patterns in this topic are the minimum viable NgRx test suite for any production Angular app — teams without reducer tests, selector projector tests, and Effect tests are shipping untested state management, which is the highest-risk category of silent bug in an NgRx application.
+
+Section 14 — Common Interview Questions
+Question 1
+"How do you test an NgRx Effect? Walk me through the setup and explain why each piece is needed."
+Strong answer covers:
+
+ReplaySubject<Action>(1) for actions$ — replays last emission to late-subscribing Effects; Subject loses emissions if Effect subscribes after dispatch
+provideMockActions(() => actions$) — connects the ReplaySubject to the Effect's Actions injection token
+provideMockStore() — required if the Effect uses withLatestFrom or concatLatestFrom to read store state
+Mock service via { provide: RealService, useValue: spyObj } — isolates the Effect from real HTTP
+done callback or firstValueFrom() for assertions — subscribe without done silently never asserts
+Test both happy path (success action dispatched) and error path (error action dispatched) for every Effect
+
+Weak answers miss: The ReplaySubject vs Subject distinction — most candidates know to use provideMockActions but can't explain why ReplaySubject is required.
+Difficulty: Mid
+
+Question 2
+"What is selector.projector() and why should you use it instead of testing selectors through the MockStore?"
+Strong answer covers:
+
+projector() calls the selector's pure derivation function directly with mock inputs — no store, no TestBed
+Selectors are composed pure functions — testing the projector tests the derivation logic in isolation
+Testing via MockStore conflates selector registration with derivation logic — slower, harder to debug failures
+projector() inputs are the outputs of the selector's input selectors — for selectAdminUsers(selectAllUsers), the projector input is User[], not UsersState
+Faster, simpler, more focused — the gold standard for selector testing
+
+Weak answers miss: What the projector inputs are — candidates often assume the projector takes raw state when it takes the outputs of upstream selectors.
+Difficulty: Mid
+
+Question 3
+"Your NgRx Effect test suite shows 100% pass rate but a bug slips into production where the Effect silently does nothing after the first HTTP error. What went wrong in the tests, and how do you fix it?"
+Strong answer covers:
+
+Root cause: catchError was placed on the outer Observable (Topic 52 rule) — one error permanently kills the Effect
+Test failure reason: the test only tested the error path once in isolation — it never tested "fire twice, with the second call succeeding after the first errored"
+Test gap: no test verified the Effect remains alive after an error (the "stays alive" invariant)
+Fix for the test: after the error-path test, emit a second success action and assert the Effect dispatches the success action — proving the outer stream survived
+Fix for the code: move catchError inside the switchMap/concatMap inner Observable, or use tapResponse
+
+Weak answers miss: The "stays alive after error" test pattern — most candidates know about catchError placement from Topic 52 but don't know how to write the specific test that would have caught the production bug.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Using StoreModule.forRoot() in component tests
+ts// ❌ Anti-pattern
+TestBed.configureTestingModule({
+  imports: [
+    UsersComponent,
+    StoreModule.forRoot({ users: usersReducer }), // Real store in component test
+    EffectsModule.forRoot([UserEffects]),          // Real effects too
+  ],
+});
+Why it seems fine: It works — the component behaves exactly as it does in the real app, which feels like thorough testing.
+What breaks in production (test suite): The component test is now an integration test — it tests the reducer, the effect, the HTTP layer, and the component simultaneously. When a test fails, you don't know which layer broke. Setting up specific state requires dispatching multiple actions in sequence. Testing edge-case rendering (e.g. loading: true with non-empty users: [...]) is impossible without breaking the reducer contract. Test suite becomes slow and brittle.
+Correct pattern:
+ts// ✅ MockStore for component tests — isolated, fast, precise
+TestBed.configureTestingModule({
+  imports: [UsersComponent],
+  providers: [provideMockStore()],
+});
+store.overrideSelector(selectAllUsers, mockUsers);
+store.overrideSelector(selectLoading, false);
+store.refreshState();
+
+Anti-Pattern 2 — Omitting store.resetSelectors() in afterEach
+ts// ❌ Anti-pattern — no cleanup
+describe('UsersComponent', () => {
+  it('test A - shows users', () => {
+    store.overrideSelector(selectAllUsers, [mockUser]);
+    store.refreshState();
+    fixture.detectChanges();
+    // Passes
+  });
+
+  it('test B - shows empty state', () => {
+    // No overrideSelector call — expects the default (empty array)
+    store.refreshState();
+    fixture.detectChanges();
+    // selectAllUsers STILL returns [mockUser] from test A — FAILS or silently wrong
+  });
+});
+Why it seems fine: Each test looks self-contained. The override in test A doesn't seem to affect test B's intent.
+What breaks in production (test suite): Selector overrides accumulate across tests. Tests become order-dependent — they pass when run individually but fail in full suite runs. This is one of the most common sources of "flaky tests" in NgRx projects. In CI, where test order may differ from local, bugs hide for weeks.
+Correct pattern:
+ts// ✅ Always reset in afterEach
+afterEach(() => {
+  store.resetSelectors();
+});
+
+Anti-Pattern 3 — Testing the full NgRx stack in a single test instead of testing each layer independently
+ts// ❌ Anti-pattern — one "integration" test trying to cover everything
+it('should load and display users end to end', async () => {
+  TestBed.configureTestingModule({
+    imports: [UsersComponent, StoreModule.forRoot({ users: usersReducer })],
+    providers: [
+      EffectsModule.forRoot([UserEffects]),
+      { provide: UserService, useValue: { getAll: () => of(mockUsers) } }
+    ]
+  });
+  // Dispatch an action, wait for the effect, wait for the reducer,
+  // wait for the selector, wait for change detection, assert DOM
+  store.dispatch(UsersPageActions.pageOpened());
+  await fixture.whenStable();
+  fixture.detectChanges();
+  expect(fixture.nativeElement.querySelector('[data-testid="user"]')).toBeTruthy();
+});
+Why it seems fine: One test covers the entire user-visible flow. If it passes, the feature works. Feels like the most valuable kind of test.
+What breaks in production (test suite): When this test fails, you have no idea whether the bug is in the action creator, the effect, the service, the reducer, the selector, or the component template. The diagnostic value is near zero. The test is also slow (runs the full stack), fragile (breaks for any reason in any layer), and difficult to maintain. One change to the reducer format breaks this test even if the component template hasn't changed at all.
+Correct pattern: Test each layer independently in dedicated spec files — reducer.spec.ts, selectors.spec.ts, effects.spec.ts, component.spec.ts — each with its own mock strategy. End-to-end tests (Playwright, Cypress) cover the full integration — unit tests cover each layer.
+reducer.spec.ts      → pure function tests, no Angular
+selectors.spec.ts    → projector() tests, no Angular  
+effects.spec.ts      → provideMockActions + mock service
+component.spec.ts    → MockStore + overrideSelector
+e2e/users.spec.ts    → Playwright/Cypress for full integration
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+NgRx Testing has five distinct layers — each tested independently with its own tool: reducers and selector projectors as plain functions, Effects with ReplaySubject + provideMockActions, components with MockStore + overrideSelector, and Component Store / SignalStore with the real store class and mocked services.
+Key rules:
+
+Test reducers as reducer(state, action) — no Angular, no TestBed; use toBe for unchanged state reference, toEqual for changed state
+Test selectors via selector.projector(mockInputs) — the projector input is the output of upstream selectors, not raw state
+Use MockStore + overrideSelector in component tests — never StoreModule.forRoot() in unit tests
+Always call store.resetSelectors() in afterEach — overrides are persistent across tests
+Use ReplaySubject<Action>(1) for mock actions — not Subject; always use done or firstValueFrom for async assertions
+Configure mock service return values before TestBed.inject(Store) for SignalStores with withHooks.onInit — onInit fires during injection
+
+The single most important Angular rule:
+
+Never assert inside subscribe() without a done callback — Jasmine exits before the async callback executes, the assertion never runs, and the test is permanently green regardless of whether the Effect works correctly.
+Side-by-side comparison:
+LayerTest toolAngular needed?Async handlingReducerreducer(state, action)NoSynchronousSelectorselector.projector(inputs)NoSynchronousComponentMockStore + overrideSelectorYes — TestBeddetectChanges() after refreshState()EffectReplaySubject + provideMockActionsYes — TestBeddone / firstValueFromComponent StoreReal store + mock serviceYes — TestBedfakeAsync+tick or done+setTimeoutSignalStoreReal store + mock serviceYes — TestBedfakeAsync+tick or done+setTimeout
+

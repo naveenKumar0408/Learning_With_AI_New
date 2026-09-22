@@ -1,0 +1,625 @@
+Topic 34 — Form Validation (Built-in Validators, Custom Validators, Async Validators)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — The built-in validators are straightforward, but custom synchronous validators require understanding AbstractControl, and async validators add RxJS observables into the mix — making this a multi-layered topic that builds directly on Topic 33.
+Angular Relevance: Critical — Every real-world form needs validation beyond "is this field filled in?" Custom and async validators are what separates a production-grade Angular form from a toy example — password rules, username availability checks, cross-field comparisons all live here.
+
+Section 1 — Explanation
+The Bouncer Analogy
+Imagine a nightclub with three types of bouncers at the door:
+Bouncer Type 1 — The Rulebook Bouncer (Built-in Validators): Has a printed rulebook. Checks instantly: "Are you over 18? Is your ID not expired?" Fast, synchronous, no waiting. Angular ships with these: required, email, minLength, maxLength, min, max, pattern.
+Bouncer Type 2 — The Custom Rulebook Bouncer (Custom Validators): You wrote the rules yourself. "Must be wearing a collared shirt AND shoes." Still checks instantly — no waiting — but the rules are yours, not from the printed book. This is a custom synchronous validator.
+Bouncer Type 3 — The Radio Bouncer (Async Validators): Has to radio the VIP list database before letting someone in. Takes a moment. The door says "checking…" (pending state) before the answer comes back. This is an async validator — it makes an HTTP call or other async operation and returns an Observable or Promise.
+All three bouncers return the same answer: null (you're in — valid) or an error object (you're not — here's why).
+
+Technical Explanation:
+Every validator — built-in, custom sync, or custom async — follows one contract:
+ValidatorFn:       (control: AbstractControl) => ValidationErrors | null
+AsyncValidatorFn:  (control: AbstractControl) => Observable<ValidationErrors | null> | Promise<ValidationErrors | null>
+ValidationErrors is just { [key: string]: any } — an object where the key is the error name and the value is any metadata.
+Validator TypeReturnsWhen it runspending state?Built-in (sync)ValidationErrors | nullOn every value changeNoCustom syncValidationErrors | nullOn every value changeNoCustom asyncObservable<...> | Promise<...>After all sync validators passYes — until resolved
+Critical rule: Angular only runs async validators if all synchronous validators pass first. This prevents unnecessary HTTP calls when the field is obviously invalid.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 33 — Reactive Forms — Validators are meaningless without FormControl / FormGroup to attach them to
+Topic 8 — Promises & async/await — Async validators can return Promises
+Topic 20 — RxJS Subscription Management — Async validators return Observables; Angular subscribes internally
+Topic 16 — TypeScript Generics — AbstractControl is a generic base class
+Topic 18 — Error Handling — Async validators must handle HTTP errors gracefully to avoid pending state getting stuck
+
+Bridging note: Topic 33 introduced the form tree and showed validators being passed into FormControl. This topic explains what those validators actually are — functions following a strict contract — and how to write your own. The async validator pattern is essentially Topic 8's async/await knowledge expressed as an RxJS Observable returned to Angular's form engine.
+Extends most directly: Topic 33 — Reactive Forms, because validators only exist in the context of a form model.
+
+Section 3 — Code Example
+Plain TS — Validator contract in isolation
+typescriptimport { AbstractControl, ValidationErrors } from '@angular/forms';
+
+// A validator is just a function. That's it.
+// It receives a control and returns null (valid) or an error object (invalid).
+
+// --- Custom sync validator ---
+function noSpacesValidator(control: AbstractControl): ValidationErrors | null {
+  const hasSpaces = (control.value as string)?.includes(' ');
+  // Return null = valid. Return object = invalid, key is the error name.
+  return hasSpaces ? { noSpaces: { actualValue: control.value } } : null;
+}
+
+// --- Usage on a FormControl ---
+const usernameControl = new FormControl('hello world', [noSpacesValidator]);
+console.log(usernameControl.errors); // { noSpaces: { actualValue: 'hello world' } }
+console.log(usernameControl.valid);  // false
+
+const cleanControl = new FormControl('helloworld', [noSpacesValidator]);
+console.log(cleanControl.valid);     // true
+
+Real Angular Component — All three validator types together
+typescript// validators/custom-validators.ts
+// Best practice: put reusable validators in a dedicated file
+
+import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
+import { inject } from '@angular/core';
+import { Observable, of, timer } from 'rxjs';
+import { switchMap, map, catchError } from 'rxjs/operators';
+import { UserService } from '../services/user.service';
+
+// ─── CUSTOM SYNC VALIDATOR (standalone function) ───────────────────────────
+
+// Parameterised validator: returns a ValidatorFn — a factory pattern
+export function forbiddenNameValidator(forbiddenNames: string[]): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const isForbidden = forbiddenNames.includes(control.value?.toLowerCase());
+    return isForbidden
+      ? { forbiddenName: { value: control.value } }  // error object
+      : null;                                          // valid
+  };
+}
+
+// ─── CROSS-FIELD SYNC VALIDATOR (applied to FormGroup) ────────────────────
+
+// Applied at group level — can access sibling controls via control.get()
+export function passwordMatchValidator(group: AbstractControl): ValidationErrors | null {
+  const password        = group.get('password')?.value;
+  const confirmPassword = group.get('confirmPassword')?.value;
+  return password === confirmPassword ? null : { passwordMismatch: true };
+}
+
+// ─── ASYNC VALIDATOR (checks username availability via HTTP) ──────────────
+
+// Returns a function that Angular calls and subscribes to automatically
+export function usernameAvailabilityValidator(
+  userService: UserService
+): AsyncValidatorFn {
+  return (control: AbstractControl): Observable<ValidationErrors | null> => {
+    // Debounce: wait 400ms after the user stops typing before hitting the API
+    return timer(400).pipe(
+      switchMap(() => userService.checkUsernameAvailable(control.value)),
+      map(isAvailable => isAvailable ? null : { usernameTaken: true }),
+      catchError(() => of(null)) // on HTTP error, treat as valid to avoid blocking the form
+    );
+  };
+}
+typescript// register.component.ts
+import { Component, inject } from '@angular/core';
+import {
+  ReactiveFormsModule, FormBuilder, Validators, AbstractControl
+} from '@angular/forms';
+import { CommonModule } from '@angular/common';
+import {
+  forbiddenNameValidator,
+  passwordMatchValidator,
+  usernameAvailabilityValidator
+} from './validators/custom-validators';
+import { UserService } from './services/user.service';
+
+@Component({
+  selector: 'app-register',
+  standalone: true,
+  imports: [ReactiveFormsModule, CommonModule],
+  template: `
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+
+      <!-- Username: sync + async validators -->
+      <label>Username</label>
+      <input formControlName="username" />
+
+      @if (username.pending) {
+        <small>Checking availability…</small>
+      }
+      @if (username.invalid && username.touched && !username.pending) {
+        <small>
+          @if (username.errors?.['required'])      { Username is required }
+          @if (username.errors?.['minlength'])     { Must be at least 3 characters }
+          @if (username.errors?.['forbiddenName']) { That username is not allowed }
+          @if (username.errors?.['usernameTaken']) { Username is already taken }
+        </small>
+      }
+
+      <!-- Password fields: cross-field group validator -->
+      <label>Password</label>
+      <input formControlName="password" type="password" />
+
+      <label>Confirm Password</label>
+      <input formControlName="confirmPassword" type="password" />
+
+      <!-- Group-level error lives on the group, not the individual control -->
+      @if (registerForm.errors?.['passwordMismatch'] &&
+           registerForm.get('confirmPassword')?.touched) {
+        <small>Passwords do not match</small>
+      }
+
+      <button
+        type="submit"
+        [disabled]="registerForm.invalid || registerForm.pending"
+      >
+        Register
+      </button>
+    </form>
+  `
+})
+export class RegisterComponent {
+  private fb          = inject(FormBuilder);
+  private userService = inject(UserService);
+
+  registerForm = this.fb.group(
+    {
+      username: [
+        '',
+        // Sync validators — second argument
+        [Validators.required, Validators.minLength(3), forbiddenNameValidator(['admin', 'root'])],
+        // Async validators — third argument
+        [usernameAvailabilityValidator(this.userService)]
+      ],
+      password:        ['', [Validators.required, Validators.minLength(8)]],
+      confirmPassword: ['', Validators.required]
+    },
+    // Group-level validator — fourth position in fb.group options
+    { validators: passwordMatchValidator }
+  );
+
+  // Getter for cleaner template access
+  get username() { return this.registerForm.get('username')!; }
+
+  onSubmit() {
+    if (this.registerForm.invalid) {
+      this.registerForm.markAllAsTouched();
+      return;
+    }
+    console.log(this.registerForm.value);
+  }
+}
+typescript// user.service.ts — the service the async validator calls
+@Injectable({ providedIn: 'root' })
+export class UserService {
+  private http = inject(HttpClient);
+
+  checkUsernameAvailable(username: string): Observable<boolean> {
+    return this.http.get<{ available: boolean }>(`/api/users/check/${username}`)
+      .pipe(map(res => res.available));
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Inline validation logic in the component
+typescript// WRONG: Validation logic scattered inside the component class
+// No reusability, no testability, form model and rules are entangled
+
+export class OldRegisterComponent {
+  registerForm = this.fb.group({
+    username: [''],
+    email: ['']
+  });
+
+  onSubmit() {
+    const { username, email } = this.registerForm.value;
+
+    // ❌ Validation done imperatively at submit time — not reactive
+    if (!username || username.length < 3) {
+      alert('Username must be at least 3 characters');
+      return;
+    }
+    if (!email || !email.includes('@')) {
+      alert('Invalid email');
+      return;
+    }
+    // submit...
+  }
+}
+What breaks:
+
+No live feedback as the user types — they only discover errors on submit
+[disabled] binding can't work because the form is always valid (no validators attached)
+Logic is locked inside onSubmit — impossible to unit test the validation rules in isolation
+Scaling this to 10+ fields is unmanageable
+
+
+✅ After — Validators declared on the form model
+typescriptexport class NewRegisterComponent {
+  registerForm = this.fb.group({
+    username: ['', [Validators.required, Validators.minLength(3)]],
+    email:    ['', [Validators.required, Validators.email]]
+  });
+
+  // ✅ Submit guard — but validation already happened live in the template
+  onSubmit() {
+    if (this.registerForm.invalid) {
+      this.registerForm.markAllAsTouched();
+      return;
+    }
+    // submit...
+  }
+}
+Why this matters in Angular:
+
+The form's valid/invalid state is live — [disabled]="form.invalid" works correctly
+Template can show inline error messages per field as the user types
+Validator functions are standalone — unit-testable without instantiating the component
+markAllAsTouched() reveals all hidden errors if a user skips fields and clicks submit
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Returning false or true instead of null or an error object
+What the mistake is:
+typescript// ❌ Wrong return type
+function myValidator(control: AbstractControl): any {
+  if (control.value === 'bad') return false; // Angular ignores this
+  return true; // Angular ignores this too
+}
+Why developers make it: Coming from native HTML validation or other frameworks where true/false signals valid/invalid feels natural.
+How to avoid it: The contract is strict: return null for valid, return a ValidationErrors object ({ errorKey: true } or { errorKey: { detail } }) for invalid. Angular only checks for null vs non-null.
+Angular-specific consequence: The validator silently does nothing. The field is always treated as valid. No error in the console — just broken validation with no explanation.
+
+Mistake 2 — Not debouncing async validators
+What the mistake is:
+typescript// ❌ No debounce — fires an HTTP request on EVERY keystroke
+export function usernameValidator(service: UserService): AsyncValidatorFn {
+  return (control) => service.checkUsernameAvailable(control.value).pipe(
+    map(available => available ? null : { taken: true })
+  );
+}
+Why developers make it: They implement the happy path first and don't consider that the validator runs on every value change event.
+How to avoid it: Wrap the observable with timer(400).pipe(switchMap(...)). The timer creates a debounce — switchMap cancels the previous in-flight request if a new keystroke arrives before 400ms.
+Angular-specific consequence: For a username field, typing "johndoe" fires 7 HTTP requests. At scale, this hammers your API, creates race conditions where an earlier response arrives after a later one, and shows flickering "pending" states.
+
+Mistake 3 — Forgetting catchError in async validators
+What the mistake is:
+typescript// ❌ No error handling — if the API call fails, the form stays stuck in 'pending' forever
+return (control) => userService.check(control.value).pipe(
+  map(available => available ? null : { taken: true })
+  // Missing: catchError
+);
+Why developers make it: They focus on the success path. Error handling feels like an edge case.
+How to avoid it: Always pipe catchError(() => of(null)) at the end of async validators. This treats an API failure as "valid" (the safest fallback) and clears the pending state.
+Angular-specific consequence: If the API returns a 500 or the network drops, the Observable errors and Angular's internal subscription dies — the control stays in pending state forever. The submit button (if bound to pending) stays disabled permanently. Users are stuck.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TReturn null for valid, { errorKey: true } for invalid — alwaysReturn true, false, or undefined from a validatorPut reusable validators in a dedicated validators/ fileInline one-off validator logic directly in the component classAdd catchError(() => of(null)) to every async validatorLet async validators throw — they permanently lock the form in pendingDebounce async validators with timer(400).pipe(switchMap(...))Fire an HTTP request on every single keystrokeApply cross-field validators at the FormGroup levelApply cross-field validators to an individual FormControl (you can't access siblings from there)Show pending state feedback in the template while async validatesLeave users with no indication the form is checking something
+
+Section 7 — Debugging Tips
+Bug 1 — Form stays in pending state indefinitely
+Symptom: The control's status is permanently PENDING. The spinner in the template never disappears. Submit stays disabled.
+Plain English cause: The async validator's Observable threw an error (uncaught HTTP error, network timeout) and Angular's internal subscription unsubscribed. The control never received a final value — valid or invalid.
+Fix:
+typescriptreturn (control) => timer(400).pipe(
+  switchMap(() => userService.check(control.value)),
+  map(ok => ok ? null : { taken: true }),
+  catchError(() => of(null)) // ✅ Always resolve, never let it throw
+);
+Angular-specific note: Check the Network tab in DevTools. If the API call failed (red row), the missing catchError is your culprit every time.
+
+Bug 2 — Custom validator always returns invalid even with correct input
+Symptom: A field with a custom validator shows errors even when the value looks correct.
+Plain English cause: The validator is checking control.value before the control has a value (e.g. during initialization when value is null or ''), and the null check is missing.
+Fix:
+typescript// ❌ Breaks on empty/null value
+function noSpaces(control: AbstractControl) {
+  return control.value.includes(' ') ? { noSpaces: true } : null;
+  // TypeError: Cannot read properties of null
+}
+
+// ✅ Guard for empty/null
+function noSpaces(control: AbstractControl) {
+  if (!control.value) return null; // empty is not our validator's concern — required handles that
+  return control.value.includes(' ') ? { noSpaces: true } : null;
+}
+Angular-specific note: Always guard for null / empty string in custom validators. Let Validators.required handle the "must not be empty" case — your custom validator should assume it only runs on non-empty values.
+
+Bug 3 — Cross-field validation error doesn't show in the template
+Symptom: You added a group-level validator (e.g. passwordMismatch), it fires, but the error message never appears in the template.
+Plain English cause: The developer checks form.get('confirmPassword').errors?.['passwordMismatch'] — but the error is on the group, not on the individual control. confirmPassword.errors is null even when passwords don't match.
+Fix:
+html<!-- ❌ Wrong: looking for the error on the child control -->
+@if (form.get('confirmPassword')?.errors?.['passwordMismatch']) {
+  Passwords don't match
+}
+
+<!-- ✅ Correct: group-level error lives on the group itself -->
+@if (form.errors?.['passwordMismatch'] && form.get('confirmPassword')?.touched) {
+  Passwords don't match
+}
+Angular-specific note: This is the single most common cross-field validation bug. Draw a mental map: control-level validators → errors on the control. Group-level validators → errors on the group.
+
+Section 8 — Real-World Applications
+Scenario 1 — Password Strength Validator with Detailed Feedback
+A real app's registration form needs a password that meets multiple criteria simultaneously: minimum 8 chars, at least one uppercase, one number, one special character. Each unmet rule shows separately.
+typescript// validators/password-strength.validator.ts
+export function passwordStrengthValidator(control: AbstractControl): ValidationErrors | null {
+  const value: string = control.value || '';
+
+  if (!value) return null; // let required handle empty
+
+  const errors: ValidationErrors = {};
+
+  if (value.length < 8)               errors['minLength']      = true;
+  if (!/[A-Z]/.test(value))           errors['requiresUpper']  = true;
+  if (!/[0-9]/.test(value))           errors['requiresNumber'] = true;
+  if (!/[!@#$%^&*]/.test(value))      errors['requiresSpecial'] = true;
+
+  // Return null if no errors, otherwise return the collected errors object
+  return Object.keys(errors).length > 0 ? errors : null;
+}
+html<!-- Template: show each unmet rule as a checklist -->
+<input formControlName="password" type="password" />
+@if (password.errors && password.dirty) {
+  <ul class="password-rules">
+    <li [class.met]="!password.errors?.['minLength']">     At least 8 characters </li>
+    <li [class.met]="!password.errors?.['requiresUpper']"> One uppercase letter   </li>
+    <li [class.met]="!password.errors?.['requiresNumber']">One number             </li>
+    <li [class.met]="!password.errors?.['requiresSpecial']">One special character </li>
+  </ul>
+}
+
+Scenario 2 — Async Email Uniqueness Validator for Account Settings
+An "update email" form must check if the new email is already registered, but should skip the check if the user types their own current email back.
+typescript// validators/email-unique.validator.ts
+export function emailUniqueValidator(
+  authService: AuthService,
+  currentEmail: string  // injected so we can skip check for unchanged email
+): AsyncValidatorFn {
+  return (control: AbstractControl): Observable<ValidationErrors | null> => {
+    // Skip the API call if the user typed their own current email
+    if (control.value === currentEmail) return of(null);
+
+    return timer(500).pipe(
+      switchMap(() => authService.isEmailTaken(control.value)),
+      map(taken => taken ? { emailTaken: true } : null),
+      catchError(() => of(null))
+    );
+  };
+}
+
+// In the component:
+export class AccountSettingsComponent {
+  private authService  = inject(AuthService);
+  private currentUser  = inject(CurrentUserService);
+  private fb           = inject(FormBuilder);
+
+  emailForm = this.fb.group({
+    email: [
+      this.currentUser.email,
+      [Validators.required, Validators.email],
+      [emailUniqueValidator(this.authService, this.currentUser.email)]
+    ]
+  });
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner:
+
+Create a standalone Angular component with a single FormControl for a UK postcode. Write a custom synchronous validator that checks the value against the basic UK postcode pattern: it must start with 1–2 letters followed by 1–2 numbers. Display an error message "Invalid UK postcode format" below the input when validation fails, but only after the user has touched the field.
+Exercise 2 — Intermediate:
+
+Build a "create account" form with username, email, password, and confirmPassword fields. Write: (a) a custom sync validator that ensures username contains no uppercase letters, (b) a cross-field group validator ensuring password and confirmPassword match, (c) proper validation error messages for all fields shown only after touched. The submit button should be disabled when the form is invalid or pending.
+Exercise 3 — Advanced:
+
+Build an email settings component where a user can update their email address. The form has a single email field. Write an async validator that simulates an API check (use of(true/false) with a timer(600) delay) to determine if the email is already taken. Handle three distinct states in the template: pending (show "Checking…"), emailTaken error (show "Email already registered"), and valid (show a green checkmark). The validator must skip the API call if the entered email matches a "current email" value injected into the component, and must handle errors from the simulated API gracefully without locking the form.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+Every validator is a function: takes a control, returns null (valid) or { errorKey: value } (invalid)
+Built-in validators: required, email, minLength, maxLength, min, max, pattern — cover the common cases
+Custom sync validators: plain functions, run on every value change, for business-specific rules
+Custom async validators: return an Observable or Promise, run only after sync validators pass, have a pending state
+Cross-field validators: applied at FormGroup level — errors land on the group, not the control
+catchError(() => of(null)) is mandatory in every async validator
+
+Quick reference table:
+Sync ValidatorAsync ValidatorReturn typeValidationErrors | nullObservable<ValidationErrors | null>When it runsEvery value changeAfter all sync validators passpending stateNoYes — while Observable is resolvingPlacement in fb.group2nd argument array3rd argument arrayTypical useFormat, length, patternAPI calls (username taken, email exists)
+Angular-specific rules:
+
+Async validators only run when all sync validators pass — add Validators.required before an async validator or it fires on every empty keystroke
+Cross-field errors live on the group, not the child control — template must check form.errors?.['key'], not control.errors?.['key']
+Always catchError(() => of(null)) in async validators — no exceptions
+Always debounce async validators with timer(N).pipe(switchMap(...))
+Show form.pending in the template and disable submit while async validation is in progress
+
+One-Line Memory Aid:
+
+A validator is just a function that returns null for pass or { errorKey: true } for fail — built-in, custom sync, and async all follow the exact same contract.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: Angular only runs async validators after all synchronous validators pass. But what if you want an async validator to run even when the field is empty — for example, to show "this field cannot be empty" from a server-side rule? How would you architect that?
+Answer:
+Conceptual explanation: Angular's "sync validators first" rule exists as an optimisation — there's no point hitting the API with an empty string if Validators.required will catch it anyway. But this creates a design tension: what if your server is the source of truth for all rules, including whether a field is required?
+The answer is: don't fight the framework's optimisation — layer your validators correctly. If the server enforces "required," add Validators.required as a sync validator too. It's not duplication — the sync validator provides immediate, offline feedback, while the async validator provides authoritative, server-side validation. The two layers serve different purposes.
+Angular-specific implication: A common real-world case is a CMS where field requirements are dynamic (configured per tenant). In this case, you'd load the validation config from the server before building the form, then construct the validators programmatically:
+typescriptbuildForm(config: FieldConfig[]) {
+  const group: any = {};
+  config.forEach(field => {
+    const syncValidators = [];
+    if (field.required) syncValidators.push(Validators.required);
+    if (field.maxLength) syncValidators.push(Validators.maxLength(field.maxLength));
+    group[field.name] = ['', syncValidators];
+  });
+  this.form = this.fb.group(group);
+}
+Practical rule: Always add a sync Validators.required guard before any async validator that should not run on empty input. If server validation is truly the source of truth for all rules, fetch those rules before building the form — not inside the async validator itself.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Regular expressions (RegExp) — needed for Validators.pattern and custom pattern validators
+Closures — parameterised validators (factory functions returning ValidatorFn) are closures capturing outer arguments
+
+TypeScript Concepts:
+
+Function types and signatures — understanding ValidatorFn and AsyncValidatorFn as typed function signatures
+Partial<T> and mapped types — how Angular types partial form values internally
+
+Angular-Specific Concepts:
+
+Topic 35 — Template-Driven Forms — validators work differently (directive-based) — useful contrast
+Topic 36 — HttpClient — required for real async validators that check API endpoints
+ControlValueAccessor — how to build a custom form control that participates in validation
+updateOn configuration ('change' | 'blur' | 'submit') — controls when validators run; 'blur' mode reduces async validator frequency dramatically
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 8 — Promises & async/await (async validator return types)
+Topic 20 — RxJS Subscription Management (async validators return Observables)
+Topic 33 — Reactive Forms (validators only exist on FormControl / FormGroup)
+
+This topic unlocks or makes significantly easier:
+
+Topic 35 — Template-Driven Forms (validator directives are the template-driven equivalent)
+Topic 36 — HttpClient (async validators are the first place most developers use HttpClient inside a form)
+Topic 39 — Route Guards (CanDeactivate checking form.dirty and form.valid before navigation)
+Topic 47 — Testing Angular Components (validators are the easiest part of forms to unit test)
+
+Production readiness assessment: If you can write a parameterised custom sync validator, a debounced async validator with error handling, and a cross-field group validator — and correctly display their errors in a template — you are fully production-ready for Angular form validation. The remaining depth (dynamic validator addition/removal, updateOn tuning) comes from experience, not new concepts.
+
+Section 14 — Common Interview Questions
+Question 1:
+
+"What is the difference between a synchronous and an asynchronous validator in Angular, and when would you use each?"
+Strong answer covers:
+
+Sync validators run immediately on every value change; async validators return an Observable/Promise and run only after all sync validators pass
+The pending status exists only during async validation
+Use sync for format/length/pattern checks; use async for server-side uniqueness checks (email, username)
+Async validators should always be debounced to prevent API hammering
+catchError(() => of(null)) is mandatory in async validators
+
+Weak answer misses: That Angular intentionally skips async validators when sync validators fail — and why that matters for ordering validators correctly.
+Difficulty: Mid
+
+Question 2:
+
+"How do you implement a cross-field validator — one that compares two fields in the same form group?"
+Strong answer covers:
+
+Applied at the FormGroup level, not the FormControl level
+The validator receives the group as AbstractControl — call .get('fieldName') to access children
+Returns null or an error object — same contract as all validators
+The error lands on the group's .errors, not on either child control
+Template must check form.errors?.['errorKey'], not field.errors?.['errorKey']
+
+Weak answer misses: Where the error actually lands (the group, not the child) — this is the single most common implementation mistake.
+Difficulty: Mid
+
+Question 3:
+
+"A user reports that after a network error, the form's submit button stays permanently disabled. What would you investigate and how would you fix it?"
+Strong answer covers:
+
+The root cause: an async validator's Observable threw an error, Angular's internal subscription died, the control is stuck in PENDING state
+catchError(() => of(null)) is the fix — ensures the Observable always completes with a value
+Checking control.status === 'PENDING' in DevTools or a console.log to confirm the diagnosis
+Treating the API error as "valid" (of(null)) is the correct safe default — the server will re-validate on submit anyway
+Preventing this at code review: catchError should be a team standard for all async validators
+
+Weak answer misses: The mechanism — understanding that the Observable completing vs erroring is what drives the status transition out of PENDING.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Async validator without debounce or switchMap
+typescript// ❌ Anti-pattern: fires on every keystroke, no cancellation
+export function checkEmail(service: AuthService): AsyncValidatorFn {
+  return (control) => service.isEmailTaken(control.value).pipe(
+    map(taken => taken ? { emailTaken: true } : null)
+  );
+}
+Why it seems fine: Works correctly in isolation. Local dev with fast API responses masks the problem.
+What breaks in production: Typing "john@example.com" fires 16 HTTP requests. Responses arrive out of order — a slow response from "john@" (available) can overwrite the correct result for "john@example.com" (taken). Form shows wrong validity state. API gets hammered.
+Correct pattern:
+typescriptexport function checkEmail(service: AuthService): AsyncValidatorFn {
+  return (control) => timer(400).pipe(
+    switchMap(() => service.isEmailTaken(control.value)), // cancels previous if new keystroke
+    map(taken => taken ? { emailTaken: true } : null),
+    catchError(() => of(null))
+  );
+}
+
+Anti-Pattern 2 — Manually running validators in onSubmit instead of using the form model
+typescript// ❌ Anti-pattern: imperative validation on submit
+onSubmit() {
+  const { username, email } = this.form.value;
+  const errors: string[] = [];
+
+  if (!username) errors.push('Username required');
+  if (username && username.length < 3) errors.push('Username too short');
+  if (!email || !email.includes('@')) errors.push('Invalid email');
+
+  if (errors.length) {
+    this.errorMessages = errors;
+    return;
+  }
+  this.api.register(this.form.value).subscribe();
+}
+Why it seems fine: Mirrors backend validation logic. Feels "safe" because it re-checks on submit.
+What breaks in production: Validation logic is duplicated in two places (the form model and onSubmit) and will inevitably diverge. No live feedback as the user types. [disabled] binding doesn't work. Adding a new field means updating two separate blocks. Impossible to unit test in isolation.
+Correct pattern:
+typescriptonSubmit() {
+  if (this.form.invalid) {
+    this.form.markAllAsTouched(); // reveal all hidden errors
+    return;
+  }
+  this.api.register(this.form.value).subscribe();
+}
+// All rules live on the form model — one source of truth
+
+Anti-Pattern 3 — Reusing a validator instance that closes over mutable state
+typescript// ❌ Anti-pattern: validator closes over a mutable variable
+export class SearchComponent {
+  private minLength = 3; // can change at runtime
+
+  // This validator captures 'this' — tightly couples validator to component
+  myValidator = (control: AbstractControl) => {
+    return control.value?.length >= this.minLength ? null : { tooShort: true };
+  };
+}
+Why it seems fine: Works if minLength never changes. Feels clean to co-locate the validator with its config.
+What breaks in production: If minLength changes (e.g. loaded from a config API after init), the validator's closure captures the reference but Angular doesn't know the validator's behaviour changed — the form doesn't re-run validators unless the value changes. The displayed error state is stale.
+Correct pattern:
+typescript// ✅ Use a parameterised factory — replace the validator when config changes
+this.form.get('search')?.setValidators([
+  Validators.minLength(this.configService.getMinLength())
+]);
+this.form.get('search')?.updateValueAndValidity(); // force re-evaluation
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+A validator is a function that receives a control and returns null (valid) or an error object (invalid) — built-in, custom sync, and async all follow this exact contract; only the return type and timing differ.
+Key rules:
+
+Return null = valid. Return { errorKey: true } = invalid. Nothing else is valid.
+Sync validators run on every change. Async validators run only after all sync validators pass.
+Cross-field validators go on the FormGroup — errors land on the group, not the child controls.
+Every async validator needs catchError(() => of(null)) — no exceptions.
+Debounce async validators with timer(400).pipe(switchMap(...)) to prevent API hammering.
+Call markAllAsTouched() in onSubmit() to surface all hidden errors at once.
+
+The single most important Angular rule:
+
+Every async validator must end with catchError(() => of(null)) — a thrown error permanently locks the control in PENDING state and disables the form.
+
+Validator placement cheat sheet:
+Validator typeWhere to attachWhere error appearsSingle-field sync2nd arg of fb.group fieldcontrol.errorsSingle-field async3rd arg of fb.group fieldcontrol.errorsCross-field syncvalidators option of fb.groupformGroup.errorsCross-field asyncasyncValidators option of fb.groupformGroup.errors
+
+Say "next" for Topic 35 — Template-Driven Forms, or "continue" if I stopped mid-topic.You said: NextNext

@@ -1,0 +1,80 @@
+### Phase 1 — JS/TS Foundation (Topics 1–19)
+1. let vs const vs var
+2. Block Scope & Hoisting
+3. Closures & Lexical Scope
+4. Arrow Functions & this binding
+5. The Event Loop & Call Stack
+6. Callback Functions
+7. Pass by Value vs Pass by Reference
+8. Promises & async/await
+9. Array Methods
+10. Destructuring & Spread Operator
+11. Template Literals
+12. Modules & Imports/Exports
+13. TypeScript Interfaces & Types
+14. readonly & Immutability Patterns
+15. Access Modifiers (private, protected, public)
+16. TypeScript Generics
+17. TypeScript Decorators
+18. Error Handling (try/catch + RxJS)
+19. Optional Chaining & Nullish Coalescing
+
+### Phase 2 — Angular Core (Topics 20–27)
+20. Standalone Components
+21. Component Lifecycle Hooks
+22. Angular Signals
+23. OnPush Change Detection
+24. input() & output() in depth
+25. Services & Dependency Injection
+26. RxJS Subscription Management
+27. takeUntilDestroyed & DestroyRef
+
+### Phase 3 — Templates & Async (Topics 28–31)
+28. Angular Template Syntax
+29. async pipe
+30. Built-in Directives
+31. Pipes (built-in & custom)
+
+### Phase 4 — Routing (Topics 32–36)
+32. Angular Routing Fundamentals
+33. Route Parameters & Query Params
+34. Lazy Loading
+35. Route Guards (functional)
+36. Nested Routes & Layout Components
+
+### Phase 5 — Data & Forms (Topics 37–42)
+37. HttpClient & API Integration
+38. HTTP Interceptors
+39. Angular Reactive Forms
+40. Form Validators
+41. Template-Driven Forms
+42. Error Handling in Angular (HTTP + Forms)
+
+### Phase 6 — Advanced Angular (Topics 43–50)
+43. Custom Directives
+44. Content Projection
+45. ViewChild & ElementRef
+46. BehaviorSubject & Subject
+47. RxJS Operators in depth
+48. Feature-based Folder Structure
+49. Angular Testing Basics
+50. CDK & Animations
+
+### Phase 7 — NgRx (Topics 51–59)
+51. NgRx Core Concepts
+52. NgRx Effects
+53. NgRx Selectors In Depth
+54. NgRx Entity
+55. NgRx Component Store
+56. NgRx SignalStore
+57. NgRx Router Store
+58. NgRx Testing
+59. NgRx Best Practices & Architecture Patterns
+
+### Phase 8 — Senior Level (Topics 60–65)
+60. Performance Optimisation
+61. SSR & Angular Universal
+62. PWA in Angular
+63. WebSockets & Real-time
+64. Micro-frontend Architecture
+65. Angular Security Patterns

@@ -1,0 +1,267 @@
+The Updated Master Prompt for DSA + Problem Solving
+DSA & PROBLEM SOLVING LEARNING SERIES
+
+I am learning DSA and Problem Solving from 
+absolute zero. I have never independently solved 
+a coding problem before. I want to build genuine 
+problem-solving ability — not memorise solutions.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MY PROFILE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Role: Senior Angular developer (5 years), 
+  complete JS/TS/Angular/NgRx foundation 
+  (Topics 1–59 completed)
+- DSA baseline: Zero independent problem-solving 
+  experience. Starting from scratch deliberately 
+  and without rushing.
+- Target: Tier C product companies initially, 
+  building toward Tier B over time
+- Time budget: 30–45 minutes daily, 5 days/week
+- Learning style: Analogy first → concept → 
+  pattern → code → practice. One topic at a time. 
+  Deep over fast. Never cram.
+- I want to understand WHY a pattern works, 
+  not just HOW to apply it
+- I must be able to solve problems independently 
+  after each topic — not just follow along
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL PHILOSOPHY FOR THIS SERIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Every topic must build independent thinking 
+  — not pattern memorisation
+- Brute force first, always — optimisation 
+  comes after a working solution exists
+- Every concept must connect to the 5-step 
+  framework (Read → Example → Brute Force → 
+  Optimise → Code → Test) established in D5
+- Problems in exercises have NO solutions 
+  provided — I must attempt them independently
+- The goal is to feel what it's like to think 
+  through a problem alone, get stuck, and 
+  push through — that discomfort IS the learning
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESPONSE RULES — READ THESE FIRST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. One topic at a time — never combine two topics
+2. Use all 14 sections for every topic — no 
+   shortcuts, no skipped sections
+3. If too long for one response — stop cleanly 
+   at the end of a finished section and tell me: 
+   "Stopped after Section X — say 'continue' 
+   to get the rest." Never cut a section in half.
+4. Never compress sections to fit — two responses 
+   always beats one cut-down response
+5. Wait for "next", "Topic DX", or "continue" 
+   before proceeding
+6. Connect every topic back to earlier D-topics 
+   by number and name where relevant
+7. Name every analogy — never give an unnamed one
+8. Problems in Section 9 have NO solutions or 
+   hints — ever. I solve them alone.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+THE 14-SECTION FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Section 0 — Difficulty & Importance Rating
+- Difficulty: [Foundations / Beginner / 
+  Intermediate / Advanced] — one sentence 
+  explaining why this level
+- Interview Relevance: [Medium / High / Critical]
+  — one sentence on how often this appears in 
+  Tier C and Tier B interviews
+
+Section 1 — Explanation
+- Start with a named analogy in plain English 
+  — something from real life, not programming
+- Then the technical explanation of the concept
+- Then a visual or ASCII diagram where it helps
+- Then a quick reference table if the topic 
+  involves multiple variants or comparisons
+
+Section 2 — The Pattern Recognition Signal
+- Exactly what does a problem look like when 
+  this topic/pattern applies?
+- 3–5 specific signal phrases or problem 
+  characteristics that should trigger this 
+  pattern in your mind
+- What it is NOT — the most common look-alike 
+  pattern that beginners confuse this with
+
+Section 3 — Connection to Prior Topics
+- Which earlier D-topics this builds on 
+  (by number and name)
+- Which topic in the Frontend Mastery series 
+  (Topics 1–59) this connects to, if relevant
+- A one-paragraph bridging note
+
+Section 4 — Brute Force First
+- Always start here — the naive, inefficient 
+  but correct solution
+- Plain English explanation of the brute force 
+  approach
+- The brute force code (well-commented)
+- Its time and space complexity — explained 
+  in plain English, not just Big O notation
+
+Section 5 — Optimised Solution
+- Why the brute force falls short 
+  (what constraint does it violate?)
+- The insight that leads to the optimisation 
+  — explained as a thought process, not 
+  a reveal
+- The optimised code (well-commented)
+- Its time and space complexity with plain 
+  English explanation
+- Step-by-step trace through one example 
+  showing exactly how the solution executes
+
+Section 6 — The Thinking Process Walkthrough
+- This section is unique to this series
+- Show the EXACT internal monologue a strong 
+  problem solver uses when seeing this type 
+  of problem for the first time
+- Format: "I see X... so I think Y... which 
+  means I should try Z..."
+- This is the section that builds independent 
+  thinking — not just solution knowledge
+
+Section 7 — Common Mistakes & Misconceptions
+- Exactly 3 mistakes beginners make with 
+  this pattern
+- Each with: the mistake | why it happens | 
+  the fix | how to catch it yourself next time
+
+Section 8 — Do's and Don'ts
+- Two-column: DO (left) | DON'T (right)
+- 4–5 items per column
+- Focused on thinking habits, not just 
+  code correctness
+
+Section 9 — Practice Problems
+- Exactly 4 problems: 
+  Warm-up → Easy → Medium → Hard
+- Problem statement only — no solutions, 
+  no hints, no approach suggestions
+- I solve these independently after the topic
+- Problems must be solvable using only 
+  what has been covered up to this topic 
+  — no forward dependencies
+
+Section 10 — Key Takeaways
+- The pattern in one sentence
+- The 3–5 rules that govern when and how 
+  to use it
+- The single most important thing to 
+  remember in bold
+- A complexity cheat sheet if applicable:
+  Brute Force: O(?) time, O(?) space
+  Optimised: O(?) time, O(?) space
+
+Section 11 — Thought-Provoking Question 
+             + Answer
+- One deep question that challenges 
+  assumptions about this pattern
+- Full answer: conceptual explanation + 
+  when the assumption breaks + practical 
+  rule to take away
+
+Section 12 — Interview Simulation
+- One realistic interview-style problem 
+  using this pattern
+- The interviewer prompt exactly as they 
+  would say it
+- What a strong candidate does in the 
+  first 5 minutes (without solving it)
+- What a weak candidate does immediately 
+  that signals poor problem-solving process
+- The follow-up question an interviewer 
+  asks after you solve it — and what 
+  a strong answer covers
+
+Section 13 — Stage Checkpoint 
+             (after final topic in each stage)
+- Only appears after the last topic 
+  in each stage
+- What you can now do independently 
+  that you couldn't before this stage
+- The specific problem types you should 
+  now be able to attempt without help
+- What Stage N+1 builds on from here
+- Honest readiness assessment: are you 
+  ready to move to the next stage?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOPICS COMPLETED — DO NOT REPEAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+None yet. Starting from Topic D1.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOPICS TO COVER — IN ORDER (D1–D40)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STAGE 1 — THINKING FOUNDATIONS
+D1  — How to Read a Problem
+D2  — Brute Force First, Always
+D3  — How to Spot Patterns
+D4  — Complexity Thinking in Practice
+D5  — The Problem Solving Framework
+D6  — Debugging Your Own Code
+
+STAGE 2 — FOUNDATIONS
+D7  — Arrays & the Two Pointer Pattern
+D8  — Strings & String Manipulation
+D9  — Hash Maps & Hash Sets
+D10 — The Sliding Window Pattern
+D11 — Prefix Sums
+D12 — Stacks & the Stack Pattern
+D13 — Queues & the Queue Pattern
+D14 — Linked Lists
+D15 — Sorting — What You Need to Know
+D16 — Binary Search
+
+STAGE 3 — CORE PATTERNS
+D17 — Recursion Foundations
+D18 — Trees — Structure & Traversal
+D19 — Trees — Common Problem Patterns
+D20 — Binary Search Trees
+D21 — Graphs — Structure & Representation
+D22 — Graph Traversal — DFS & BFS
+D23 — Dynamic Programming — Mental Model
+D24 — Dynamic Programming — 1D Problems
+D25 — Dynamic Programming — 2D Problems
+D26 — Heaps & Priority Queues
+D27 — Backtracking
+D28 — Greedy Algorithms
+
+STAGE 4 — APPLIED PRACTICE
+D29 — Problem Classification Practice
+D30 — Two Pointer Problems — Applied
+D31 — Sliding Window Problems — Applied
+D32 — Tree Problems — Applied
+D33 — Graph Problems — Applied
+D34 — DP Problems — Applied
+D35 — Mixed Pattern Problems
+D36 — Timed Practice Sessions
+
+STAGE 5 — SYSTEM DESIGN
+D37 — System Design Fundamentals
+D38 — Frontend System Design Patterns
+D39 — Designing Real Systems — 
+       Frontend Focus
+D40 — System Design Interview Practice
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+START NOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Give me Topic D1 — How to Read a Problem 
+using all 14 sections.
+
+If the response is too long to complete in one 
+message, stop cleanly at the end of whichever 
+section you finish last and tell me exactly 
+where you stopped. I will say "continue" to 
+get the rest.

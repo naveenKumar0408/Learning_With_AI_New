@@ -1,0 +1,933 @@
+Topic 30 — Built-in Directives
+(ngClass, ngStyle, ngTemplateOutlet)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Beginner-Intermediate — ngClass and ngStyle are straightforward to use but have multiple syntax forms that confuse developers, and knowing when not to use them (in favour of simpler bindings) requires experience. ngTemplateOutlet is a step up in abstraction and requires understanding Angular's template reference system.
+Angular Relevance: High — ngClass and ngStyle appear in virtually every real Angular app. ngTemplateOutlet is essential for reusable component patterns, dynamic UI, and any scenario where you need to pass a template as a parameter.
+
+Section 1 — Explanation
+The Wardrobe Analogy
+Think of a person getting dressed:
+ngClass is like a smart wardrobe assistant. You hand it a list of outfit rules — "wear the red jacket if it's cold, wear the formal shoes if there's a meeting, wear the hat if it's raining." It looks at all the conditions at once and puts on every item whose condition is true — multiple items simultaneously, each independently gated.
+ngStyle is the same assistant but for fine-grained tailoring — "set the jacket length to exactly 72cm, set the collar width based on today's temperature." You're not toggling items on/off, you're setting precise values dynamically.
+ngTemplateOutlet is a director calling an actor onto a stage from backstage. The actor (an <ng-template>) is defined somewhere in your template but isn't rendered yet — it's waiting in the wings. ngTemplateOutlet says "bring that actor on now" and optionally hands them a script (a context object with data). The same actor can be called onto multiple stages simultaneously with different scripts each time.
+
+Technical Explanation
+These are Angular's three most commonly used attribute directives. Unlike structural directives (@if, @for) which add/remove DOM nodes, attribute directives modify the behaviour or appearance of an existing element.
+The key distinction:
+
+Structural directives (@if, @for) — change the DOM structure (add/remove nodes)
+Attribute directives (ngClass, ngStyle) — change the DOM appearance (modify existing nodes)
+ngTemplateOutlet is a structural directive that stamps a defined template into the DOM
+
+
+ngClass — Dynamic CSS Classes
+Applies one or more CSS classes based on conditions. Accepts three input forms:
+Input FormSyntaxUse WhenString[ngClass]="'class-a class-b'"Adding static classes (prefer class= instead)Array[ngClass]="['class-a', 'class-b']"List of class names to always applyObject[ngClass]="{ 'class-a': condA, 'class-b': condB }"Most common — conditional classes
+The object form is by far the most useful: keys are class names, values are boolean expressions. Every key whose value is truthy gets applied as a class; falsy keys are removed.
+
+ngStyle — Dynamic Inline Styles
+Applies one or more inline styles dynamically. Accepts an object where keys are CSS property names and values are the style values.
+html[ngStyle]="{ 'color': textColor, 'font-size.px': fontSize }"
+The .px, .em, .% unit suffixes are a convenience: 'font-size.px': 14 is equivalent to 'font-size': '14px'.
+
+ngTemplateOutlet — Dynamic Template Stamping
+Renders a named <ng-template> reference at a specific location in the DOM, optionally passing data into it via a context object.
+html<ng-container *ngTemplateOutlet="myTemplate; context: { $implicit: item, label: 'Hello' }">
+</ng-container>
+
+$implicit is the default context variable — accessed as the template's let-item variable
+Named context properties are accessed via let-label="label" in the template declaration
+
+
+Section 2 — Connection to Prior Concepts
+Direct dependencies:
+
+Topic 28 — Angular Template Syntax: [ngClass] and [ngStyle] are property bindings — they use [squareBracket] syntax; understanding property binding is the prerequisite
+Topic 29 — Built-in Control Flow: [class.x]="bool" (single-class binding from Topic 28) and @if can sometimes substitute for ngClass — knowing all three lets you pick the right tool
+Topic 16 — TypeScript Generics: ngTemplateOutlet context objects benefit from typing with generics
+Topic 13 — TypeScript Interfaces: Defining context types for ngTemplateOutlet uses interfaces
+Topic 26 — @Input() & @Output(): ngTemplateOutlet is used heavily inside components that accept TemplateRef as an @Input() — the pattern for making components that accept template slots
+
+Bridging note: In Topic 28 you learned [class.active]="isActive" for toggling a single class and [style.color]="color" for a single inline style. ngClass and ngStyle are the multi-property versions of exactly those bindings — same direction (class → template), same square-bracket syntax, just capable of handling many classes or styles at once through an object map.
+Most directly extends: Topic 28 — Angular Template Syntax
+
+Section 3 — Code Example
+Plain JS — The Core Concept in Isolation
+javascript// What Angular's directives automate for you
+
+const el = document.getElementById('card');
+
+// ngClass equivalent — manually syncing classes from a conditions object
+function applyClasses(element, classMap) {
+  Object.entries(classMap).forEach(([className, condition]) => {
+    if (condition) {
+      element.classList.add(className);
+    } else {
+      element.classList.remove(className);
+    }
+  });
+}
+
+// Called manually — you'd have to call this every time any condition changes
+applyClasses(el, {
+  'active': user.isActive,
+  'admin': user.role === 'admin',
+  'highlighted': user.id === selectedId
+});
+
+// ngStyle equivalent
+function applyStyles(element, styleMap) {
+  Object.entries(styleMap).forEach(([prop, value]) => {
+    element.style[prop] = value;
+  });
+}
+
+applyStyles(el, {
+  color: user.isActive ? 'green' : 'grey',
+  fontSize: `${user.priority * 4}px`
+});
+
+// Angular runs the equivalent of these functions on every change detection
+// cycle automatically — you just declare the mapping, Angular does the sync.
+
+Real Angular Example — ngClass and ngStyle
+typescriptimport { Component, signal } from '@angular/core';
+import { NgClass, NgStyle } from '@angular/common';
+
+interface Task {
+  id: number;
+  title: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'todo' | 'in-progress' | 'done' | 'blocked';
+  isSelected: boolean;
+  progress: number; // 0-100
+}
+
+@Component({
+  selector: 'app-task-board',
+  standalone: true,
+  imports: [NgClass, NgStyle],
+  template: `
+    @for (task of tasks(); track task.id) {
+
+      <!-- ══ ngClass — OBJECT FORM (most common) ══ -->
+      <!--
+        Each key in the object is a CSS class name.
+        Each value is a boolean expression.
+        Angular adds the class when true, removes it when false.
+        Multiple classes can be active simultaneously.
+      -->
+      <div
+        [ngClass]="{
+          'task-card': true,
+          'task-selected': task.isSelected,
+          'task-blocked': task.status === 'blocked',
+          'task-done': task.status === 'done',
+          'priority-high': task.priority === 'high' || task.priority === 'critical',
+          'priority-critical': task.priority === 'critical'
+        }"
+        (click)="selectTask(task.id)"
+      >
+
+        <h3>{{ task.title }}</h3>
+
+        <!-- ══ ngStyle — OBJECT FORM ══ -->
+        <!--
+          Keys are CSS property names.
+          Values are the CSS values (strings, or numbers with unit suffix).
+          .px suffix converts number to pixel string automatically.
+        -->
+        <div
+          class="progress-bar"
+          [ngStyle]="{
+            'width.%': task.progress,
+            'background-color': getProgressColour(task.progress),
+            'transition': 'width 0.3s ease'
+          }"
+        ></div>
+
+        <span>{{ task.progress }}% complete</span>
+
+        <!-- ══ ngClass — ARRAY FORM ══ -->
+        <!--
+          Applies all classes in the array — useful when you compute
+          the list of classes programmatically
+        -->
+        <span [ngClass]="getPriorityClasses(task.priority)">
+          {{ task.priority }}
+        </span>
+
+      </div>
+    }
+  `
+})
+export class TaskBoardComponent {
+  tasks = signal<Task[]>([
+    { id: 1, title: 'Design system', priority: 'high', status: 'in-progress', isSelected: false, progress: 65 },
+    { id: 2, title: 'Write tests', priority: 'medium', status: 'todo', isSelected: false, progress: 0 },
+    { id: 3, title: 'Deploy to staging', priority: 'critical', status: 'blocked', isSelected: true, progress: 90 },
+  ]);
+
+  selectTask(id: number): void {
+    this.tasks.update(list =>
+      list.map(t => ({ ...t, isSelected: t.id === id }))
+    );
+  }
+
+  // Returns an array of class names based on priority — used with array form
+  getPriorityClasses(priority: Task['priority']): string[] {
+    const base = ['badge', `badge-${priority}`];
+    if (priority === 'critical') base.push('badge-pulse');
+    return base;
+  }
+
+  // Returns a colour string for the progress bar
+  getProgressColour(progress: number): string {
+    if (progress < 30) return '#ef4444'; // red
+    if (progress < 70) return '#f59e0b'; // amber
+    return '#22c55e';                    // green
+  }
+}
+
+Real Angular Example — ngTemplateOutlet
+typescriptimport { Component, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  badge?: string;
+}
+
+@Component({
+  selector: 'app-product-showcase',
+  standalone: true,
+  imports: [NgTemplateOutlet],
+  template: `
+    <!--
+      STEP 1: DEFINE the template — it is NOT rendered here.
+      Think of this as the actor backstage.
+      #productCard is the template reference variable.
+      let-product — binds the $implicit context value to local 'product'
+      let-featured="featured" — binds the named 'featured' context key
+    -->
+    <ng-template #productCard let-product let-featured="featured">
+      <div [class.featured]="featured" class="product-card">
+        <h3>{{ product.name }}</h3>
+        <p>{{ product.price | currency }}</p>
+        @if (product.badge) {
+          <span class="badge">{{ product.badge }}</span>
+        }
+        @if (featured) {
+          <div class="featured-ribbon">⭐ Featured</div>
+        }
+      </div>
+    </ng-template>
+
+    <!-- ══ BASIC USAGE ══ -->
+    <section>
+      <h2>All Products</h2>
+      <!--
+        STEP 2: STAMP the template at this location.
+        context: { $implicit: product } — passes product as the default variable.
+        ng-container has no DOM footprint — it's a logical wrapper only.
+      -->
+      @for (product of products(); track product.id) {
+        <ng-container
+          *ngTemplateOutlet="productCard; context: { $implicit: product, featured: false }"
+        ></ng-container>
+      }
+    </section>
+
+    <!-- ══ SAME TEMPLATE, DIFFERENT CONTEXT ══ -->
+    <!--
+      The SAME #productCard template is reused here with featured: true.
+      The template logic handles both cases — no duplication of HTML.
+    -->
+    <section>
+      <h2>Featured Products</h2>
+      @for (product of featuredProducts(); track product.id) {
+        <ng-container
+          *ngTemplateOutlet="productCard; context: { $implicit: product, featured: true }"
+        ></ng-container>
+      }
+    </section>
+
+    <!-- ══ CONDITIONAL TEMPLATE SELECTION ══ -->
+    <!--
+      ngTemplateOutlet can select WHICH template to render dynamically.
+      Pass a TemplateRef variable as the first argument.
+    -->
+    <ng-template #compactView let-product>
+      <span class="compact">{{ product.name }} — {{ product.price | currency }}</span>
+    </ng-template>
+
+    <ng-template #detailedView let-product>
+      <div class="detailed">
+        <h4>{{ product.name }}</h4>
+        <p>Price: {{ product.price | currency }}</p>
+        <p>ID: {{ product.id }}</p>
+      </div>
+    </ng-template>
+
+    <!-- viewMode signal determines which template renders -->
+    <div class="view-toggle">
+      <button (click)="viewMode.set('compact')">Compact</button>
+      <button (click)="viewMode.set('detailed')">Detailed</button>
+    </div>
+
+    @for (product of products(); track product.id) {
+      <ng-container
+        *ngTemplateOutlet="
+          viewMode() === 'compact' ? compactView : detailedView;
+          context: { $implicit: product }
+        "
+      ></ng-container>
+    }
+  `
+})
+export class ProductShowcaseComponent {
+  viewMode = signal<'compact' | 'detailed'>('detailed');
+
+  products = signal<Product[]>([
+    { id: 1, name: 'Angular Course', price: 49, badge: 'New' },
+    { id: 2, name: 'RxJS Mastery', price: 39 },
+    { id: 3, name: 'TypeScript Pro', price: 29, badge: 'Sale' },
+  ]);
+
+  featuredProducts = signal<Product[]>([
+    { id: 1, name: 'Angular Course', price: 49, badge: 'New' },
+  ]);
+}
+
+ngTemplateOutlet as a Component @Input() — The Power Pattern
+typescript// A reusable list component that accepts a template for each row
+import { Component, Input, TemplateRef } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+
+@Component({
+  selector: 'app-data-list',
+  standalone: true,
+  imports: [NgTemplateOutlet],
+  template: `
+    <ul class="data-list">
+      @for (item of items; track $index) {
+        <li>
+          <!--
+            The parent passes its own template via @Input().
+            This component doesn't know what the row looks like —
+            it just stamps whatever template the parent gave it.
+          -->
+          @if (itemTemplate) {
+            <ng-container
+              *ngTemplateOutlet="itemTemplate; context: { $implicit: item, index: $index }"
+            ></ng-container>
+          } @else {
+            <!-- Default fallback if no template is provided -->
+            <span>{{ item }}</span>
+          }
+        </li>
+      }
+    </ul>
+  `
+})
+export class DataListComponent<T> {
+  @Input() items: T[] = [];
+  @Input() itemTemplate?: TemplateRef<{ $implicit: T; index: number }>;
+}
+
+// ── PARENT USAGE ──
+@Component({
+  template: `
+    <!-- Define the row template in the parent -->
+    <ng-template #userRow let-user let-i="index">
+      <div class="user-row">
+        {{ i + 1 }}. {{ user.name }} — {{ user.email }}
+      </div>
+    </ng-template>
+
+    <!-- Pass it as an @Input() to the reusable list -->
+    <app-data-list
+      [items]="users"
+      [itemTemplate]="userRow"
+    ></app-data-list>
+  `
+})
+export class ParentComponent {
+  users = [
+    { name: 'Alice', email: 'alice@example.com' },
+    { name: 'Bob', email: 'bob@example.com' },
+  ];
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Verbose Conditional Class Logic
+typescript@Component({
+  template: `
+    <!--
+      Adding classes with string interpolation and ternary chains.
+      Brittle, hard to read, and error-prone.
+      What if you need to add a 4th condition?
+    -->
+    <div class="{{ 'card' + (isActive ? ' active' : '') + (isSelected ? ' selected' : '') + (hasError ? ' error' : '') }}">
+      {{ title }}
+    </div>
+
+    <!--
+      Alternatively — multiple [class.x] bindings, but they pile up fast
+    -->
+    <div
+      class="card"
+      [class.active]="isActive"
+      [class.selected]="isSelected"
+      [class.error]="hasError"
+      [class.featured]="isFeatured"
+      [class.disabled]="isDisabled"
+      [class.loading]="isLoading"
+    >
+      {{ title }}
+    </div>
+
+    <!--
+      Inline style concatenation — unreadable and type-unsafe
+    -->
+    <div [style]="'color:' + textColor + ';font-size:' + fontSize + 'px;opacity:' + (isVisible ? 1 : 0)">
+    </div>
+  `
+})
+export class BeforeComponent {
+  isActive = true; isSelected = false; hasError = false;
+  isFeatured = true; isDisabled = false; isLoading = false;
+  title = 'Card'; textColor = 'blue'; fontSize = 16; isVisible = true;
+}
+What's wrong with this:
+
+String concatenation approach is error-prone — a missing space breaks class names
+Multiple [class.x] bindings become unmanageable beyond 3–4 classes
+The inline style string is unreadable, produces no TypeScript type checking, and is hard to modify
+
+
+✅ After — Clean ngClass and ngStyle
+typescriptimport { NgClass, NgStyle } from '@angular/common';
+
+@Component({
+  standalone: true,
+  imports: [NgClass, NgStyle],
+  template: `
+    <!--
+      ngClass object: declarative, readable, independently togglable.
+      'card' is always true — always applied.
+      Others are conditionally applied.
+      Adding a 7th class means one new line in the object.
+    -->
+    <div
+      [ngClass]="{
+        'card': true,
+        'active': isActive,
+        'selected': isSelected,
+        'error': hasError,
+        'featured': isFeatured,
+        'disabled': isDisabled,
+        'loading': isLoading
+      }"
+    >
+      {{ title }}
+    </div>
+
+    <!--
+      ngStyle object: each property independently declared and typed.
+      Unit suffixes (.px) eliminate string concatenation for numbers.
+    -->
+    <div
+      [ngStyle]="{
+        'color': textColor,
+        'font-size.px': fontSize,
+        'opacity': isVisible ? 1 : 0
+      }"
+    ></div>
+  `
+})
+export class AfterComponent {
+  isActive = true; isSelected = false; hasError = false;
+  isFeatured = true; isDisabled = false; isLoading = false;
+  title = 'Card'; textColor = 'blue'; fontSize = 16; isVisible = true;
+}
+Why this matters in Angular: The object form co-locates all class logic in one binding. Angular's change detection efficiently diffs the object and only touches the specific classes that changed — it doesn't rebuild the entire class string on every cycle.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using ngStyle for Static or Rarely-Changing Styles
+What the mistake looks like:
+html<!-- ngStyle used even though the colour never changes at runtime -->
+<div [ngStyle]="{ 'background-color': '#3b82f6', 'border-radius': '8px', 'padding': '16px' }">
+Why developers make it: They learn ngStyle exists and default to it for any style — including static ones.
+How to avoid it: Reserve ngStyle for styles whose values change at runtime based on component state. Static styles belong in the component's CSS file or a class="" attribute. Ask: "Will this value ever change while the app is running?" If no — use CSS. If yes — use ngStyle.
+Angular-specific consequence: ngStyle runs on every change detection cycle, evaluating the object and syncing any changed properties. For purely static styles, this is unnecessary work — it belongs in the stylesheet where it's evaluated once by the browser.
+
+Mistake 2 — Forgetting to Import NgClass / NgStyle in Standalone Components
+What the mistake looks like:
+typescript@Component({
+  standalone: true,
+  imports: [],  // NgClass/NgStyle not imported
+  template: `<div [ngClass]="{ active: isActive }">...</div>`
+  // Template compiles but [ngClass] silently does nothing
+})
+Why developers make it: The new built-in control flow (@if, @for) needs no imports, so developers assume ngClass and ngStyle also don't — but they're directives from @angular/common, not compiler syntax.
+How to avoid it: Mental checklist: @if/@for/@switch = no import. ngClass/ngStyle/ngTemplateOutlet = must import from @angular/common.
+Angular-specific consequence: No console error — the binding silently fails. Classes are never applied, and the bug looks identical to a CSS issue, sending you on a long debugging detour in DevTools.
+
+Mistake 3 — Misunderstanding $implicit vs Named Context in ngTemplateOutlet
+What the mistake looks like:
+html<!-- Passing context with a named property -->
+<ng-container *ngTemplateOutlet="myTpl; context: { user: currentUser }">
+</ng-container>
+
+<!-- Template trying to access it as $implicit — gets undefined -->
+<ng-template #myTpl let-user>
+  {{ user?.name }}  <!-- undefined — user was not $implicit -->
+</ng-template>
+Why developers make it: let-user looks like it should capture anything named user — developers don't realise let-x without ="key" always captures $implicit, not a named property.
+How to avoid it: Two rules:
+
+let-x (no =) → captures $implicit
+let-x="key" → captures the named key from context
+
+html<!-- To pass as $implicit: -->
+*ngTemplateOutlet="tpl; context: { $implicit: currentUser }"
+<!-- Access as: let-user (no equals) -->
+
+<!-- To pass as named: -->
+*ngTemplateOutlet="tpl; context: { user: currentUser }"
+<!-- Access as: let-user="user" -->
+Angular-specific consequence: The template renders with undefined data, producing blank UI with no error. Since Angular templates don't throw on undefined interpolation (they just render empty string), this fails silently and is hard to spot.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse [ngClass] object form for multiple conditional classesBuild class strings with string concatenation and ternary operatorsUse [class.x]="bool" (single-class binding) when toggling just one classReach for ngClass for a single class — [class.active]="isActive" is simplerImport NgClass, NgStyle, NgTemplateOutlet explicitly in standalone componentsAssume they work without imports like the built-in control flow blocksUse ngStyle only for truly dynamic values (computed at runtime)Use ngStyle for static styles — put those in your component's CSS fileUse ng-container as the host for *ngTemplateOutlet — it adds no DOM nodeUse a real element like <div> as the host — it adds an unnecessary wrapper to the DOMType your ngTemplateOutlet context with an interface for IDE supportLeave context objects untyped — you lose autocomplete inside the template
+
+Section 7 — Debugging Tips
+Bug 1 — ngClass Object Applied But Classes Don't Appear in the DOM
+Symptom: The [ngClass] binding is set, conditions look correct, but inspecting the element in DevTools shows none of the expected classes.
+Cause (most common): NgClass is not in the component's imports array. The binding is silently ignored.
+Fix:
+typescriptimport { NgClass } from '@angular/common';
+
+@Component({
+  standalone: true,
+  imports: [NgClass],  // ← Add this
+  template: `<div [ngClass]="{ active: isActive }"></div>`
+})
+Angular-specific note: Also check that you're using [ngClass] (property binding) not ngClass="..." (attribute — always passes a string). A common typo when copying from old examples.
+
+Bug 2 — ngTemplateOutlet Renders Nothing or Shows Blank Content
+Symptom: The ng-container with *ngTemplateOutlet is in the DOM, but nothing renders inside it.
+Cause: Either (a) the template reference variable name is wrong (typo in #templateName), (b) the template is defined after the outlet in the template and the reference isn't resolved yet, or (c) NgTemplateOutlet is not imported.
+Fix:
+typescript// Check 1: Import NgTemplateOutlet
+import { NgTemplateOutlet } from '@angular/common';
+@Component({ imports: [NgTemplateOutlet] })
+
+// Check 2: Verify template reference name matches exactly
+// <ng-template #myCard> ... </ng-template>
+// *ngTemplateOutlet="myCard"  ← must match exactly, case-sensitive
+
+// Check 3: Template can be defined AFTER the outlet in the template —
+// Angular resolves template refs at compile time, not line-by-line.
+// This is usually fine. If it's still blank, the ref name is the issue.
+Angular-specific note: Add a temporary {{ myCard }} in the template — if it logs [object Object] it means the TemplateRef is resolved correctly. If it's empty, the reference name doesn't match.
+
+Bug 3 — ngStyle Pixel Values Not Applied Correctly
+Symptom: You use [ngStyle]="{ 'font-size': fontSize }" where fontSize is a number (e.g. 16), and the style either doesn't apply or applies as font-size: 16 (no unit).
+Cause: CSS requires units for most length properties. Passing a bare number (16) sets the style to "16" — which is invalid CSS and ignored by the browser.
+Fix:
+html<!-- Option 1: Unit suffix syntax — Angular appends 'px' automatically -->
+[ngStyle]="{ 'font-size.px': fontSize }"
+
+<!-- Option 2: Concatenate the unit in the value -->
+[ngStyle]="{ 'font-size': fontSize + 'px' }"
+
+<!-- Option 3: Use the single-property style binding with unit -->
+[style.font-size.px]="fontSize"
+Angular-specific note: Unit suffixes work in ngStyle for px, em, rem, %, vh, vw. They're the cleanest option for numeric values — no string concatenation needed.
+
+Section 8 — Real-World Applications
+Scenario 1 — Status-Driven Table Row Styling (Angular-Specific)
+An order management table where each row's appearance reflects the order's live status.
+typescriptimport { NgClass, NgStyle, CurrencyPipe } from '@angular/common';
+
+type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+
+interface Order {
+  id: string;
+  customer: string;
+  total: number;
+  status: OrderStatus;
+  daysOpen: number;
+  isPriority: boolean;
+}
+
+@Component({
+  selector: 'app-orders-table',
+  standalone: true,
+  imports: [NgClass, NgStyle, CurrencyPipe],
+  template: `
+    <table class="orders-table">
+      <thead>
+        <tr>
+          <th>Order</th><th>Customer</th><th>Total</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (order of orders; track order.id) {
+          <tr
+            [ngClass]="{
+              'row-priority': order.isPriority,
+              'row-cancelled': order.status === 'cancelled',
+              'row-overdue': order.daysOpen > 7 && order.status === 'pending',
+              'row-complete': order.status === 'delivered'
+            }"
+          >
+            <td>{{ order.id }}</td>
+            <td>{{ order.customer }}</td>
+
+            <td
+              [ngStyle]="{
+                'font-weight': order.total > 1000 ? 'bold' : 'normal',
+                'color': order.total > 5000 ? '#7c3aed' : 'inherit'
+              }"
+            >
+              {{ order.total | currency }}
+            </td>
+
+            <td>
+              <!-- Status badge — different colour per status -->
+              <span
+                [ngClass]="[
+                  'status-badge',
+                  'status-' + order.status
+                ]"
+              >
+                {{ order.status }}
+              </span>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  `
+})
+export class OrdersTableComponent {
+  orders: Order[] = [
+    { id: 'ORD-001', customer: 'Alice', total: 6200, status: 'pending', daysOpen: 9, isPriority: true },
+    { id: 'ORD-002', customer: 'Bob', total: 340, status: 'shipped', daysOpen: 2, isPriority: false },
+    { id: 'ORD-003', customer: 'Carol', total: 890, status: 'cancelled', daysOpen: 1, isPriority: false },
+  ];
+}
+
+Scenario 2 — Reusable Card Component With Slotted Templates
+A generic card component that accepts different content templates from its parent — used across different sections of an app with different data types.
+typescript// generic-card.component.ts
+import { Component, Input, TemplateRef } from '@angular/core';
+import { NgTemplateOutlet, NgClass } from '@angular/common';
+
+@Component({
+  selector: 'app-generic-card',
+  standalone: true,
+  imports: [NgTemplateOutlet, NgClass],
+  template: `
+    <div [ngClass]="['card', 'card-' + variant]">
+
+      <!-- Header slot — use provided template or fall back to default -->
+      <div class="card-header">
+        @if (headerTemplate) {
+          <ng-container *ngTemplateOutlet="headerTemplate"></ng-container>
+        } @else {
+          <h3>{{ defaultTitle }}</h3>
+        }
+      </div>
+
+      <!-- Body slot — caller provides the content template -->
+      <div class="card-body">
+        @if (bodyTemplate) {
+          <ng-container
+            *ngTemplateOutlet="bodyTemplate; context: { $implicit: data }"
+          ></ng-container>
+        }
+      </div>
+
+      <!-- Footer slot — optional -->
+      @if (footerTemplate) {
+        <div class="card-footer">
+          <ng-container *ngTemplateOutlet="footerTemplate"></ng-container>
+        </div>
+      }
+
+    </div>
+  `
+})
+export class GenericCardComponent<T> {
+  @Input() data?: T;
+  @Input() variant: 'default' | 'compact' | 'featured' = 'default';
+  @Input() defaultTitle = 'Card';
+  @Input() headerTemplate?: TemplateRef<void>;
+  @Input() bodyTemplate?: TemplateRef<{ $implicit: T }>;
+  @Input() footerTemplate?: TemplateRef<void>;
+}
+
+// ── PARENT USAGE: User Card ──
+@Component({
+  template: `
+    <ng-template #userHeader>
+      <div class="user-header">
+        <img [src]="user.avatar" alt="avatar">
+        <h3>{{ user.name }}</h3>
+      </div>
+    </ng-template>
+
+    <ng-template #userBody let-u>
+      <p>{{ u.bio }}</p>
+      <p>Joined: {{ u.joinDate | date }}</p>
+    </ng-template>
+
+    <app-generic-card
+      [data]="user"
+      variant="featured"
+      [headerTemplate]="userHeader"
+      [bodyTemplate]="userBody"
+    ></app-generic-card>
+  `
+})
+export class UserProfilePageComponent {
+  user = { name: 'Alice', bio: 'Developer', joinDate: new Date(), avatar: '/alice.jpg' };
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Build a standalone AlertBanner component that accepts a type input of 'info' | 'success' | 'warning' | 'error' and a message string input. Use [ngClass] to apply a base class alert plus a dynamic class alert-info, alert-success, alert-warning, or alert-error depending on the type. Use [ngStyle] to set the font-weight to bold when the type is error or warning. Display the message using interpolation.
+
+Exercise 2 — Intermediate
+Build a ThemeCard component where the card's background colour, text colour, and border radius are all driven by component properties (bgColour, textColour, borderRadius). Use [ngStyle] for these dynamic styles. Add three preset theme buttons (Light, Dark, Vibrant) that set all three style properties at once. The active theme button should have an active class applied using [ngClass]. Ensure all static styles (padding, font family, box shadow) are in the component's CSS file, not in ngStyle.
+
+Exercise 3 — Advanced
+Build a reusable SelectableList<T> component that accepts an items @Input(), a labelTemplate TemplateRef @Input(), and a detailTemplate TemplateRef @Input(). The list renders each item using labelTemplate via ngTemplateOutlet. When an item is clicked, it becomes "selected" and the detailTemplate expands below it (also via ngTemplateOutlet), receiving the selected item as $implicit context. Use [ngClass] to style the selected row differently. In a parent component, use this list with two different data types (e.g. users and products) with entirely different label and detail templates to prove the component is truly generic.
+
+Section 10 — Key Takeaways
+Core Concepts:
+
+ngClass — applies/removes multiple CSS classes based on a string, array, or object map; object form is most common and most maintainable
+ngStyle — sets multiple inline styles dynamically; use .px/.em unit suffix syntax to avoid string concatenation for numeric values
+ngTemplateOutlet — stamps a named <ng-template> into the DOM at a specific location, optionally with a context object; enables template reuse and dynamic template selection
+ng-template — defines a template fragment that is never rendered until explicitly stamped (by ngTemplateOutlet, @if/@else, or *ngFor)
+ng-container — a logical wrapper with no DOM footprint; ideal host for *ngTemplateOutlet
+$implicit — the default context key in ngTemplateOutlet; accessed via let-x (no equals sign) in the template declaration
+All three require importing from @angular/common in standalone components
+
+
+Quick Reference Table:
+DirectiveImport FromInput TypeCommon UseNgClass@angular/commonstring | string[] | objectMultiple conditional classesNgStyle@angular/common{ [prop: string]: any }Dynamic computed stylesNgTemplateOutlet@angular/commonTemplateRef | nullTemplate reuse, dynamic layouts
+
+When to use each class-binding approach:
+ScenarioUseOne class, one condition[class.active]="isActive"Two or three classes[class.a]="x" [class.b]="y"Four or more conditional classes[ngClass]="{ ... }"Computed list of class names[ngClass]="getClasses()" (array form)
+
+Angular-Specific Rules:
+
+NgClass, NgStyle, NgTemplateOutlet must be explicitly imported in standalone components — they are not compiler-native like @if/@for
+Never use ngStyle for static values — use the component CSS file
+ng-container leaves no DOM trace — always prefer it over <div> as the *ngTemplateOutlet host
+let-x captures $implicit; let-x="key" captures a named context property — never mix these up
+
+One-Line Memory Aid:
+
+ngClass toggles which classes exist, ngStyle controls what values styles have, and ngTemplateOutlet controls which template renders — three directives, three different dimensions of DOM control.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: ngTemplateOutlet lets a parent pass a template into a child component. Angular also has ng-content (Topic 31) which lets a parent project HTML into a child. They seem to solve the same problem — putting parent-defined content inside a child component. What's the actual difference, and when does each pattern become the wrong choice?
+Answer:
+They look similar from the outside — both put parent-defined content inside a child component — but they operate at completely different levels of the rendering pipeline and have fundamentally different capabilities.
+Conceptual explanation: ng-content is slot projection — it takes a chunk of already-rendered DOM from the parent and moves it into the child's template at the <ng-content> slot. The parent defines the HTML, Angular moves it into position. The content is rendered in the parent's context — it sees the parent's variables.
+ngTemplateOutlet with a TemplateRef input is template delegation — the parent defines a blueprint (an unrendered <ng-template>), passes the blueprint to the child, and the child stamps it wherever it wants, as many times as it wants, with whatever context data it chooses. The template is rendered in the parent's context but receives data from the child via the context object.
+The critical difference: ng-content cannot receive data from the child component. The parent's projected content can only see parent-scope variables. ngTemplateOutlet with context can — this is how you build APIs where the child renders a list and the parent defines how each row looks, while each row receives the child's data.
+When each becomes wrong:
+
+ng-content is wrong when your parent-defined content needs access to data that only the child has (e.g. each row's item data in a virtual list, each cell's value in a data grid)
+ngTemplateOutlet is wrong when the content is simple and static — it adds cognitive overhead for no benefit; ng-content is simpler and more idiomatic for basic slot projection
+
+Practical rule: If the parent's content needs data from the child to render correctly, use TemplateRef + ngTemplateOutlet. If the parent's content is self-contained and just needs a slot to live in, use ng-content.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts
+
+Computed property names — { [className]: condition } uses computed keys; understanding this JavaScript pattern makes the ngClass object form feel natural
+
+TypeScript Concepts
+
+Generic types with constraints — typing TemplateRef<{ $implicit: T }> for typed template contexts uses generics; Topic 16 is the foundation
+Mapped types — useful for typing ngStyle objects and ngClass condition maps in strict codebases
+
+Angular-Specific Concepts
+
+Topic 31 — Content Projection (ng-content) — the companion pattern to ngTemplateOutlet; understanding both lets you choose correctly
+Topic 41 — Custom Directives — ngClass and ngStyle are themselves attribute directives; building custom ones follows the same model
+Topic 42 — Custom Pipes — pipes are often used inside ngClass expressions and ngTemplateOutlet contexts to transform values
+Topic 32 — ViewChild, ViewChildren, ContentChild — accessing TemplateRef instances programmatically from @ViewChild enables dynamic ngTemplateOutlet patterns in code, not just in templates
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 13 — TypeScript Interfaces (typing context objects for ngTemplateOutlet)
+Topic 16 — TypeScript Generics (typed TemplateRef<T> inputs)
+Topic 26 — @Input() & @Output() (TemplateRef passed as @Input())
+Topic 28 — Angular Template Syntax (all three directives are property bindings)
+Topic 29 — Built-in Control Flow (@if/@for used alongside these directives)
+
+This topic unlocks:
+
+Topic 31 — Content Projection — directly contrasts with ngTemplateOutlet; understanding both is needed to make the right choice
+Topic 32 — ViewChild / ContentChild — accessing TemplateRef and ElementRef programmatically builds on template references introduced here
+Topic 41 — Custom Directives — ngClass and ngStyle are attribute directives; building custom ones follows the same pattern
+Topic 45 — Performance Optimisation — understanding when ngClass object evaluation is expensive versus a computed signal is a real production consideration
+
+Production readiness assessment: You are ready to use ngClass and ngStyle confidently in production today. Use ngTemplateOutlet for straightforward template reuse, but practise the TemplateRef as @Input() pattern in a real component before shipping it — the $implicit vs named context distinction trips up even experienced developers.
+
+Section 14 — Common Interview Questions
+Question 1
+"What are the different ways you can pass classes to an element in Angular? When would you use [class.x] versus [ngClass]?"
+Strong answer covers:
+
+Four approaches: class="static", [class.x]="bool", [ngClass]="object/array/string", [class]="expression"
+[class.x] is ideal for a single conditional class — simple, readable, zero overhead
+[ngClass] with an object is ideal for three or more classes with independent conditions
+[ngClass] with an array is ideal when class names are computed programmatically
+Both approaches can coexist on the same element: class="base-class" [ngClass]="{ active: isActive }"
+NgClass must be imported in standalone components
+
+Weak answers miss: That [class.x] and [ngClass] can be combined on the same element, and that class="static" is still valid alongside dynamic bindings.
+Difficulty: Junior-Mid
+
+Question 2
+"How does ngTemplateOutlet work, and what is the purpose of the context object? What is $implicit?"
+Strong answer covers:
+
+ngTemplateOutlet renders a <ng-template> reference at a specific DOM location
+Templates defined with <ng-template #ref> are not rendered until explicitly stamped
+The context object passes data into the template at render time
+$implicit is the default context key — accessed in the template via let-varName (no equals sign)
+Named properties require let-varName="keyName" syntax
+The same template can be stamped multiple times with different contexts — this is the core power
+TemplateRef can be passed as @Input() enabling truly generic, reusable components
+
+Weak answers miss: The $implicit vs named context distinction, and the TemplateRef as @Input() pattern that makes this genuinely powerful.
+Difficulty: Mid-Senior
+
+Question 3
+"What is ng-container and why do developers use it as the host for *ngTemplateOutlet?"
+Strong answer covers:
+
+ng-container is a grouping element that Angular removes from the DOM after compilation — it leaves no DOM trace
+Using a <div> or <span> as the host for *ngTemplateOutlet adds an extra wrapper element to the DOM
+This extra wrapper can break CSS layouts (flexbox/grid, table structure, list structure)
+ng-container is also used with structural directives (@if, @for) when you need to apply the directive without adding a wrapper element
+Common use: @for over <tr> rows in a table — wrapping in <div> would break the table; ng-container does not
+
+Weak answers miss: The CSS layout breakage consequence — candidates often say "it's just cleaner" without explaining the specific DOM structure impact.
+Difficulty: Mid
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Computing ngClass Objects Inside the Template Expression
+html<!-- ❌ Anti-pattern: object literal constructed on every change detection cycle -->
+<div
+  [ngClass]="{
+    'active': userService.getCurrentUser()?.isActive,
+    'premium': subscriptionService.getTier() === 'premium',
+    'verified': verificationService.check(userId)
+  }"
+>
+Why it seems fine: It reads declaratively and produces the correct visual output. Each condition is right there in the template.
+What breaks in production: Three service method calls execute on every change detection cycle. If verificationService.check(userId) makes any computation or — worse — triggers a side effect, it runs on every keypress, every HTTP response, every timer in the entire app. With default change detection and a complex page, this can be hundreds of calls per second.
+Correct pattern:
+typescript// Computed signal — recalculates only when its dependencies change
+cardClasses = computed(() => ({
+  'active': this.userService.currentUser()?.isActive ?? false,
+  'premium': this.subscriptionService.tier() === 'premium',
+  'verified': this.isVerified()
+}));
+html<!-- Template just reads a pre-computed value -->
+<div [ngClass]="cardClasses()"></div>
+
+Anti-Pattern 2 — Using ngStyle for Theme/Brand Styling
+typescript// ❌ Anti-pattern: entire theme delivered via ngStyle on every element
+@Component({
+  template: `
+    <div [ngStyle]="{ 'background': theme.primary, 'color': theme.text, 'border': '1px solid ' + theme.border }">
+      <h1 [ngStyle]="{ 'font-family': theme.fontFamily, 'font-size': theme.headingSize + 'px' }">Title</h1>
+      <p [ngStyle]="{ 'color': theme.text, 'line-height': theme.lineHeight }">Content</p>
+      <!-- Repeated across 50+ elements in the component -->
+    </div>
+  `
+})
+Why it seems fine: Dynamic theming is a real requirement. ngStyle is the tool for dynamic styles. This achieves the goal.
+What breaks in production: Fifty [ngStyle] bindings checked on every change detection cycle. No CSS caching. Inspector is polluted with inline styles. Themes can't be tested with CSS tools. Dark mode can't be toggled with a CSS class. The app becomes impossible to style-override from outside.
+Correct pattern:
+typescript// Set CSS custom properties on the root element once — CSS does the rest
+@Component({
+  template: `<div class="themed-container">...</div>`
+})
+export class ThemedComponent implements OnInit {
+  constructor(private el: ElementRef) {}
+
+  ngOnInit() {
+    // Set once — all children inherit via CSS variables
+    this.el.nativeElement.style.setProperty('--primary', this.theme.primary);
+    this.el.nativeElement.style.setProperty('--text', this.theme.text);
+  }
+}
+// CSS: .themed-container { background: var(--primary); color: var(--text); }
+
+Anti-Pattern 3 — Defining ng-template Inside @for Loops
+html<!-- ❌ Anti-pattern: template defined inside a loop, used outside it -->
+@for (item of items; track item.id) {
+  <ng-template #rowTemplate let-data>
+    <!-- This template is re-defined on every loop iteration -->
+    <span>{{ data.label }}</span>
+  </ng-template>
+
+  <ng-container *ngTemplateOutlet="rowTemplate; context: { $implicit: item }">
+  </ng-container>
+}
+Why it seems fine: It's co-located with its usage and produces the right output for simple cases.
+What breaks in production: A new TemplateRef instance is created for every loop iteration. The #rowTemplate reference is overwritten on each iteration — the last iteration's template is what #rowTemplate actually points to. Behaviour is undefined and depends on evaluation order. The pattern also prevents template reuse across items.
+Correct pattern:
+html<!-- Define the template ONCE, outside the loop -->
+<ng-template #rowTemplate let-data>
+  <span>{{ data.label }}</span>
+</ng-template>
+
+<!-- Stamp it inside the loop — same TemplateRef, different context each time -->
+@for (item of items; track item.id) {
+  <ng-container *ngTemplateOutlet="rowTemplate; context: { $implicit: item }">
+  </ng-container>
+}
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet
+Core concept: ngClass and ngStyle are multi-property versions of Angular's single-property class and style bindings — both are attribute directives that modify an existing element. ngTemplateOutlet is a structural directive that stamps a defined <ng-template> blueprint into the DOM at a specific location, optionally with injected context data.
+Key rules:
+
+NgClass, NgStyle, NgTemplateOutlet — must be imported from @angular/common in standalone components
+Use [class.x]="bool" for one class; use [ngClass]="object" for three or more
+Use ngStyle only for runtime-computed values — static styles belong in CSS
+In ngTemplateOutlet context: let-x captures $implicit; let-x="key" captures a named key
+Always host *ngTemplateOutlet on <ng-container> — it leaves no DOM footprint
+Define <ng-template> outside loops — inside loops creates a new TemplateRef per iteration
+
+The single most important Angular rule:
+
+NgClass, NgStyle, and NgTemplateOutlet are not built into the compiler — unlike @if/@for, they will silently do nothing if you forget to add them to imports: [].
+
+
+Choosing the Right Class Binding:
+ConditionsUseExample1 class, 1 condition[class.x][class.active]="isOn"2–3 classesMultiple [class.x][class.a]="x" [class.b]="y"4+ conditional classes[ngClass] object[ngClass]="{ a: x, b: y, c: z }"Computed class list[ngClass] array[ngClass]="getClasses()"
+ng-content vs ngTemplateOutlet:
+ng-contentngTemplateOutletParent providesRendered HTMLUnrendered blueprintChild can pass data backNoYes (via context)Stamped how many timesOnceAs many times as neededComplexityLowMediumBest forSimple slot projectionData-aware row/cell templatesYou said: Next

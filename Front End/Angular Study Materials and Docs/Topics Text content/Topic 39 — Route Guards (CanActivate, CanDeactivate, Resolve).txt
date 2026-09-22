@@ -1,0 +1,610 @@
+Topic 39 — Route Guards (CanActivate, CanDeactivate, Resolve)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — Guards are conceptually simple (return true/false), but the real complexity lies in composing them correctly with async data, redirect logic, and the Resolve pattern which requires understanding the full navigation lifecycle.
+Angular Relevance: Critical — Every production Angular app uses guards; authentication walls, unsaved-changes protection, and pre-fetched data are all guard responsibilities — getting them wrong silently exposes protected routes or breaks navigation flow.
+
+Section 1 — Explanation
+The Nightclub Bouncer Analogy
+Imagine every route in your app is a room in a nightclub.
+
+CanActivate is the bouncer at the door — before you enter, they check your ID. If you're on the list, you get in. If not, you're redirected to the entrance desk. The room never even opens until the bouncer approves.
+CanDeactivate is the coat check attendant who stops you on the way out — "Wait, did you leave anything behind? You have unsaved changes on that form — are you sure you want to leave?" You can still leave, but only after confirming.
+Resolve is the venue staff who sets up the table before you're seated — by the time you walk in, the food is already on the table. The component receives fully-loaded data the moment it mounts; there's no loading spinner, no empty state.
+
+The bouncer (CanActivate) and the exit attendant (CanDeactivate) control whether navigation happens. The setup crew (Resolve) controls what data is ready when it does.
+
+Technical Explanation
+Route guards are functions (in modern Angular) that the Router calls during the navigation lifecycle before committing to a route change. They return:
+
+true — allow navigation
+false — block navigation (stays on current URL)
+UrlTree — block and redirect to a different route
+Observable<boolean | UrlTree> or Promise<boolean | UrlTree> — async versions of the above
+
+Navigation lifecycle order:
+URL change triggered
+  → CanDeactivate (can we leave the current route?)
+  → CanActivate (can we enter the new route?)
+  → Resolve (fetch data before component mounts)
+  → Component renders with data already available
+Guards are registered directly in the route configuration — they run automatically on every matching navigation without any component knowing they exist.
+
+Quick Reference Table — Guard Types
+GuardRuns WhenReturnsPrimary Use CasecanActivateBefore entering a routeboolean | UrlTreeAuth walls, role checkscanActivateChildBefore entering any child routeboolean | UrlTreeProtect entire feature sectionscanDeactivateBefore leaving a routebooleanUnsaved changes warningcanMatchBefore matching a route at allbooleanShow different components per roleresolveAfter guards pass, before component mountsany (the resolved data)Pre-fetch required data
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 38 — Angular Router: Guards are attached to the same Routes array; you cannot understand guard registration without Topic 38's route configuration model.
+Topic 8 — Promises & async/await: Guards can return Promises — the Router awaits them before proceeding.
+Topic 22 — async Pipe & Topic 20 — RxJS: Guards can return Observables — the Router subscribes, takes the first emission, and unsubscribes automatically.
+Topic 27 — Services & Dependency Injection: Every guard is a function that uses inject() — auth services, router, and data services are all injected inside them.
+Topic 36 — HttpClient & API Integration: The Resolve guard's entire purpose is to wrap an HTTP call and deliver its result before the component mounts.
+
+Bridging note: In Topic 38 you learned that the Router maps URLs to components. Guards are the policy layer inserted into that mapping — they answer "should this mapping be allowed right now?" before any component lifecycle runs. Every tool you've already built (Observables, services, HTTP, async/await) is used inside guards; guards themselves are just functions that return a decision.
+Single most-direct extension of: Topic 38 — Angular Router.
+
+Section 3 — Code Example
+Plain TS — Guard as a decision function (concept in isolation)
+typescript// A guard is just a function that returns a decision
+// The Router calls it and waits for the answer before proceeding
+
+function canUserAccess(user: { role: string }): boolean | UrlTree {
+  if (user.role === 'admin') {
+    return true;              // allow navigation
+  }
+  return redirectToLogin();   // block and redirect — UrlTree in real Angular
+}
+
+Real Angular — CanActivate: Auth guard
+typescript// guards/auth.guard.ts
+import { inject } from '@angular/core';
+import { CanActivateFn, Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+import { map } from 'rxjs/operators';
+
+// Modern Angular: guards are plain functions, not classes
+export const authGuard: CanActivateFn = (route, state) => {
+  const auth = inject(AuthService);   // inject() works inside guard functions
+  const router = inject(Router);
+
+  return auth.isLoggedIn$.pipe(
+    map(isLoggedIn => {
+      if (isLoggedIn) {
+        return true; // allow navigation — component will mount
+      }
+      // Return a UrlTree — blocks navigation AND redirects atomically
+      // Using UrlTree instead of router.navigate() is important:
+      // it lets Angular handle the redirect as part of the same navigation
+      // rather than triggering a second navigation event
+      return router.createUrlTree(['/login'], {
+        queryParams: { returnUrl: state.url } // preserve intended destination
+      });
+    }),
+  );
+};
+typescript// app.routes.ts — attaching the guard to a route
+import { authGuard } from './guards/auth.guard';
+
+export const APP_ROUTES: Routes = [
+  { path: 'login', component: LoginComponent },
+  {
+    path: 'dashboard',
+    component: DashboardComponent,
+    canActivate: [authGuard], // array — multiple guards run in sequence
+  },
+  {
+    path: 'admin',
+    component: AdminComponent,
+    canActivate: [authGuard, roleGuard], // both must return true
+  },
+];
+
+Real Angular — CanDeactivate: Unsaved changes guard
+typescript// guards/unsaved-changes.guard.ts
+import { CanDeactivateFn } from '@angular/router';
+
+// The generic type T is the component being guarded
+// This interface contract lets the guard ask the component about its state
+export interface HasUnsavedChanges {
+  hasUnsavedChanges(): boolean;
+}
+
+export const unsavedChangesGuard: CanDeactivateFn<HasUnsavedChanges> =
+  (component) => {
+    // Ask the component directly — it knows its own form state
+    if (component.hasUnsavedChanges()) {
+      return confirm('You have unsaved changes. Leave anyway?');
+      // In production: replace confirm() with a modal dialog Observable
+    }
+    return true; // no unsaved changes — allow navigation freely
+  };
+typescript// edit-profile.component.ts — implements the interface
+@Component({ selector: 'app-edit-profile', standalone: true, ... })
+export class EditProfileComponent implements HasUnsavedChanges {
+  private form = inject(FormBuilder).group({
+    name: [''],
+    email: [''],
+  });
+
+  // Guard calls this method to check before allowing navigation away
+  hasUnsavedChanges(): boolean {
+    return this.form.dirty; // FormGroup.dirty = true if user changed any field
+  }
+}
+typescript// app.routes.ts
+{
+  path: 'profile/edit',
+  component: EditProfileComponent,
+  canDeactivate: [unsavedChangesGuard],
+}
+
+Real Angular — Resolve: Pre-fetch data before component mounts
+typescript// resolvers/user.resolver.ts
+import { inject } from '@angular/core';
+import { ResolveFn } from '@angular/router';
+import { UserService } from '../services/user.service';
+import { User } from '../models/user.model';
+import { catchError, EMPTY } from 'rxjs';
+
+export const userResolver: ResolveFn<User> = (route) => {
+  const userService = inject(UserService);
+  const router = inject(Router);
+  const id = route.paramMap.get('id')!;
+
+  return userService.getUser(id).pipe(
+    catchError(() => {
+      // If the user doesn't exist, redirect rather than mounting with null data
+      router.navigate(['/not-found']);
+      return EMPTY; // EMPTY completes without emitting — navigation is cancelled
+    }),
+  );
+};
+typescript// app.routes.ts — attaching resolver
+{
+  path: 'users/:id',
+  component: UserDetailComponent,
+  resolve: {
+    user: userResolver,  // key 'user' is how the component accesses it
+  },
+}
+typescript// user-detail.component.ts — consuming resolved data
+@Component({ ... })
+export class UserDetailComponent {
+  private route = inject(ActivatedRoute);
+
+  // Resolved data is in route.data — synchronously available on mount
+  // No loading state needed — the Resolver already fetched it
+  user = this.route.snapshot.data['user'] as User;
+
+  // For reactive updates (if navigating between records):
+  user$ = this.route.data.pipe(
+    map(data => data['user'] as User),
+    takeUntilDestroyed(),
+  );
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Auth check inside the component itself
+typescript@Component({ ... })
+export class DashboardComponent implements OnInit {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+
+  ngOnInit(): void {
+    // Auth check INSIDE the component — the component mounts first, then checks
+    if (!this.auth.isLoggedIn()) {
+      this.router.navigate(['/login']);
+    }
+    // Problem: the component renders briefly before the redirect fires
+    // Any template bindings execute before the check completes
+    // Sensitive UI elements flash on screen for logged-out users
+  }
+}
+What breaks: The component mounts first, the template renders (including any sensitive data), and then the redirect fires. Users with browser dev tools open can see the flash of protected content. Additionally, auth logic scattered across every protected component creates maintenance debt — change the auth rule and you must update every component.
+
+✅ After — Auth check in a guard (component never mounts until approved)
+typescript// guard runs BEFORE component is created — component never mounts if guard returns false
+export const authGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  return auth.isLoggedIn$.pipe(
+    map(isLoggedIn => isLoggedIn || router.createUrlTree(['/login']))
+  );
+};
+Why this refactor matters in Angular: Guards run in the Router's navigation pipeline before any component lifecycle begins. The component's constructor, ngOnInit, and template never execute unless the guard returns true. This is the correct architectural boundary — components handle UI, guards handle access policy.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using router.navigate() inside a guard instead of returning a UrlTree
+The mistakeCalling this.router.navigate(['/login']) inside a guard and returning falseWhy developers make itIt feels like the natural way to redirect — the same pattern used in componentsHow to avoid itAlways return router.createUrlTree(['/login']) — this is a UrlTree, not a navigation callAngular consequenceCalling navigate() triggers a second navigation event while the first is still in progress. This causes race conditions, duplicate navigation entries in the browser history, and "Navigation ID X is not equal to current ID" console warnings
+
+Mistake 2 — Returning EMPTY from a Resolver without redirecting
+The mistakereturn EMPTY in a resolver when the resource isn't found, without navigating elsewhereWhy developers make itEMPTY stops the stream cleanly — it feels like the right "nothing to return" valueHow to avoid itAlways pair return EMPTY with a router.navigate(['/not-found']) call before it, or return a UrlTreeAngular consequenceEMPTY completes the resolver Observable without emitting a value. The Router treats this as "resolver cancelled navigation" — the URL changes but the component never mounts, leaving the user on a blank page with no feedback
+
+Mistake 3 — Treating canActivate returning false as a redirect
+The mistakeReturning false from a guard and expecting the user to land somewhere usefulWhy developers make it"False means blocked, so the router will handle it" — but the Router just cancels and stays putHow to avoid itAlways return a UrlTree (not false) when you want to redirect. Return false only when you want navigation blocked with no redirect — an edge caseAngular consequenceThe URL in the address bar reverts to the previous URL silently. Users are confused — they clicked a link and nothing happened. No error, no explanation
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TReturn router.createUrlTree(['/login']) from guards to redirectCall router.navigate() inside a guard — it triggers a race condition with a second navigationWrite guards as plain CanActivateFn functions using inject()Write guards as classes with implements CanActivate — the class-based API is deprecatedRedirect to a returnUrl query param so users land back after loginRedirect always to /home after login — users lose their intended destinationUse resolve to pre-fetch data the component always needs on mountUse Resolve for optional data — it delays navigation even when the data isn't criticalImplement HasUnsavedChanges interface on components guarded by canDeactivateRead component state directly inside a guard — breaks the separation of concernsHandle resolver errors with catchError and redirect to a 404 pageLet resolver errors propagate — the Router silently cancels navigation leaving users stranded
+
+Section 7 — Debugging Tips
+Bug 1 — Guard runs but navigation completes anyway (guard seems ignored)
+Symptom: Guard returns false or a UrlTree but the protected component still mounts.
+Plain English cause: The guard function is defined but not attached to the route in app.routes.ts. The route config has canActivate: [] (empty array) or is missing the canActivate property entirely.
+Fix:
+typescript// Check your route config — the guard must be in the array
+{
+  path: 'dashboard',
+  component: DashboardComponent,
+  canActivate: [authGuard], // ← is your guard actually listed here?
+}
+Angular-specific note: Angular gives no warning when canActivate is an empty array — it simply runs no guards and allows all navigation. Always verify route config after writing a new guard.
+
+Bug 2 — Resolved data is undefined in the component
+Symptom: this.route.snapshot.data['user'] is undefined even though the resolver ran.
+Plain English cause: The key used to access route.data doesn't match the key used in the route config's resolve object. Keys are case-sensitive strings.
+Fix:
+typescript// Route config:
+resolve: { user: userResolver }   // key is 'user'
+
+// Component — key must match exactly:
+const user = this.route.snapshot.data['user'];  // ✅ 'user'
+const user = this.route.snapshot.data['User'];  // ❌ undefined — wrong case
+const user = this.route.snapshot.data['userData']; // ❌ undefined — wrong name
+Angular-specific note: TypeScript won't catch this mismatch because route.snapshot.data is typed as Data (which is { [key: string]: any }). Consider creating a typed wrapper function around route.snapshot.data to surface these errors at compile time.
+
+Bug 3 — CanDeactivate guard fires even on programmatic navigation away from the page
+Symptom: confirm() dialog appears when the app programmatically navigates away (e.g. after a successful form save), not just when the user clicks browser back.
+Plain English cause: CanDeactivate fires on all navigation away from the route — including router.navigate() calls from your own code. The guard cannot distinguish between user-initiated and programmatic navigation by default.
+Fix: Use a flag on the component to signal "this navigation is intentional":
+typescriptexport class EditProfileComponent implements HasUnsavedChanges {
+  isSaving = false; // set to true before programmatic navigate-away
+
+  hasUnsavedChanges(): boolean {
+    if (this.isSaving) return false; // guard skips the check
+    return this.form.dirty;
+  }
+
+  onSave(): void {
+    this.isSaving = true; // signal guard to allow navigation
+    this.profileService.save(this.form.value).subscribe(() => {
+      this.router.navigate(['/profile']);
+    });
+  }
+}
+Angular-specific note: This is intentional Angular behavior — CanDeactivate is a navigation lifecycle hook, not a user-interaction hook. The component itself must communicate its intent to the guard.
+
+Section 8 — Real-World Applications
+Scenario 1 — Role-based access with redirect to correct landing page (Angular-specific)
+An admin portal with three roles: viewer, editor, admin. Each role has access to different sections. Navigating to a route you don't have permission for redirects you to the highest-access page your role does allow.
+typescript// guards/role.guard.ts
+import { inject } from '@angular/core';
+import { CanActivateFn, Router, ActivatedRouteSnapshot } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+import { map } from 'rxjs/operators';
+
+export const roleGuard: CanActivateFn = (route: ActivatedRouteSnapshot) => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  // Route config stores the required role in the data property
+  const requiredRole = route.data['requiredRole'] as string;
+
+  return auth.currentUser$.pipe(
+    map(user => {
+      if (!user) {
+        return router.createUrlTree(['/login']);
+      }
+      if (hasRole(user.role, requiredRole)) {
+        return true;
+      }
+      // Redirect to appropriate fallback based on actual role
+      const fallback = getFallbackRoute(user.role);
+      return router.createUrlTree([fallback]);
+    }),
+  );
+};
+
+function hasRole(userRole: string, required: string): boolean {
+  const hierarchy = ['viewer', 'editor', 'admin'];
+  return hierarchy.indexOf(userRole) >= hierarchy.indexOf(required);
+}
+
+function getFallbackRoute(role: string): string {
+  const fallbacks: Record<string, string> = {
+    viewer: '/reports',
+    editor: '/content',
+    admin: '/admin',
+  };
+  return fallbacks[role] ?? '/home';
+}
+typescript// app.routes.ts
+{
+  path: 'admin',
+  component: AdminComponent,
+  canActivate: [authGuard, roleGuard],
+  data: { requiredRole: 'admin' }, // read by roleGuard via route.data
+},
+{
+  path: 'content',
+  component: ContentComponent,
+  canActivate: [authGuard, roleGuard],
+  data: { requiredRole: 'editor' },
+},
+
+Scenario 2 — Resolver with error handling for a product detail page (Angular-specific)
+An e-commerce product page that must always render with full product data. If the product ID is invalid or the API fails, redirect to the catalog with an error message rather than mounting a broken component.
+typescript// resolvers/product.resolver.ts
+import { inject } from '@angular/core';
+import { ResolveFn, Router } from '@angular/router';
+import { ProductService } from '../services/product.service';
+import { NotificationService } from '../services/notification.service';
+import { Product } from '../models/product.model';
+import { catchError, EMPTY } from 'rxjs';
+
+export const productResolver: ResolveFn<Product> = (route) => {
+  const productService = inject(ProductService);
+  const router = inject(Router);
+  const notify = inject(NotificationService);
+  const slug = route.paramMap.get('slug')!;
+
+  return productService.getBySlug(slug).pipe(
+    catchError(err => {
+      // Show toast notification before redirecting
+      notify.error(
+        err.status === 404
+          ? 'Product not found'
+          : 'Unable to load product — please try again'
+      );
+      // Navigate to catalog — paired with EMPTY to cancel current navigation
+      router.navigate(['/catalog']);
+      return EMPTY;
+    }),
+  );
+};
+typescript// product-detail.component.ts — zero loading state needed
+@Component({
+  selector: 'app-product-detail',
+  standalone: true,
+  template: `
+    <!-- product is guaranteed to be non-null here — resolver ensures it -->
+    <h1>{{ product.name }}</h1>
+    <p>{{ product.description }}</p>
+    <span>{{ product.price | currency }}</span>
+    <button (click)="addToCart()">Add to Cart</button>
+  `,
+})
+export class ProductDetailComponent {
+  private route = inject(ActivatedRoute);
+
+  // Synchronous access — resolver already fetched this before component mounted
+  product = this.route.snapshot.data['product'] as Product;
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Create an authGuard using CanActivateFn that checks a simple AuthService with a boolean isLoggedIn property. If the user is not logged in, redirect them to /login using router.createUrlTree(). Apply the guard to a /dashboard route and verify in the browser that navigating to /dashboard while logged out redirects correctly.
+
+Exercise 2 — Intermediate
+Build a CanDeactivate guard for a SettingsFormComponent that uses a Reactive Form. The guard must ask the component whether it has unsaved changes via a hasUnsavedChanges() method. Replace the native confirm() dialog with a custom Angular modal component that returns an Observable boolean — the guard must return this Observable directly to the Router. Verify that: saving the form clears the dirty state so the guard allows navigation; navigating away with unsaved changes shows the modal; cancelling the modal keeps the user on the settings page.
+
+Exercise 3 — Advanced
+Build a feature section at /projects/:id that uses three guards in combination: (1) authGuard to require login, (2) projectAccessGuard that reads the :id param, calls a ProjectService.canAccess(id) API endpoint (returns Observable<boolean>), and redirects to /unauthorized if access is denied, (3) a projectResolver that fetches the full project data and stores it in route.data['project']. The ProjectDetailComponent must render synchronously from resolved data with no loading state. Handle the case where the project API returns 404 by redirecting to a /not-found route with a query param ?resource=project. Ensure all Observables are correctly handled and no memory leaks exist.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+Guards run before the component lifecycle — they decide whether navigation commits
+CanActivate controls entry; CanDeactivate controls exit; Resolve pre-loads data
+Modern guards are plain functions (CanActivateFn) using inject() — not classes
+Always return UrlTree to redirect — never call router.navigate() inside a guard
+Resolve eliminates loading spinners by making data available synchronously on component mount
+Returning EMPTY from a resolver without redirecting leaves users on a blank page
+
+Quick Reference Table:
+ScenarioGuard / PatternReturn TypeRequire logincanActivate: [authGuard]Observable<true | UrlTree>Role-based accesscanActivate: [roleGuard], data: { role }Observable<true | UrlTree>Unsaved form warningcanDeactivate: [unsavedGuard]boolean | Observable<boolean>Pre-fetch required dataresolve: { key: myResolver }Observable<T>Protect all childrencanActivateChild: [authGuard]Observable<true | UrlTree>Redirect on 404 dataResolver catchError → EMPTY + router.navigate()EMPTY
+Angular-specific rules:
+
+Write guards as CanActivateFn / CanDeactivateFn functions — class-based guards are deprecated
+Use route.data to pass configuration (like requiredRole) into guards — avoids hardcoding
+Resolver errors must be caught — unhandled errors silently cancel navigation
+Multiple guards in an array run sequentially — if any returns false/UrlTree, subsequent guards do not run
+canActivateChild on a parent route protects all its children without repeating the guard on each
+
+One-Line Memory Aid:
+
+Guards are the Router's bouncers — CanActivate checks ID at the door, CanDeactivate checks for forgotten items on the way out, and Resolve sets the table before you're seated.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: A Resolve guard pre-fetches data before a component mounts — but this means the user sees no visual feedback while waiting for that API call. Is that actually better UX than a loading spinner inside the component, and when should you choose one over the other?
+Answer:
+Conceptual explanation: Both approaches have the same wall-clock time — the user waits the same number of milliseconds either way. The difference is where the wait is experienced. With a Resolver, the user stays on the previous page (which looks normal and functional) while the data loads. With an in-component loading spinner, the user navigates immediately to a partially rendered shell. Neither is universally better.
+The Angular-specific implication: Resolvers shine for short, fast API calls (< 300ms) where a spinner would be a distracting flash. They are poor choices for slow operations (> 1s) because the user gets no feedback that navigation has started — the previous page just appears frozen. In those cases, an in-component skeleton/spinner gives clear progress indication.
+A second consideration: Resolvers prevent the component from handling its own error states. If the Resolver redirects on error, the component never sees the error. If the component handles the error internally, it can show contextual retry UI. For complex error handling, in-component loading is often more maintainable.
+Practical rule:
+
+Use Resolve for fast, required data where a loading flash would hurt UX (e.g., a user profile that takes 80ms)
+Use in-component loading for slow calls, optional data, or when rich error recovery UI is needed
+Combine both: Resolve for critical data, in-component for supplementary data loaded after mount
+
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Promise.all / forkJoin — multiple resolvers run in parallel; understanding parallel async is valuable for complex route data
+
+TypeScript Concepts:
+
+Discriminated unions — model guard return states ({ allowed: true } | { allowed: false; redirectTo: string }) for testable guard logic
+
+Angular-Specific Concepts:
+
+Topic 40 — Lazy Loading: Guards on lazy-loaded routes run before the module/component bundle is downloaded — combining both is the production auth pattern
+Topic 44 — State Management: Guards often need to read auth state from a signal or BehaviorSubject store — this is where guards and state management intersect
+Topic 47 — Testing Angular Components: Testing guards with RouterTestingHarness and mocked services is a core interview skill
+canMatch guard — a newer guard type that determines whether a route is even considered during matching (useful for A/B testing and role-based component swapping)
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 8 — Promises & async/await (guards return Promises or Observables)
+Topic 20 — RxJS Subscription Management (guards return Observables the Router manages)
+Topic 27 — Services & Dependency Injection (inject() inside guard functions)
+Topic 36 — HttpClient & API Integration (Resolve guards wrap HTTP calls)
+Topic 38 — Angular Router (guards attach to the Routes array; require Topic 38's config model)
+
+This topic directly unlocks:
+
+Topic 40 — Lazy Loading (guard + lazy loading is the production auth pattern)
+Topic 44 — State Management (auth state in a signal/BehaviorSubject feeds into canActivate)
+Topic 47/48 — Testing (guards are among the most-tested units in Angular apps)
+
+Production readiness assessment: You are ready to implement auth walls, role checks, and unsaved-changes protection in real apps — but test your guard logic with mocked services before deploying, since a silent false return with no redirect is invisible to users and extremely hard to diagnose without unit tests.
+
+Section 14 — Common Interview Questions
+Question 1
+"What's the difference between returning false and returning a UrlTree from a CanActivate guard?"
+Strong answer covers:
+
+false blocks navigation and leaves the user on the current URL with no indication of what happened
+UrlTree blocks navigation and triggers a redirect to the specified route as part of the same navigation event
+router.createUrlTree(['/login']) is the correct way to create a UrlTree
+Returning false is only appropriate when blocking is intentional and the user is already in the right place
+Calling router.navigate() inside a guard instead of returning UrlTree causes a race condition — two navigations running simultaneously
+
+Weak answer misses: The race condition caused by calling navigate() inside a guard instead of returning UrlTree.
+Difficulty: Mid
+
+Question 2
+"Why would you use a Resolve guard instead of fetching data inside ngOnInit? What are the trade-offs?"
+Strong answer covers:
+
+Resolver runs before the component mounts — data is available synchronously in snapshot.data
+Eliminates loading states and empty template flashes for fast API calls
+Resolver errors can redirect before the component ever exists — cleaner error handling for "resource not found"
+Trade-off: user sees no navigation progress for slow resolvers — previous page appears frozen
+Trade-off: removes the component's ability to handle its own loading/error UI
+Best for: fast calls, required data, SEO-sensitive routes (data available on first render)
+
+Weak answer misses: The UX trade-off of slow resolvers appearing as frozen navigation — treating Resolve as universally superior.
+Difficulty: Mid-Senior
+
+Question 3
+"How would you protect an entire feature section (multiple child routes) with a single auth guard without repeating it on every route?"
+Strong answer covers:
+
+Use a parent route with an empty path or a named path and apply canActivate or canActivateChild there
+canActivateChild on the parent protects all child routes — the guard runs before each child navigation
+Child routes inherit the parent's guard — no repetition needed
+Example structure:
+
+typescript{
+  path: 'admin',
+  canActivateChild: [authGuard],
+  children: [
+    { path: 'users', component: AdminUsersComponent },
+    { path: 'settings', component: AdminSettingsComponent },
+    // authGuard runs for EVERY child — no need to repeat it
+  ]
+}
+
+Difference between canActivate (runs once when entering the parent) and canActivateChild (runs on every child navigation, even within the already-entered parent)
+
+Weak answer misses: The distinction between canActivate and canActivateChild — applying the guard to the parent with canActivate only checks once when the parent is entered, not on every child navigation.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Class-based guards (deprecated pattern still common in codebases)
+typescript// ❌ Anti-pattern — class-based guard (deprecated since Angular 15)
+@Injectable({ providedIn: 'root' })
+export class AuthGuard implements CanActivate {
+  constructor(private auth: AuthService, private router: Router) {}
+
+  canActivate(): Observable<boolean | UrlTree> {
+    return this.auth.isLoggedIn$.pipe(
+      map(loggedIn => loggedIn || this.router.createUrlTree(['/login']))
+    );
+  }
+}
+Why it seems fine: It works, it's in most pre-2023 tutorials, and legacy codebases are full of it.
+What breaks at scale: Class-based guards require @Injectable and constructor injection — they're heavier, harder to tree-shake, and Angular's deprecation means they'll eventually stop working. They also can't use inject() contextually, making them harder to compose.
+typescript// ✅ Correct pattern — functional guard with inject()
+export const authGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  return auth.isLoggedIn$.pipe(
+    map(loggedIn => loggedIn || router.createUrlTree(['/login']))
+  );
+};
+
+Anti-Pattern 2 — Resolver that never handles errors
+typescript// ❌ Anti-pattern — unprotected resolver
+export const projectResolver: ResolveFn<Project> = (route) => {
+  const projectService = inject(ProjectService);
+  return projectService.getProject(route.paramMap.get('id')!);
+  // No catchError — if API returns 404 or 500, the Router silently cancels
+  // navigation and leaves the user stranded with no feedback
+};
+Why it seems fine: In development, APIs rarely fail. The resolver appears to work correctly in happy-path testing.
+What breaks in production: Network failures, expired tokens, deleted resources — all silently cancel navigation. The user clicks a link, the URL doesn't change, nothing happens. No error message, no redirect. This is one of the most disorienting UX failures in Angular apps.
+typescript// ✅ Correct pattern — always catch, always redirect
+export const projectResolver: ResolveFn<Project> = (route) => {
+  const projectService = inject(ProjectService);
+  const router = inject(Router);
+
+  return projectService.getProject(route.paramMap.get('id')!).pipe(
+    catchError(() => {
+      router.navigate(['/error'], { queryParams: { code: 'not-found' } });
+      return EMPTY;
+    }),
+  );
+};
+
+Anti-Pattern 3 — Checking auth state synchronously from localStorage in a guard
+typescript// ❌ Anti-pattern — synchronous localStorage auth check
+export const authGuard: CanActivateFn = () => {
+  const token = localStorage.getItem('auth_token');
+  if (!token) {
+    inject(Router).navigate(['/login']);
+    return false;
+  }
+  return true;
+  // Problems: token presence ≠ token validity; doesn't handle expiry;
+  // triggers navigate() race condition; bypassed by anyone with DevTools
+};
+Why it seems fine: Fast, simple, synchronous — no Observables needed. Works in development where tokens don't expire.
+What breaks in production: A token in localStorage may be expired, revoked, or malformed. This guard lets users with dead tokens into protected routes — the API calls then fail with 401, which is harder to diagnose than a clean redirect at the guard level. Combine this with Topic 37's interceptor pattern: the interceptor handles 401 responses from the API, and the guard validates token presence/expiry proactively.
+typescript// ✅ Correct pattern — validate token via the AuthService
+export const authGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  // AuthService checks expiry, refresh logic, etc. — guard delegates to it
+  return auth.isAuthenticated$.pipe(
+    map(valid => valid || router.createUrlTree(['/login']))
+  );
+};
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+Route guards are policy functions that run inside the Router's navigation pipeline — before any component mounts — to control whether navigation proceeds, redirects, or pre-loads data.
+Key rules:
+
+Guards run before component lifecycle — components never mount if a guard blocks
+Return UrlTree to redirect; false only to block with no redirect
+Never call router.navigate() inside a guard — return UrlTree instead
+Resolve runs after CanActivate passes — data is synchronously available on mount
+Always catchError in Resolvers — unhandled errors silently cancel navigation
+Write guards as CanActivateFn functions using inject() — class-based guards are deprecated
+
+The single most important Angular rule:
+
+Return router.createUrlTree(['/login']) from a guard to redirect — never call router.navigate() inside a guard, as it triggers a second simultaneous navigation and causes race conditions.
+
+Side-by-side comparison:
+CanActivateCanDeactivateResolveRunsBefore enteringBefore leavingAfter activate, before mountBlocksEntryExitN/A (delays mount)Returnsboolean | UrlTreebooleanObservable<T>Common useAuth / role checksUnsaved changesPre-fetch required dataComponent stateNo component yetComponent is aliveNo component yetYou said: NextNextMay 15Claude responded:

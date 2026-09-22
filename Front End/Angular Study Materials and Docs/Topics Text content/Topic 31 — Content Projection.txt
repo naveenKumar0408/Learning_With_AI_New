@@ -1,0 +1,952 @@
+Topic 31 — Content Projection
+(ng-content)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Intermediate — The basic single-slot pattern is simple, but multi-slot projection with select, content projection combined with @ContentChild, and understanding which context projected content renders in trips up even experienced developers.
+Angular Relevance: High — Content projection is the mechanism behind every reusable container component in Angular — cards, modals, tabs, accordions, layout wrappers. Without it, you cannot build a proper component library or shared UI layer.
+
+Section 1 — Explanation
+The Picture Frame Analogy
+Imagine a picture frame manufacturer. The manufacturer builds beautiful frames — ornate borders, glass, backing, hanging hardware. But the manufacturer has no idea what picture will go inside. The frame has a slot where a picture goes, and whoever buys the frame provides their own picture.
+ng-content is that slot. Your component is the frame — it defines structure, styling, and behaviour. The parent provides the picture — the content that goes inside. The frame doesn't care what the picture is. The picture doesn't care what frame it's in. They combine cleanly because the slot is the contract between them.
+A multi-slot frame is like a shadow box with labelled compartments — "photo goes here, caption goes here, date stamp goes here." The select attribute on ng-content is the label on each compartment.
+
+Technical Explanation
+Content projection is Angular's mechanism for allowing a parent component to pass HTML (including other components) into a child component's template. The child defines where that content appears using <ng-content>. The parent defines what that content is.
+Without content projection, every container component (card, modal, panel) would need @Input() properties for every piece of content — titleInput, bodyInput, footerInput — all as strings. That kills rich HTML content, nested components, and event bindings.
+Three patterns of increasing power:
+1 — Single-slot projection (one <ng-content>)
+
+All content passed by the parent lands in the one slot.
+2 — Multi-slot projection (<ng-content select="...">)
+
+Different pieces of parent content are routed to different named slots using CSS selectors.
+3 — Conditional projection (<ng-content> inside @if)
+
+The slot can be conditionally included — but with an important caveat: the content is always instantiated even if the slot is not rendered (more on this in Section 5).
+
+The select attribute accepts any CSS selector:
+Selector TypeExampleMatchesElementselect="header"<header> elementsAttributeselect="[slot=footer]"Elements with slot="footer"CSS classselect=".card-title"Elements with class card-titleComponentselect="app-icon"<app-icon> component elements
+
+The rendering context rule — the most important concept in content projection:
+
+Projected content is compiled in the parent's context and rendered in the child's slot.
+
+This means:
+
+Variables, methods, signals in {{ }} inside projected content refer to the parent component's class
+CSS styles from the child component's stylesheet apply to the projected content's slot position but not to the content itself (due to Shadow DOM emulation)
+The parent's change detection governs the projected content's bindings
+
+
+Section 2 — Connection to Prior Concepts
+Direct dependencies:
+
+Topic 28 — Angular Template Syntax: projected content uses all the same binding syntax — {{ }}, [prop], (event) — but those bindings resolve against the parent component
+Topic 29 — Built-in Control Flow: @if and @for inside projected content work normally, governed by the parent
+Topic 30 — Built-in Directives: ngClass, ngStyle, ngTemplateOutlet all work inside projected content
+Topic 25 — Component Lifecycle Hooks: projected content's component lifecycle hooks fire at the child's mount time, not the parent's — a subtle distinction
+Topic 26 — @Input() & @Output(): content projection is an alternative to @Input() for passing rich content into components; knowing when to use each is a key design decision
+Topic 32 — ViewChild / ContentChild (upcoming): @ContentChild and @ContentChildren are how the child component queries its projected content — the direct next step after this topic
+
+Bridging note: In Topic 30 you saw that ngTemplateOutlet with a TemplateRef @Input() lets a parent pass a template blueprint into a child. Content projection with ng-content is a simpler, more declarative version of the same idea — instead of explicitly passing a TemplateRef, you just write HTML between the component's opening and closing tags, and Angular routes it to the slot. Topic 30's TemplateRef pattern gives you more control (the child stamps the template with context data); ng-content is simpler but the child cannot inject data back into the projected content.
+Most directly extends: Topic 30 — Built-in Directives (ngTemplateOutlet)
+
+Section 3 — Code Example
+Plain JS — The Core Concept in Isolation
+javascript// What Angular is automating — the slot/portal pattern in vanilla JS
+
+// Child "component" — defines a container with a slot
+function createCard(projectedContent) {
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const header = document.createElement('div');
+  header.className = 'card-header';
+  header.textContent = 'Card Title';
+
+  const body = document.createElement('div');
+  body.className = 'card-body';
+  // The "slot" — parent provides this content
+  body.appendChild(projectedContent);
+
+  card.appendChild(header);
+  card.appendChild(body);
+  return card;
+}
+
+// Parent — creates the content to project
+const myContent = document.createElement('p');
+myContent.textContent = 'This content is defined by the parent.';
+
+// Parent passes its content into the child's slot
+document.body.appendChild(createCard(myContent));
+
+// Angular's ng-content does exactly this, but:
+// - Declaratively in HTML (no JS needed)
+// - With multi-slot routing via select=
+// - With proper change detection for the projected bindings
+// - With correct component context for those bindings
+
+Real Angular Example — Single-Slot Projection
+typescript// card.component.ts — the reusable container (the "frame")
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-card',
+  standalone: true,
+  template: `
+    <div class="card">
+      <div class="card-shell">
+        <!--
+          ng-content is the slot.
+          Whatever the parent puts between <app-card> and </app-card>
+          lands here at runtime.
+          The card component has no idea what that content is — nor should it.
+        -->
+        <ng-content></ng-content>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+    .card-shell { width: 100%; }
+  `]
+})
+export class CardComponent {}
+
+// ── PARENT USAGE ──
+@Component({
+  selector: 'app-page',
+  standalone: true,
+  imports: [CardComponent],
+  template: `
+    <!--
+      Everything between <app-card> and </app-card> is projected content.
+      It renders inside the child's <ng-content> slot.
+      But it's compiled HERE, in the parent — so {{ userName }} resolves
+      to the PARENT's userName property, not anything in CardComponent.
+    -->
+    <app-card>
+      <h3>Welcome back, {{ userName }}!</h3>
+      <p>You have {{ messageCount }} unread messages.</p>
+      <button (click)="viewMessages()">View Messages</button>
+    </app-card>
+
+    <!-- Same card component — completely different content -->
+    <app-card>
+      <img src="/product.jpg" alt="Product">
+      <p>Angular In Depth — £49.99</p>
+      <button (click)="addToCart()">Add to Cart</button>
+    </app-card>
+  `
+})
+export class PageComponent {
+  userName = 'Alice';
+  messageCount = 4;
+
+  viewMessages(): void { console.log('Viewing messages'); }
+  addToCart(): void { console.log('Added to cart'); }
+}
+
+Multi-Slot Projection with select
+typescript// panel.component.ts — multi-slot container
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-panel',
+  standalone: true,
+  template: `
+    <div class="panel">
+
+      <!-- SLOT 1: select="[panel-header]" — matches elements with this attribute -->
+      <!--
+        Only content from the parent that has the attribute panel-header
+        is routed to this slot. Everything else is ignored here.
+      -->
+      <div class="panel-header">
+        <ng-content select="[panel-header]"></ng-content>
+      </div>
+
+      <!-- SLOT 2: select=".panel-body" — matches elements with this class -->
+      <div class="panel-body">
+        <ng-content select=".panel-body"></ng-content>
+      </div>
+
+      <!-- SLOT 3: select="app-panel-footer" — matches a specific component -->
+      <div class="panel-footer">
+        <ng-content select="app-panel-footer"></ng-content>
+      </div>
+
+      <!-- SLOT 4: default (no select) — catches everything NOT matched above -->
+      <!--
+        If content from the parent doesn't match any named select above,
+        it falls through to this default slot.
+        Omitting this means unmatched content is silently discarded.
+      -->
+      <div class="panel-default">
+        <ng-content></ng-content>
+      </div>
+
+    </div>
+  `
+})
+export class PanelComponent {}
+
+// ── PARENT USAGE ──
+@Component({
+  standalone: true,
+  imports: [PanelComponent],
+  template: `
+    <app-panel>
+
+      <!--
+        This h2 has panel-header attribute → routes to SLOT 1
+        The attribute itself doesn't need a value — it's used as a selector
+      -->
+      <h2 panel-header>Dashboard Overview</h2>
+
+      <!--
+        This div has class panel-body → routes to SLOT 2
+      -->
+      <div class="panel-body">
+        <p>Here is the main content of the panel.</p>
+        <p>Messages: {{ count }}</p>
+      </div>
+
+      <!--
+        This paragraph has no matching selector → routes to SLOT 4 (default)
+      -->
+      <p>This content has no selector — falls to the default slot.</p>
+
+    </app-panel>
+  `
+})
+export class ParentComponent {
+  count = 12;
+}
+
+Conditional Slot with @if — and the Instantiation Caveat
+typescript// collapsible-panel.component.ts
+@Component({
+  selector: 'app-collapsible',
+  standalone: true,
+  template: `
+    <div class="collapsible">
+      <button (click)="toggle()">
+        {{ isOpen ? '▼ Hide' : '▶ Show' }}
+      </button>
+
+      <!--
+        IMPORTANT: Even when isOpen is false and ng-content is not rendered,
+        the projected content IS still instantiated.
+        Any ngOnInit in a projected component will fire regardless.
+        Only the DISPLAY is conditional — not the component lifecycle.
+      -->
+      @if (isOpen) {
+        <div class="content">
+          <ng-content></ng-content>
+        </div>
+      }
+    </div>
+  `
+})
+export class CollapsibleComponent {
+  isOpen = false;
+  toggle(): void { this.isOpen = !this.isOpen; }
+}
+
+// Parent:
+// <app-collapsible>
+//   <app-expensive-chart></app-expensive-chart>
+//   <!-- app-expensive-chart's ngOnInit FIRES immediately,
+//        even if the panel starts collapsed.
+//        Use ngTemplateOutlet + TemplateRef if you need true lazy init. -->
+// </app-collapsible>
+
+Section 4 — Before & After Refactor
+❌ Before — String @Input() for Rich Content
+typescript// ❌ Using @Input() for content that should be projected
+@Component({
+  selector: 'app-modal',
+  standalone: true,
+  template: `
+    <div class="modal-overlay">
+      <div class="modal">
+        <!-- Renders a string — no HTML, no components, no bindings -->
+        <h2>{{ title }}</h2>
+        <p>{{ body }}</p>
+        <div class="modal-footer">{{ footer }}</div>
+      </div>
+    </div>
+  `
+})
+export class ModalComponent {
+  @Input() title = '';
+  @Input() body = '';
+  @Input() footer = '';
+}
+
+// Parent — forced to pass everything as plain strings
+@Component({
+  template: `
+    <app-modal
+      title="Confirm Delete"
+      body="Are you sure? This cannot be undone."
+      footer="Click OK to confirm"
+    ></app-modal>
+    <!--
+      Problems:
+      1. Body can't contain an <a> link, a <strong> tag, or another component
+      2. Footer can't have a real <button> with a (click) binding
+      3. Title can't have a dynamic value with rich formatting
+      4. Every new content need requires a new @Input() on the component
+    -->
+  `
+})
+export class PageComponent {}
+What's wrong: Using @Input() strings for content limits you to plain text. You cannot project rich HTML, cannot embed other components, cannot attach event bindings, and cannot pass dynamic Angular template expressions. Every new content requirement becomes a new @Input() — the component API grows unbounded.
+
+✅ After — Content Projection
+typescript// ✅ Using ng-content — accepts any HTML the parent wants
+@Component({
+  selector: 'app-modal',
+  standalone: true,
+  template: `
+    <div class="modal-overlay" (click)="onOverlayClick()">
+      <div class="modal" (click)="$event.stopPropagation()">
+
+        <div class="modal-header">
+          <ng-content select="[modal-header]"></ng-content>
+          <button class="modal-close" (click)="close()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <ng-content select="[modal-body]"></ng-content>
+        </div>
+
+        <div class="modal-footer">
+          <ng-content select="[modal-footer]"></ng-content>
+        </div>
+
+      </div>
+    </div>
+  `
+})
+export class ModalComponent {
+  close(): void { /* emit close event */ }
+  onOverlayClick(): void { this.close(); }
+}
+
+// Parent — passes rich content with real HTML and Angular bindings
+@Component({
+  standalone: true,
+  imports: [ModalComponent],
+  template: `
+    <app-modal>
+
+      <!-- Rich header with formatting — parent's variables resolve here -->
+      <h2 modal-header>
+        Delete <strong>{{ itemName }}</strong>?
+      </h2>
+
+      <!-- Body can contain links, warnings, other components -->
+      <div modal-body>
+        <p>This will permanently remove <em>{{ itemName }}</em>.</p>
+        <p class="warning">⚠️ {{ warningCount }} related records will also be deleted.</p>
+        <a href="/help/delete" target="_blank">Learn more</a>
+      </div>
+
+      <!-- Footer has real buttons with real (click) bindings -->
+      <div modal-footer>
+        <button (click)="cancel()" class="btn-secondary">Cancel</button>
+        <button (click)="confirmDelete()" class="btn-danger">Delete</button>
+      </div>
+
+    </app-modal>
+  `
+})
+export class PageComponent {
+  itemName = 'Project Alpha';
+  warningCount = 14;
+  cancel(): void { /* close modal */ }
+  confirmDelete(): void { /* call API */ }
+}
+Why this matters in Angular: Content projection makes components composable. The modal knows nothing about what it contains — it provides structure, styling, overlay behaviour, and close logic. The parent provides the specific content for this use case. The same modal component handles every scenario in the app without ever being modified.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Assuming Projected Content Resolves Against the Child Component
+What the mistake looks like:
+typescript// Child component
+@Component({
+  selector: 'app-wrapper',
+  template: `<ng-content></ng-content>`
+})
+export class WrapperComponent {
+  childMessage = 'Hello from the child'; // ← developer expects this to be accessible
+}
+
+// Parent template
+@Component({
+  template: `
+    <app-wrapper>
+      <!-- Developer expects childMessage to come from WrapperComponent -->
+      <p>{{ childMessage }}</p>  <!-- undefined — resolves against PARENT -->
+    </app-wrapper>
+  `
+})
+export class ParentComponent {
+  // childMessage doesn't exist here — so {{ childMessage }} renders as blank
+}
+Why developers make it: The content visually appears inside the child component. It seems natural that it would have access to the child's scope.
+How to avoid it: Memorise the rule: "Projected content compiles in the parent, renders in the child." The parent is where variables resolve. If you need the child's data inside projected content, use ngTemplateOutlet with a context object (Topic 30) — that pattern can pass child data back to the parent's template.
+Angular-specific consequence: The binding silently renders as empty string — no error, no warning. This is one of the hardest bugs to spot because the template is syntactically correct; the issue is purely contextual.
+
+Mistake 2 — Expecting @if Around ng-content to Delay Component Instantiation
+What the mistake looks like:
+typescript// Developer expects app-heavy-chart to NOT initialise when isOpen = false
+@Component({
+  template: `
+    @if (isOpen) {
+      <ng-content></ng-content>
+    }
+  `
+})
+export class LazyPanelComponent {
+  isOpen = false;
+}
+
+// Parent
+// <app-lazy-panel>
+//   <app-heavy-chart></app-heavy-chart>  ← ngOnInit fires immediately regardless
+// </app-lazy-panel>
+Why developers make it: @if around other components in a template does delay their initialisation (Topic 29). Developers assume the same applies to projected content.
+How to avoid it: Projected content is part of the parent's template — it is instantiated when the parent mounts, not when the child's @if becomes true. The child's @if only controls whether the already-instantiated content is displayed, not whether it exists.
+The fix when lazy init is needed:
+typescript// Use TemplateRef @Input() instead — the parent passes a blueprint, not live content
+// The child stamps it (and instantiates it) only when isOpen becomes true
+@Input() contentTemplate?: TemplateRef<void>;
+
+// Template: @if (isOpen) { <ng-container *ngTemplateOutlet="contentTemplate"> }
+Angular-specific consequence: ngOnInit on projected components fires immediately on parent mount. Any HTTP calls or expensive setup in those components runs regardless of the child's conditional display logic — a real performance issue for heavy components behind lazy panels or tabs.
+
+Mistake 3 — Using ng-content Inside @for (Attempting to Project Multiple Times)
+What the mistake looks like:
+typescript// Developer tries to repeat projected content for each item
+@Component({
+  selector: 'app-repeater',
+  template: `
+    @for (item of items; track item.id) {
+      <!-- Can't work — ng-content projects the content ONCE, not per iteration -->
+      <div class="item-wrapper">
+        <ng-content></ng-content>
+      </div>
+    }
+  `
+})
+export class RepeaterComponent {
+  @Input() items: any[] = [];
+}
+Why developers make it: Seems logical — the child has a list of items, so stamp the projected template once per item.
+How to avoid it: ng-content can only project content once. It moves the parent's DOM nodes into the slot — it cannot copy them. If you need to stamp a template once per data item while providing data context, that requires TemplateRef + ngTemplateOutlet (Topic 30). The TemplateRef pattern is exactly what the DataList example in Topic 30 demonstrated.
+Angular-specific consequence: The projected content appears only once (in the last iteration, or not at all depending on Angular version). The rest of the iterations render empty wrapper divs. This fails silently with no error.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse ng-content for container components that provide structure but not specific content (cards, modals, panels, tabs)Use @Input() title: string when the content needs to be rich HTML with components or event bindingsUse select attribute for multi-slot projection — CSS attribute selectors ([slot-name]) are the most readableUse CSS class selectors for projection slots in large apps — classes collide; attribute selectors are explicitRemember that projected content's bindings resolve against the parent componentExpect projected content to access the child component's properties or methodsUse TemplateRef + ngTemplateOutlet when you need the child to pass data back into the projected contentTry to pass child data into ng-content projected content — it's impossible with basic projectionAdd a default <ng-content> (no select) as a catch-all for unmatched contentLet unmatched projected content disappear silently — users of your component will be confusedDocument your select attributes in comments — they are the public API of your componentLeave select attributes undocumented — other developers won't know how to use the slots
+
+Section 7 — Debugging Tips
+Bug 1 — Projected Content Disappears Entirely (No Slot Matches)
+Symptom: You project content into a component, but it doesn't appear anywhere in the rendered output. DevTools shows the child component's DOM with no projected content inside.
+Cause: The component uses multi-slot projection with select attributes, and none of the parent's projected content matches any selector. Content that matches no slot is silently discarded if there is no default <ng-content> (no select).
+Fix:
+typescript// Check 1: Add a default fallback slot to catch unmatched content during debugging
+<ng-content></ng-content>  <!-- No select = catches everything unmatched -->
+
+// Check 2: Verify your selectors match
+// If your slot is: <ng-content select="[panel-header]">
+// Your projected content must have the attribute: <h2 panel-header>...</h2>
+// NOT: <h2 class="panel-header">  (that's a class, not an attribute)
+
+// Check 3: Log the projected content's actual HTML in the parent to verify attributes
+Angular-specific note: Attribute-based selectors ([panel-header]) are the most reliable. Class-based selectors (.panel-header) can fail if a CSS reset or third-party library removes the class, or if the class is applied conditionally.
+
+Bug 2 — Styles From Child Component Not Applying to Projected Content
+Symptom: You have styles in the child component's CSS file (e.g. p { color: red; }) but projected <p> elements from the parent are not styled.
+Cause: Angular's view encapsulation (default: Emulated) scopes styles to the component that defines them. The child's styles are scoped to elements defined in the child's own template. Projected content is defined in the parent's template — it gets the parent's style scope, not the child's.
+Fix:
+css/* Option 1: In the child's CSS, use :ng-deep to pierce encapsulation */
+/* (Deprecated but still works — use sparingly) */
+:ng-deep .panel-body p { color: red; }
+
+/* Option 2: Style the SLOT WRAPPER in the child (the wrapper gets child scope) */
+/* In child CSS: */
+.panel-body { color: red; }  /* This applies to the wrapper, which projected content inherits */
+
+/* Option 3: Move the styles to global stylesheet — projected content is part of the parent */
+
+/* Option 4: Use ViewEncapsulation.None on the child — removes all encapsulation */
+Angular-specific note: This is the most common content projection "bug" that is actually working as designed. Understanding view encapsulation is the key. The cleanest solution is to style the slot wrapper element in the child's CSS — inherited CSS properties (color, font) cascade into projected content naturally.
+
+Bug 3 — ngOnInit Fires in Projected Component Before Expected
+Symptom: A projected component's ngOnInit runs (and triggers an API call or side effect) immediately on page load, even though the slot it projects into is hidden behind an @if (false).
+Cause: As covered in Section 5 Mistake 2 — projected content is part of the parent's template and is instantiated with the parent. The child's @if controls display, not instantiation.
+Fix:
+typescript// Switch from content projection to TemplateRef input
+// Parent changes:
+// BEFORE: <app-panel><app-chart></app-chart></app-panel>
+// AFTER:
+
+// In parent template:
+<ng-template #chartTemplate>
+  <app-chart></app-chart>  <!-- Only instantiated when the child stamps this -->
+</ng-template>
+
+<app-panel [contentTemplate]="chartTemplate"></app-panel>
+
+// In child component:
+@Input() contentTemplate?: TemplateRef<void>;
+// Template: @if (isOpen) { <ng-container *ngTemplateOutlet="contentTemplate"> }
+// Now app-chart only initialises when isOpen becomes true
+Angular-specific note: This distinction — instantiation vs display — is critical for performance in tab components, accordions, and wizard flows where lazy initialisation of heavy components matters.
+
+Section 8 — Real-World Applications
+Scenario 1 — Reusable Modal Component (Angular-Specific)
+A modal component used across an entire application — confirm dialogs, form modals, info panels — all using the same shell with different projected content.
+typescript// modal.component.ts
+import { Component, Output, EventEmitter, Input } from '@angular/core';
+
+@Component({
+  selector: 'app-modal',
+  standalone: true,
+  template: `
+    <!-- Overlay — click outside closes the modal -->
+    <div class="modal-overlay" (click)="handleOverlayClick()">
+
+      <!-- Modal shell — stopPropagation prevents overlay click from firing -->
+      <div
+        class="modal-shell"
+        [class.modal-sm]="size === 'sm'"
+        [class.modal-lg]="size === 'lg'"
+        (click)="$event.stopPropagation()"
+      >
+
+        <!-- Header slot — any element with [modal-title] goes here -->
+        <div class="modal-header">
+          <ng-content select="[modal-title]"></ng-content>
+          <button class="modal-close" (click)="closed.emit()">✕</button>
+        </div>
+
+        <!-- Body slot — main content area -->
+        <div class="modal-body">
+          <ng-content select="[modal-body]"></ng-content>
+        </div>
+
+        <!-- Footer slot — action buttons -->
+        <div class="modal-footer">
+          <ng-content select="[modal-footer]"></ng-content>
+        </div>
+
+      </div>
+    </div>
+  `
+})
+export class ModalComponent {
+  @Input() size: 'sm' | 'md' | 'lg' = 'md';
+  @Input() closeOnOverlay = true;
+  @Output() closed = new EventEmitter<void>();
+
+  handleOverlayClick(): void {
+    if (this.closeOnOverlay) this.closed.emit();
+  }
+}
+
+// ── USAGE 1: Confirmation dialog ──
+@Component({
+  standalone: true,
+  imports: [ModalComponent],
+  template: `
+    @if (showConfirm) {
+      <app-modal size="sm" (closed)="showConfirm = false">
+
+        <h3 modal-title>Confirm Action</h3>
+
+        <p modal-body>
+          Are you sure you want to delete
+          <strong>{{ selectedItem?.name }}</strong>?
+          This action cannot be undone.
+        </p>
+
+        <div modal-footer>
+          <button (click)="showConfirm = false">Cancel</button>
+          <button class="danger" (click)="confirmDelete()">Delete</button>
+        </div>
+
+      </app-modal>
+    }
+  `
+})
+export class DeletePageComponent {
+  showConfirm = false;
+  selectedItem: { name: string } | null = null;
+  confirmDelete(): void { /* API call */ }
+}
+
+// ── USAGE 2: Form modal — same component, totally different content ──
+@Component({
+  standalone: true,
+  imports: [ModalComponent],
+  template: `
+    @if (showForm) {
+      <app-modal size="lg" [closeOnOverlay]="false" (closed)="showForm = false">
+
+        <h3 modal-title>Edit Profile</h3>
+
+        <div modal-body>
+          <!-- A full form with validation — impossible with @Input() strings -->
+          <app-profile-form [userId]="currentUserId"></app-profile-form>
+        </div>
+
+        <div modal-footer>
+          <button (click)="showForm = false">Cancel</button>
+          <button (click)="saveForm()">Save Changes</button>
+        </div>
+
+      </app-modal>
+    }
+  `
+})
+export class ProfilePageComponent {
+  showForm = false;
+  currentUserId = 42;
+  saveForm(): void { /* trigger form submission */ }
+}
+
+Scenario 2 — Tab Component With Projected Tab Panels
+typescript// tab-panel.component.ts — individual tab content (used as projected content)
+@Component({
+  selector: 'app-tab-panel',
+  standalone: true,
+  template: `<ng-content></ng-content>`
+})
+export class TabPanelComponent {
+  @Input() label = '';   // Used by parent tab container for the tab button label
+  @Input() tabId = '';
+}
+
+// tabs.component.ts — the container
+import { Component, ContentChildren, QueryList, AfterContentInit, signal } from '@angular/core';
+
+@Component({
+  selector: 'app-tabs',
+  standalone: true,
+  imports: [TabPanelComponent],
+  template: `
+    <!-- Tab button bar — renders a button for each projected TabPanelComponent -->
+    <div class="tab-bar">
+      @for (tab of tabPanels; track tab.tabId) {
+        <button
+          [class.active]="activeTab() === tab.tabId"
+          (click)="activeTab.set(tab.tabId)"
+        >
+          {{ tab.label }}
+        </button>
+      }
+    </div>
+
+    <!-- Tab content area — shows only the active tab's projected content -->
+    <div class="tab-content">
+      <!--
+        ng-content projects ALL tab panels into this area.
+        Showing/hiding individual panels is handled with CSS (display: none)
+        rather than @if — to preserve their state between tab switches.
+      -->
+      <ng-content></ng-content>
+    </div>
+  `
+})
+export class TabsComponent implements AfterContentInit {
+  // @ContentChildren queries projected child components — Topic 32
+  @ContentChildren(TabPanelComponent) tabPanels!: QueryList<TabPanelComponent>;
+
+  activeTab = signal('');
+
+  ngAfterContentInit(): void {
+    // Set the first tab as active once content is projected and available
+    if (this.tabPanels.length > 0) {
+      this.activeTab.set(this.tabPanels.first.tabId);
+    }
+  }
+}
+
+// ── PARENT USAGE ──
+@Component({
+  standalone: true,
+  imports: [TabsComponent, TabPanelComponent],
+  template: `
+    <app-tabs>
+
+      <app-tab-panel label="Overview" tabId="overview">
+        <h2>Project Overview</h2>
+        <p>{{ projectDescription }}</p>
+      </app-tab-panel>
+
+      <app-tab-panel label="Settings" tabId="settings">
+        <app-project-settings [projectId]="projectId"></app-project-settings>
+      </app-tab-panel>
+
+      <app-tab-panel label="Members" tabId="members">
+        <app-team-list [projectId]="projectId"></app-team-list>
+      </app-tab-panel>
+
+    </app-tabs>
+  `
+})
+export class ProjectPageComponent {
+  projectId = 7;
+  projectDescription = 'A modern Angular application...';
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Build a standalone CardComponent that uses a single <ng-content> slot. Add a fixed card shell with a border, padding, and box shadow defined in the component's CSS. In a parent component, use CardComponent three times with different projected content — a user profile summary, a weather widget, and a news headline. Verify that all three use the same card shell styling but have completely different inner content.
+
+Exercise 2 — Intermediate
+Build a SectionComponent with three named ng-content slots using attribute selectors: [section-title], [section-body], and [section-actions]. The title slot should render in a styled header bar, the body in a scrollable area, and the actions in a right-aligned footer. Add a default <ng-content> slot as a catch-all. In a parent, create two instances: one for a data summary section and one for a settings form section — each projecting entirely different rich content into the same component slots.
+
+Exercise 3 — Advanced
+Build an AccordionComponent that accepts any number of projected AccordionItemComponent children. Each AccordionItemComponent takes a title @Input(). The accordion container reads the projected items' titles (hint: you'll need @ContentChildren from Topic 32 — use this exercise as a preview) and renders a clickable header for each. Only one item's <ng-content> body is visible at a time. Clicking a header expands its content and collapses the previously active one. Use CSS transitions for the open/close animation rather than @if — to demonstrate the difference between hiding and destroying projected content.
+
+Section 10 — Key Takeaways
+Core Concepts:
+
+Content projection — allows a parent to inject HTML (including components) into a child component's template via <ng-content> slots
+<ng-content> — the slot placeholder; replaced at runtime with the parent's projected content
+select attribute — CSS selector that routes specific parent content to specific slots; supports element, attribute, class, and component selectors
+Default slot — <ng-content> with no select; catches all content not matched by named slots
+Rendering context rule — projected content's bindings resolve against the parent component's class, not the child's
+Instantiation rule — projected content components are instantiated when the parent mounts, regardless of @if around <ng-content> in the child
+ng-content cannot be repeated — unlike ngTemplateOutlet, it moves DOM nodes once; use TemplateRef for repeated stamping with data context
+
+
+Quick Reference:
+PatternSyntaxUse CaseSingle slot<ng-content>Simple container componentsNamed slot<ng-content select="[attr]">Multi-region layouts (modal, panel)Default catch-all<ng-content> after named slotsCatch unmatched contentConditional display@if (open) { <ng-content> }Toggle visibility (NOT instantiation)Repeated with dataTemplateRef + ngTemplateOutletRows, cells, repeated items
+
+Angular-Specific Rules:
+
+Projected content bindings always resolve against the parent component — never the child
+@if around <ng-content> controls display, not instantiation — projected components always initialise with the parent
+select attribute selectors ([slot-name]) are more reliable than class selectors for projection routing
+Unmatched projected content is silently discarded if no default <ng-content> exists — always add one during development
+Child component CSS does not naturally style projected content — use slot wrapper styles or :ng-deep carefully
+
+One-Line Memory Aid:
+
+The parent writes the picture, the child provides the frame — and the picture always uses the parent's paints, not the frame's.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: Content projection and ngTemplateOutlet with TemplateRef inputs both let a parent define content that renders inside a child component. But they have a fundamental difference in when and how content is instantiated. At what point in a real application does this difference force you to switch from ng-content to TemplateRef, and what does that tell you about the design contract each pattern creates?
+Answer:
+The forcing function is almost always one of two things: the child needs to pass data into the content or the child needs to control when the content is instantiated.
+Conceptual explanation: ng-content represents a declarative slot contract — "put your content here; I'll display it." The child is passive. It receives already-live, already-bound DOM nodes and places them. It cannot inject data into those nodes, and it cannot delay their creation.
+TemplateRef + ngTemplateOutlet represents an imperative template contract — "give me a blueprint; I'll decide when to build it and what data to give the builder." The child is active. It controls instantiation timing and can inject context data.
+The two forcing functions in real apps:
+1 — Data flows from child to template: A virtual scroll component knows which items are currently visible — the parent doesn't. For each visible item, the virtual scroller needs to render the parent's row template with that item's data. ng-content cannot do this — it cannot pass item into the projected row. TemplateRef can — via context: { $implicit: item }. This is the data table, virtual list, and grid pattern.
+2 — Lazy instantiation: A tab component with ten heavy tabs using ng-content instantiates all ten panels at page load. With TemplateRef, the tab component only stamps a template when its tab is first activated — true lazy initialisation, reducing initial render cost significantly.
+What this tells you about design contracts:
+
+ng-content is a display contract: "I'll show your content in my layout"
+TemplateRef is a rendering contract: "I'll render your template on my terms, with my data"
+
+Practical rule: Start with ng-content — it's simpler, more readable, and sufficient for the majority of container components. Switch to TemplateRef when you hit either forcing function: the child needs to provide data to the template, or the child needs to control when the template is first rendered.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts
+
+WeakRef and object lifecycle — understanding JavaScript object instantiation helps clarify why projected content's components initialise with the parent
+
+TypeScript Concepts
+
+Generic constraints — used when typing TemplateRef<T> context objects for the TemplateRef alternative pattern to content projection
+
+Angular-Specific Concepts
+
+Topic 32 — ViewChild, ViewChildren, ContentChild — the direct next topic; @ContentChild and @ContentChildren are how the child component queries what's been projected into it — essential for building interactive container components like tabs and accordions
+Topic 41 — Custom Directives — attribute directives applied to projected content are a common pattern; understanding projection's context rules is a prerequisite
+Topic 47 — Testing Angular Components — testing projected content requires specific TestBed setup; this is covered in the testing topics but depends on understanding projection first
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 25 — Component Lifecycle Hooks (projection affects when ngOnInit/ngOnDestroy fire)
+Topic 26 — @Input() & @Output() (projection is the alternative to @Input() for rich content)
+Topic 28 — Angular Template Syntax (projected content uses all binding syntax, resolved in parent)
+Topic 29 — Built-in Control Flow (@if inside projected content, @if around ng-content)
+Topic 30 — Built-in Directives (ngTemplateOutlet is the TemplateRef alternative to ng-content)
+
+This topic unlocks:
+
+Topic 32 — ViewChild, ViewChildren, ContentChild — directly depends on this topic; @ContentChild queries projected content and is meaningless without understanding what projection is
+Topic 41 — Custom Directives — directives applied to projected content behave according to projection's context rules
+Topic 47 — Testing Angular Components — testing components with ng-content requires understanding the projection model to set up TestBed correctly
+
+Production readiness assessment: You are ready to use single-slot and multi-slot ng-content projection confidently in production. Before shipping complex interactive containers (tabs, accordions, wizard flows), practise the instantiation-vs-display distinction and know when to switch to TemplateRef — that decision point separates components that work from components that work at scale.
+
+Section 14 — Common Interview Questions
+Question 1
+"What is content projection in Angular and how does ng-content work? What does the select attribute do?"
+Strong answer covers:
+
+Content projection allows a parent to pass HTML/components into a child's template via <ng-content> slots
+The child defines where content appears; the parent defines what content is
+select accepts a CSS selector to route specific parent content to specific slots
+Content not matching any select goes to the default <ng-content> (no select)
+Content not matched by any slot and with no default slot is silently discarded
+Real example: modal with [modal-header], [modal-body], [modal-footer] slots
+
+Weak answers miss: What happens to unmatched content (silent discard), and the practical impact of having no default slot.
+Difficulty: Junior-Mid
+
+Question 2
+"In Angular content projection, which component's context do projected bindings resolve against — the parent or the child? Why does this matter?"
+Strong answer covers:
+
+Projected content bindings resolve against the parent component's context
+The rule: "compiled in the parent, rendered in the child"
+{{ variable }} inside projected content refers to the parent's variable property
+This means the child cannot directly expose its data to projected content
+This is by design — the parent defines what's shown, the child defines where it's shown
+When child-to-content data flow is needed, TemplateRef + ngTemplateOutlet is the correct pattern
+Practical consequence: projected content sees parent signals, services, and properties — not the child's
+
+Weak answers miss: The architectural implication — that ng-content creates a passive child (display contract), while TemplateRef creates an active child (rendering contract).
+Difficulty: Mid-Senior
+
+Question 3
+"If you put @if (isOpen) around <ng-content> in a child component, does that prevent the projected component from initialising until isOpen is true?"
+Strong answer covers:
+
+No — projected content is part of the parent's template and instantiates with the parent
+The child's @if only controls display — the content is already created before the @if evaluates
+ngOnInit in a projected component fires immediately on parent mount, regardless of the child's conditions
+This matters for performance: heavy components behind an @if (false) slot still initialise
+The fix: use TemplateRef input — pass a blueprint, not live content — so the child controls instantiation
+Real-world impact: tab components, accordions, wizard steps — all need TemplateRef for true lazy init
+
+Weak answers miss: The root cause — that projected content is owned by the parent's template, not the child's. Candidates who say "use @defer" without explaining the instantiation model are missing the conceptual point.
+Difficulty: Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Deep Component Trees Communicating Through Projected Content
+typescript// ❌ Anti-pattern: using projection to tunnel data through layers
+@Component({
+  selector: 'app-layout',
+  template: `
+    <div class="layout">
+      <ng-content></ng-content>
+    </div>
+  `
+})
+export class LayoutComponent {
+  currentUser = inject(UserService).user; // Has user data
+}
+
+// Parent projects content that NEEDS currentUser — but can't access it
+@Component({
+  template: `
+    <app-layout>
+      <!-- Developer WANTS currentUser from LayoutComponent -->
+      <!-- But this resolves against ParentComponent — not LayoutComponent -->
+      <app-profile [user]="currentUser"></app-profile>  <!-- currentUser from parent -->
+    </app-layout>
+  `
+})
+export class ParentComponent {
+  // Developer is forced to duplicate the user injection here
+  currentUser = inject(UserService).user;
+}
+Why it seems fine: The layout component "has" the user — it seems natural that projected content inside it would have access too.
+What breaks in production: Every component that uses <app-layout> must independently inject UserService to get data the layout already has. This is not projection's fault — it's a misunderstanding of the context rule. But at scale, it creates duplicated injection and confusion about data ownership.
+Correct pattern: If data needs to flow from child to projected content, use a shared service (Topic 27), signals, or switch to TemplateRef with context. Don't fight the context rule — work with it.
+
+Anti-Pattern 2 — Styling Projected Content with Child-Scoped Styles
+css/* ❌ In child component's CSS — won't apply to projected content */
+/* card.component.css */
+p {
+  color: #374151;
+  line-height: 1.6;
+}
+
+h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+typescript// Developer expects these styles to apply to all projected <p> and <h3>
+// They don't — projected content has parent's encapsulation scope
+Why it seems fine: The styles are in the child component's CSS file, and the projected content renders inside the child's template. The visual nesting implies style inheritance.
+What breaks in production: View encapsulation scopes Angular component styles to that component's own template elements. Projected content carries the parent's style scope. The child's p and h3 styles have no effect on projected elements. Developers spend significant time debugging this in DevTools.
+Correct pattern:
+css/* Option 1: Style the WRAPPER — inherited CSS cascades into projected content */
+/* card.component.css */
+.card-body {
+  color: #374151;        /* inherits into projected content naturally */
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+/* Option 2: Global styles for projected content typography */
+/* styles.css (global) */
+.card-body p { color: #374151; }
+
+/* Option 3: Use :ng-deep sparingly — deprecated but functional */
+/* :ng-deep p { color: #374151; } */
+
+Anti-Pattern 3 — Wrapping ng-content in an Element Just to Apply a Directive
+typescript// ❌ Anti-pattern: adding unnecessary wrapper elements around ng-content
+@Component({
+  selector: 'app-scrollable',
+  template: `
+    <!-- Developer wants to apply scrolling styles to projected content -->
+    <div class="scroll-wrapper" cdkScrollable>
+      <div class="inner-wrapper">  <!-- extra wrapper just for padding -->
+        <div class="content-wrapper">  <!-- another wrapper for max-width -->
+          <ng-content></ng-content>
+        </div>
+      </div>
+    </div>
+  `
+})
+Why it seems fine: Each wrapper has a reason. The developer adds them iteratively as styling needs arise. Each individually makes sense.
+What breaks in production: Three wrapper divs around projected content breaks CSS layout — especially flexbox and grid children, position: sticky within scroll containers, and form element focus management. The DOM is polluted with structural divs that consumers of <app-scrollable> cannot remove.
+Correct pattern:
+typescript@Component({
+  selector: 'app-scrollable',
+  // Use :host to style the component element itself — no wrapper needed
+  styles: [`:host { display: block; overflow-y: auto; max-height: 400px; padding: 16px; }`],
+  template: `
+    <!-- Single wrapper only if semantically necessary -->
+    <ng-content></ng-content>
+  `
+})
+Use :host CSS pseudo-selector to style the component's own element. This eliminates the need for a wrapper div in many cases, keeping the DOM clean and layout-friendly.
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet
+Core concept: ng-content is a slot placeholder in a child component's template — it marks where the parent's projected HTML will be inserted at runtime. The parent writes the content; the child provides the frame.
+Key rules:
+
+Projected content bindings resolve against the parent — {{ x }} in projected content reads the parent's x
+Projected content instantiates with the parent — @if around <ng-content> only hides, never delays init
+select="[attr]" routes specific parent content to specific slots using CSS selectors
+Content matching no selector is silently discarded unless a default <ng-content> (no select) exists
+ng-content can only project content once — for repeated stamping with data, use TemplateRef + ngTemplateOutlet
+Child component CSS does not style projected content — use wrapper inheritance or global styles
+
+The single most important Angular rule:
+
+Projected content always compiles in the parent's context — the child component cannot access or modify its projected content's bindings.
+
+
+Content Projection vs TemplateRef — When to Use Which:
+ng-contentTemplateRef + ngTemplateOutletParent definesLive HTML / componentsUnrendered blueprintChild can pass data in❌ No✅ Yes (via context)Lazy instantiation❌ No (always with parent)✅ Yes (child controls when)Same template multiple times❌ Once only✅ UnlimitedComplexityLowMediumBest forModals, cards, panelsData grids, virtual lists, lazy tabsYou said: Next

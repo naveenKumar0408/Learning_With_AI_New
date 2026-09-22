@@ -1,0 +1,977 @@
+Topic 46 — RxJS Operators in Depth (switchMap, mergeMap, concatMap, forkJoin, combineLatest, debounceTime)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Advanced — Each operator is individually learnable, but the real difficulty is the judgment layer: knowing which operator to reach for in a given async scenario, understanding the cancellation and concurrency semantics of each, and recognising the bugs that appear when the wrong operator is used — bugs that are silent, intermittent, and data-corrupting.
+Angular Relevance: Critical — These six operators appear in virtually every Angular app that touches HTTP, user input, or real-time data; choosing the wrong one between switchMap and mergeMap in an HTTP search handler is one of the most common sources of race conditions in Angular production apps.
+
+Section 1 — Explanation
+The Food Delivery App Analogy
+Imagine you're managing a food delivery dispatch system. A customer can place an order at any time. How you handle a new order arriving while a previous order is still being prepared defines which operator you are:
+
+switchMap — "Cancel the current order, start the new one immediately." The kitchen drops whatever it's making and starts fresh. Best for: search queries, autocomplete — only the latest request matters.
+mergeMap — "Run all orders simultaneously, no limit." Every order gets its own chef. Responses arrive in whatever order the kitchen finishes them. Best for: independent parallel actions (liking multiple posts).
+concatMap — "Queue orders strictly. Finish one completely before starting the next." Best for: sequential operations where order matters (bank transfers, form submissions that must not overlap).
+forkJoin — "Wait until ALL orders are done, then serve everything at once." Best for: loading multiple independent API resources before rendering a page.
+combineLatest — "Every time ANY order updates, re-serve the full current state of all orders." Best for: combining multiple live streams where you always need the latest value from each.
+debounceTime — "Wait until the customer stops changing their order for X milliseconds before sending it to the kitchen." Best for: search inputs, form validation — ignore rapid successive events.
+
+The core distinction that matters most in Angular:
+OperatorInner observable behaviourCancels previous?Order guaranteed?switchMapReplaces — cancels previous inner observable✅ YesN/A — only latestmergeMapMerges — all run concurrently❌ No❌ NoconcatMapQueues — waits for each to complete❌ No✅ YesforkJoinCombines — waits for all to complete onceN/A✅ Emits togethercombineLatestCombines — emits on any source changeN/ALatest from eachdebounceTimeDelays — suppresses rapid emissions✅ ImplicitlyN/A
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 20 — RxJS Subscription Management — every operator here produces a new observable that must be subscribed to and cleaned up; the subscription management rules from Topic 20 apply to every example in this topic
+Topic 21 — takeUntilDestroyed & DestroyRef — all component-level subscriptions to these operators need takeUntilDestroyed()
+Topic 36 — HttpClient & API Integration — HttpClient returns cold observables; switchMap, mergeMap, concatMap, and forkJoin are the primary tools for composing HTTP calls
+Topic 37 — HTTP Interceptors — interceptors use switchMap internally for token refresh patterns
+Topic 44 — State Management Patterns — BehaviorSubject stores use combineLatest and switchMap in their pipeline logic
+Topic 45 — Performance Optimisation — debounceTime is the companion to pure pipe filtering; reducing emission frequency before triggering expensive operations
+
+Bridging Note:
+
+In Topic 36 you learned that HttpClient returns cold observables and that switchMap is the right tool for user-triggered searches. This topic takes that rule and explains why — switchMap cancels the previous HTTP request's observable when a new search fires, which means the previous HttpRequest is also cancelled at the network level (Angular's HttpClient cancels in-flight requests when their observable is unsubscribed). The other operators covered here fill in the rest of the HTTP composition story.
+Most directly extends: Topic 36 — HttpClient & API Integration (these operators are the primary composition tools for HTTP observable chains).
+
+Section 3 — Code Example
+switchMap — Cancel and Replace
+typescript// The search autocomplete pattern — the canonical switchMap use case
+
+@Component({
+  standalone: true,
+  imports: [AsyncPipe, FormsModule],
+  template: `
+    <input [ngModel]="query" (ngModelChange)="query$.next($event)" />
+    @for (result of results$ | async; track result.id) {
+      <p>{{ result.name }}</p>
+    }
+  `
+})
+export class SearchComponent implements OnInit {
+  query$ = new Subject<string>();
+  results$!: Observable<SearchResult[]>;
+
+  private http = inject(HttpClient);
+  private destroyRef = inject(DestroyRef);
+
+  ngOnInit() {
+    this.results$ = this.query$.pipe(
+      debounceTime(300),            // wait 300ms after last keystroke — Topic 45
+      distinctUntilChanged(),       // skip if query hasn't actually changed
+      filter(q => q.length >= 2),   // don't search on empty/short queries
+      switchMap(query =>            // cancel previous HTTP call, start new one
+        this.http.get<SearchResult[]>('/api/search', {
+          params: { q: query }
+        }).pipe(
+          catchError(() => of([]))  // Topic 36 rule: catchError in service layer
+        )
+      )
+    );
+    // async pipe in template handles subscription + takeUntil automatically
+  }
+}
+typescript// WHY switchMap is correct here and not mergeMap:
+// User types: "an" → "ang" → "angu" → "angul" → "angula" → "angular"
+// Without switchMap (using mergeMap):
+//   6 HTTP requests fire. Responses arrive out of order.
+//   "an" response (200 results) arrives AFTER "angular" response (5 results)
+//   The user sees 200 wrong results — a silent data corruption bug.
+// With switchMap:
+//   Each new keystroke cancels the previous HTTP request.
+//   Only the "angular" request completes and renders.
+
+mergeMap — Run All Concurrently
+typescript// Liking multiple posts independently — order doesn't matter, none should cancel
+
+@Component({...})
+export class FeedComponent {
+  private http = inject(HttpClient);
+  private destroyRef = inject(DestroyRef);
+
+  // A Subject that emits whenever the user likes a post
+  private likeAction$ = new Subject<number>(); // emits post ID
+
+  constructor() {
+    this.likeAction$.pipe(
+      mergeMap(postId =>
+        // Each like fires independently — no cancellation, no queuing
+        // If the user likes 5 posts rapidly, all 5 HTTP calls run in parallel
+        this.http.post(`/api/posts/${postId}/like`, {}).pipe(
+          catchError(err => {
+            console.error(`Failed to like post ${postId}`, err);
+            return EMPTY;  // don't kill the outer stream on one failure
+          })
+        )
+      ),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe();
+  }
+
+  likePost(postId: number) {
+    this.likeAction$.next(postId);
+  }
+}
+typescript// WHY mergeMap and not switchMap:
+// If the user likes post 1, then post 2 — both likes should complete.
+// switchMap would cancel the post 1 like when post 2 is liked — wrong.
+// mergeMap lets both HTTP calls run to completion independently.
+
+concatMap — Queue in Order
+typescript// Sequential file uploads — each must complete before the next starts
+// Order must be preserved: file 1 upload confirmation before file 2 starts
+
+@Injectable({ providedIn: 'root' })
+export class UploadService {
+  private http = inject(HttpClient);
+
+  uploadFiles(files: File[]): Observable<UploadResult[]> {
+    return from(files).pipe(   // from() converts an array to a sequential observable
+      concatMap(file => {
+        const formData = new FormData();
+        formData.append('file', file);
+        // concatMap waits for this HTTP call to complete before
+        // subscribing to the next file's upload observable
+        return this.http.post<UploadResult>('/api/upload', formData).pipe(
+          catchError(err => of({ file: file.name, error: err.message }))
+        );
+      }),
+      toArray()  // collect all results into a single array emission
+    );
+  }
+}
+
+// WHY concatMap and not mergeMap:
+// The server processes uploads sequentially and has a concurrency limit.
+// mergeMap would fire all uploads simultaneously — potential server overload.
+// concatMap ensures file 2 only starts after file 1 is confirmed complete.
+
+forkJoin — Wait for All to Complete
+typescript// Loading a product detail page that needs data from 3 endpoints simultaneously
+
+@Injectable({ providedIn: 'root' })
+export class ProductDetailService {
+  private http = inject(HttpClient);
+
+  loadProductPage(productId: number): Observable<ProductPageData> {
+    return forkJoin({
+      // All three HTTP calls fire simultaneously (parallel, not sequential)
+      product:  this.http.get<Product>(`/api/products/${productId}`),
+      reviews:  this.http.get<Review[]>(`/api/products/${productId}/reviews`),
+      related:  this.http.get<Product[]>(`/api/products/${productId}/related`)
+      // forkJoin waits until ALL three complete, then emits one combined object
+    }).pipe(
+      catchError(err => {
+        // If ANY of the three calls fails, catchError handles it here
+        console.error('Failed to load product page', err);
+        return throwError(() => err);
+      })
+    );
+  }
+}
+
+@Component({...})
+export class ProductDetailComponent {
+  private service = inject(ProductDetailService);
+  private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
+
+  pageData$!: Observable<ProductPageData>;
+
+  ngOnInit() {
+    this.pageData$ = this.route.paramMap.pipe(
+      switchMap(params =>                        // switchMap for route param changes
+        this.service.loadProductPage(+params.get('id')!)
+      ),
+      takeUntilDestroyed(this.destroyRef)
+    );
+  }
+}
+typescript// CRITICAL forkJoin rule:
+// If ANY source observable errors, forkJoin errors immediately and
+// discards results from the others — even if they already completed.
+// Always add catchError to each individual source for partial failure handling:
+
+forkJoin({
+  product: this.http.get<Product>(`/api/products/${id}`).pipe(catchError(() => of(null))),
+  reviews: this.http.get<Review[]>(`/api/reviews/${id}`).pipe(catchError(() => of([]))),
+})
+// Now a reviews failure doesn't kill the product data
+
+combineLatest — Emit on Any Source Change
+typescript// A filtered, sorted table driven by multiple independent filter controls
+
+@Component({
+  standalone: true,
+  imports: [AsyncPipe],
+  template: `
+    <input (input)="searchQuery$.next($any($event.target).value)" />
+    <select (change)="statusFilter$.next($any($event.target).value)">
+      <option value="">All</option>
+      <option value="active">Active</option>
+      <option value="inactive">Inactive</option>
+    </select>
+
+    @for (user of filteredUsers$ | async; track user.id) {
+      <app-user-row [user]="user" />
+    }
+  `
+})
+export class UserTableComponent implements OnInit {
+  private userStore = inject(UserStore);
+
+  searchQuery$ = new BehaviorSubject<string>('');
+  statusFilter$ = new BehaviorSubject<string>('');
+
+  filteredUsers$!: Observable<User[]>;
+
+  ngOnInit() {
+    this.filteredUsers$ = combineLatest([
+      this.userStore.users$,      // stream 1: all users from store
+      this.searchQuery$,          // stream 2: search input
+      this.statusFilter$          // stream 3: status dropdown
+    ]).pipe(
+      // combineLatest emits a new [users, query, status] tuple
+      // whenever ANY of the three sources emit a new value
+      debounceTime(100),          // small debounce — rapid filter changes fire once
+      map(([users, query, status]) => {
+        return users
+          .filter(u => !query || u.name.toLowerCase().includes(query.toLowerCase()))
+          .filter(u => !status || u.status === status);
+      })
+    );
+    // BehaviorSubject requires an initial value — combineLatest fires immediately
+    // because all three sources have emitted at least once
+  }
+}
+
+// WHY combineLatest and not forkJoin:
+// forkJoin waits for ALL sources to COMPLETE — it fires once and is done.
+// These are live streams (BehaviorSubjects) that never complete.
+// combineLatest fires every time any source changes — exactly what a live filter needs.
+
+debounceTime — Suppress Rapid Emissions
+typescript// Form field async validation — don't hit the API on every keystroke
+
+@Component({
+  standalone: true,
+  template: `
+    <input [formControl]="usernameControl" />
+    @if (usernameControl.pending) { <span>Checking...</span> }
+    @if (usernameControl.hasError('taken')) { <span>Username taken</span> }
+  `
+})
+export class RegistrationFormComponent {
+  private http = inject(HttpClient);
+
+  usernameControl = new FormControl('', {
+    asyncValidators: [this.usernameValidator()],
+    updateOn: 'change'
+  });
+
+  private usernameValidator(): AsyncValidatorFn {
+    return (control: AbstractControl) => {
+      return of(control.value).pipe(
+        debounceTime(400),          // wait 400ms after last change before calling API
+        distinctUntilChanged(),     // skip if value is same as last validated value
+        switchMap(username =>       // switchMap cancels previous check if user keeps typing
+          this.http.get<{ taken: boolean }>(`/api/check-username/${username}`)
+        ),
+        map(result => result.taken ? { taken: true } : null),
+        catchError(() => of(null))  // Topic 34 rule: always catchError in async validators
+      );
+    };
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Wrong Operator Choice Causes a Race Condition
+typescript// WRONG: mergeMap for a search — responses arrive out of order
+
+ngOnInit() {
+  this.results$ = this.query$.pipe(
+    mergeMap(query =>                      // ← wrong operator
+      this.http.get<Result[]>('/api/search', { params: { q: query } })
+    )
+  );
+}
+
+// Scenario:
+// User types "a" → HTTP call A fires (slow server, takes 800ms)
+// User types "an" → HTTP call B fires (fast, takes 100ms)
+// Call B completes first → results show "an" results ✓
+// Call A completes 700ms later → results NOW SHOW "a" results ✗
+// The UI is displaying results for a query the user abandoned 700ms ago
+// No error, no warning — silent wrong data
+
+✅ After — switchMap Eliminates the Race Condition
+typescript// CORRECT: switchMap cancels call A when call B fires
+
+ngOnInit() {
+  this.results$ = this.query$.pipe(
+    debounceTime(300),
+    distinctUntilChanged(),
+    switchMap(query =>                    // ← correct operator
+      this.http.get<Result[]>('/api/search', { params: { q: query } }).pipe(
+        catchError(() => of([]))
+      )
+    )
+  );
+}
+
+// Scenario with switchMap:
+// User types "a" → HTTP call A fires
+// User types "an" → switchMap UNSUBSCRIBES from call A (Angular cancels the request)
+// Call B completes → results show "an" results ✓
+// Call A never completes from the observable's perspective — it was cancelled
+Why this refactor matters in Angular:
+
+switchMap with HttpClient does not just ignore the previous response — it actually cancels the in-flight HTTP request via the browser's AbortController. This means the server also stops processing the abandoned request (where supported), saving both network bandwidth and server CPU.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using switchMap for Write Operations (POST/PUT/DELETE)
+What the mistake looks like:
+typescriptthis.saveAction$.pipe(
+  switchMap(data => this.http.post('/api/save', data))
+).subscribe();
+Why developers make it: switchMap is the "correct" operator for HTTP — developers learn this for search and apply it everywhere.
+How to avoid it: switchMap cancels the previous inner observable. For a POST/PUT/DELETE, "cancelling" the previous save means the first save request is aborted mid-flight — the server may or may not have processed it. Use concatMap for sequential saves (queue them) or exhaustMap for "ignore new saves while one is in progress."
+Angular-specific consequence: In a rapid double-click scenario, the first save request is cancelled by the second. The user sees a success response from the second save, but the first save's data may have been partially written or fully lost depending on the server's handling of aborted requests.
+
+Mistake 2 — Using forkJoin on Observables That May Not Complete
+What the mistake looks like:
+typescript// WRONG: one of these is a live BehaviorSubject that never completes
+forkJoin([
+  this.http.get('/api/data'),    // completes after one emission ✓
+  this.userStore.user$           // BehaviorSubject — never completes ✗
+]).subscribe(([data, user]) => {
+  // This NEVER fires — forkJoin waits for ALL sources to complete
+});
+Why developers make it: forkJoin is described as "combine multiple observables" — developers assume it works like combineLatest but fires once.
+How to avoid it: forkJoin requires every source observable to complete. HttpClient observables complete after one emission. BehaviorSubject and Subject never complete unless .complete() is called. For live streams that should be combined, use combineLatest. For mixing a live stream with a one-shot HTTP call, use combineLatest with startWith or pipe the HTTP call into the live stream via switchMap.
+Angular-specific consequence: The subscription silently hangs forever — subscribe() never fires. No error, no warning. Developers spend hours debugging "why my data never loads."
+
+Mistake 3 — Nesting subscribe() Inside subscribe() Instead of Using a Flattening Operator
+What the mistake looks like:
+typescript// WRONG: nested subscribe — the "callback hell" of RxJS
+this.route.paramMap.subscribe(params => {
+  const id = params.get('id');
+  this.http.get(`/api/products/${id}`).subscribe(product => {
+    this.product = product;
+    // And if there's another async step... a third subscribe nests here
+  });
+});
+Why developers make it: It mirrors Promise chaining with .then() — familiar and intuitive at first.
+How to avoid it: Any time you find yourself writing subscribe() inside a subscribe(), the inner observable should be a flattening operator (switchMap, mergeMap, or concatMap) on the outer observable instead.
+Angular-specific consequence: The inner subscription is not connected to the outer's lifecycle. When the component is destroyed, takeUntilDestroyed() on the outer subscription fires — but the inner subscription has no takeUntilDestroyed() and leaks. Additionally, if the outer emits again (e.g. the route param changes), a second inner subscription is created without the first being cleaned up.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse switchMap for user-triggered search/autocomplete HTTP callsUse switchMap for POST/PUT/DELETE write operations — it cancels in-flight requestsUse concatMap for sequential write operations where order and completion matterUse mergeMap for writes that must not overlap — concurrent writes can corrupt server stateUse forkJoin only on observables that are guaranteed to complete (HttpClient calls)Use forkJoin with BehaviorSubject or Subject streams — they never complete and forkJoin silently hangsAdd catchError to each individual source inside forkJoin for partial failure handlingLet one failing forkJoin source kill all other completed resultsUse combineLatest for combining multiple live streams where the latest value of each is neededUse combineLatest without ensuring all sources have emitted at least once — it won't fire until every source has emittedAlways pair flattening operators (switchMap, mergeMap, concatMap) with takeUntilDestroyed()Nest subscribe() inside subscribe() — inner subscriptions leak when the outer is cleaned up
+
+Section 7 — Debugging Tips
+Bug 1 — Search Results Flash Old Data Briefly
+Symptom: After typing a search query, the correct results appear briefly, then are replaced by results for a previous (shorter) query. Happens intermittently, worse on slow connections.
+Plain English Cause: mergeMap is being used instead of switchMap. Multiple HTTP calls are in flight simultaneously. The slower earlier call completes after the faster later call, overwriting the correct results.
+Fix: Replace mergeMap with switchMap in the search pipeline. Add debounceTime(300) and distinctUntilChanged() before the switchMap to further reduce unnecessary requests.
+Angular-specific note: This bug is invisible on localhost (all responses are near-instant) and only manifests on real networks. Always test search components with browser DevTools Network throttling set to "Slow 3G."
+
+Bug 2 — forkJoin Observable Never Emits
+Symptom: A forkJoin subscription never fires. The template shows loading state indefinitely. No error in the console.
+Plain English Cause: One or more source observables passed to forkJoin never complete. Common culprits: a BehaviorSubject, a Subject, a combineLatest, or any observable created from an event stream.
+Fix:
+typescript// Diagnose: add a tap to each source to see which one isn't completing
+forkJoin([
+  source1$.pipe(tap({ complete: () => console.log('source1 complete') })),
+  source2$.pipe(tap({ complete: () => console.log('source2 complete') })),
+])
+
+// Fix: if source2 is a BehaviorSubject, take only its first emission:
+forkJoin([
+  source1$,
+  source2$.pipe(take(1))  // take(1) completes after the first emission
+])
+Angular-specific note: HttpClient observables complete automatically — if your forkJoin works in isolation but not with an added source, the new source is almost certainly a non-completing stream.
+
+Bug 3 — combineLatest Never Fires on Initialisation
+Symptom: A combineLatest pipeline that combines multiple streams never emits its first value, even though data is available. The template stays empty.
+Plain English Cause: combineLatest requires every source observable to have emitted at least one value before it emits anything. If even one source is a Subject (no initial value) that hasn't emitted yet, combineLatest is silently waiting.
+Fix:
+typescript// Replace Subject with BehaviorSubject for sources that need an initial value:
+// WRONG:
+searchQuery$ = new Subject<string>();   // no initial value
+
+// CORRECT:
+searchQuery$ = new BehaviorSubject<string>('');  // initial value '' triggers combineLatest
+
+// Or use startWith() on the Subject:
+combineLatest([
+  this.data$,
+  this.searchQuery$.pipe(startWith(''))  // provide an initial value
+])
+Angular-specific note: This is the most common combineLatest bug. The rule: every source passed to combineLatest must be a BehaviorSubject or use startWith() to guarantee an initial emission.
+
+Section 8 — Real-World Applications
+Scenario 1 — Route-Driven Data Loading with switchMap + forkJoin
+A product detail page loads product info, reviews, and related products simultaneously. Navigation to a new product ID cancels any in-flight requests from the previous product.
+typescript@Injectable({ providedIn: 'root' })
+export class ProductPageService {
+  private http = inject(HttpClient);
+
+  loadPage(productId: number): Observable<ProductPageData> {
+    return forkJoin({
+      product: this.http.get<Product>(`/api/products/${productId}`)
+        .pipe(catchError(() => of(null))),
+      reviews: this.http.get<Review[]>(`/api/products/${productId}/reviews`)
+        .pipe(catchError(() => of([]))),
+      related: this.http.get<Product[]>(`/api/products/${productId}/related`)
+        .pipe(catchError(() => of([])))
+    });
+  }
+}
+
+@Component({ standalone: true, imports: [AsyncPipe] })
+export class ProductDetailComponent {
+  private service = inject(ProductPageService);
+  private route   = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
+
+  pageData$: Observable<ProductPageData> = this.route.paramMap.pipe(
+    map(params => +params.get('id')!),
+    distinctUntilChanged(),   // skip if same product ID (e.g. query param change only)
+    switchMap(id =>           // cancel previous forkJoin if user navigates quickly
+      this.service.loadPage(id)
+    ),
+    takeUntilDestroyed(this.destroyRef)
+  );
+}
+// switchMap wrapping forkJoin: if the user navigates from product 1 to product 2
+// before product 1's three requests complete, switchMap cancels all three
+// and starts the three requests for product 2 immediately.
+
+Scenario 2 — Real-Time Dashboard with combineLatest + debounceTime
+A monitoring dashboard combines a live WebSocket stream of server metrics with user-controlled filter settings. The view updates whenever metrics change or the user adjusts filters.
+typescript@Injectable({ providedIn: 'root' })
+export class MetricsDashboardService {
+  private ws = inject(WebSocketService);      // emits ServerMetric[] every 5 seconds
+
+  readonly metrics$   = this.ws.connect('/metrics');
+  readonly timeRange$ = new BehaviorSubject<'1h' | '6h' | '24h'>('1h');
+  readonly serverFilter$ = new BehaviorSubject<string>('all');
+
+  readonly filteredMetrics$: Observable<DashboardData> = combineLatest([
+    this.metrics$,
+    this.timeRange$,
+    this.serverFilter$
+  ]).pipe(
+    debounceTime(50),    // if multiple sources emit within 50ms, process once
+    map(([metrics, range, serverFilter]) => ({
+      metrics: metrics
+        .filter(m => serverFilter === 'all' || m.serverId === serverFilter)
+        .filter(m => isWithinRange(m.timestamp, range)),
+      summary: computeSummary(metrics),
+      lastUpdated: new Date()
+    })),
+    shareReplay(1)       // share the latest value with multiple template subscribers
+  );
+}
+typescript@Component({
+  standalone: true,
+  imports: [AsyncPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (service.filteredMetrics$ | async; as data) {
+      <app-metrics-grid [metrics]="data.metrics" />
+      <app-summary-bar [summary]="data.summary" />
+      <span>Updated: {{ data.lastUpdated | date:'shortTime' }}</span>
+    }
+    <select (change)="service.timeRange$.next($any($event.target).value)">
+      <option value="1h">Last hour</option>
+      <option value="6h">Last 6 hours</option>
+      <option value="24h">Last 24 hours</option>
+    </select>
+  `
+})
+export class DashboardComponent {
+  protected service = inject(MetricsDashboardService);
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Build a CountrySearchComponent with a text input. As the user types, call a public REST countries API (https://restcountries.com/v3.1/name/{query}) and display the matching country names. Use switchMap with debounceTime(300) and distinctUntilChanged(). Add catchError that returns an empty array on failure. Explain in a comment why mergeMap would be incorrect here.
+
+Exercise 2 — Intermediate
+Build a UserProfilePageComponent that loads a user's profile, their posts, and their followers simultaneously using forkJoin. The route parameter provides the user ID. Use switchMap to handle route parameter changes. Add individual catchError handlers to each source so that a failed followers request doesn't prevent the profile and posts from rendering. Display a loading state while the forkJoin is pending.
+
+Exercise 3 — Advanced
+Build a MultiFilterTableComponent that displays a list of orders. The component must combine three live filter streams — searchQuery$ (text input), statusFilter$ (dropdown), and dateRange$ (date picker) — using combineLatest. Add debounceTime(100) to prevent excessive recalculation. All three filters must use BehaviorSubject so combineLatest fires immediately on subscription. The filtered result must be consumed via the async pipe with OnPush change detection. Additionally, implement a "Load More" button that uses concatMap to append the next page of results sequentially (page 2 only loads after page 1's request completes).
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+switchMap — for "only the latest matters" scenarios; cancels the previous inner observable when a new source value arrives
+mergeMap — for independent concurrent operations; all inner observables run simultaneously with no cancellation
+concatMap — for ordered sequential operations; queues inner observables and processes one at a time
+forkJoin — for "wait for all to complete once"; fires one combined emission when all source observables complete
+combineLatest — for live multi-source combinations; fires whenever any source emits, with the latest value from each
+debounceTime — for suppressing rapid emissions; waits for a quiet period before passing the latest value downstream
+
+Quick Reference — Operator Decision Tree:
+QuestionAnswerOperatorIs it a search / autocomplete?Only latest result mattersswitchMapIs it a write operation (POST/PUT)?Must not cancel mid-flightconcatMap or exhaustMapAre operations independent and concurrent?All should completemergeMapDo you need all results at once before rendering?One-shot parallel loadforkJoinDo you need the latest from multiple live streams?Combine live streamscombineLatestAre events too rapid (keystrokes, scroll)?Wait for quiet perioddebounceTime
+Angular-specific rules:
+
+Never use switchMap for POST/PUT/DELETE — it cancels in-flight write requests
+Never use forkJoin with BehaviorSubject or Subject — they never complete
+Always add catchError to each individual source in forkJoin — one failure kills all results without it
+Every source in combineLatest must have emitted at least once — use BehaviorSubject or startWith()
+Never nest subscribe() inside subscribe() — use a flattening operator instead
+
+One-Line Memory Aid:
+
+Switch cancels, merge runs all, concat queues, forkJoin waits for all to finish, combineLatest reacts to any change, debounce waits for silence — pick by what should happen to the previous operation when a new one arrives.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: switchMap cancels the previous inner observable when a new value arrives. But HttpClient requests are already in flight at the network level when they're cancelled. Does Angular actually cancel the HTTP request on the wire, or does it just ignore the response?
+Answer:
+This question cuts to a genuinely important distinction with real performance implications.
+The conceptual explanation: When switchMap unsubscribes from the previous inner observable (the HttpClient call), Angular's HttpClient implementation responds to that unsubscription by calling abort() on the underlying XMLHttpRequest or using the AbortController signal on the fetch API (in newer Angular versions). This means the browser sends a cancellation signal to the server — it is not merely ignoring the response.
+The Angular-specific implication: On a server that respects request cancellation (most modern HTTP servers do), the server stops processing the abandoned request. For a search endpoint that runs a database query, the database query is also cancelled. This means switchMap saves server CPU and database load, not just bandwidth — it's a genuine server-side optimisation, not just a client-side one.
+The nuance: The cancellation only reaches the server if the request hasn't already been fully received and processed. For very fast server responses (under ~50ms), the server will have already completed the work before the cancellation signal arrives. This is why debounceTime before switchMap matters beyond just reducing the number of requests — it gives the user time to finish typing before any request fires, meaning fewer requests that need cancelling in the first place.
+Practical rule: debounceTime(300) + distinctUntilChanged() + switchMap is the canonical Angular search pattern precisely because all three work together: debounceTime prevents unnecessary requests, distinctUntilChanged prevents duplicate requests, and switchMap cancels the ones that do escape the debounce window. Remove any one of the three and the pattern is degraded.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+AbortController and AbortSignal — the browser APIs that underpin switchMap's HTTP cancellation; understanding them gives insight into exactly when and how cancellation propagates to the server
+Promise.all() vs Promise.allSettled() — the Promise equivalents of forkJoin; knowing both helps when bridging RxJS and Promise-based code
+
+TypeScript Concepts:
+
+Conditional types for observable typing — building typed wrappers around forkJoin and combineLatest results using ObservedValueOf<T> and mapped types; makes complex pipeline return types readable
+
+Angular-Specific Concepts:
+
+Topic 47 — Testing Angular Components — fakeAsync and tick() are the primary tools for testing debounceTime and switchMap pipelines; testing async operators is a direct application of the concepts here
+Topic 48 — Testing Services & HTTP — HttpClientTestingModule and TestScheduler for marble testing RxJS pipelines; this topic is the direct testing companion to Topic 46
+exhaustMap — the fourth flattening operator not covered here; it ignores new source values while an inner observable is active (the "submit button" operator — ignore double-clicks while a save is in progress)
+shareReplay(1) — prevents multiple subscribers from triggering multiple HTTP calls; essential when the same forkJoin or switchMap observable is consumed by multiple async pipes in the same template
+RxJS TestScheduler and marble testing — the production-grade way to test time-based operators like debounceTime and switchMap cancellation behaviour
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on (must be solid):
+
+Topic 20 — RxJS Subscription Management (all operators produce observables that must be subscribed to and cleaned up)
+Topic 21 — takeUntilDestroyed & DestroyRef (all component-level operator chains need cleanup)
+Topic 22 — async Pipe (the primary template consumption pattern for all operator results)
+Topic 36 — HttpClient & API Integration (all six operators are primarily used to compose HTTP calls)
+Topic 44 — State Management Patterns (BehaviorSubject stores are the primary source observables for combineLatest)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 47 — Testing Angular Components (fakeAsync + tick() testing of debounceTime and switchMap)
+Topic 48 — Testing Services & HTTP (marble testing of operator pipelines)
+Topic 50 — Angular Universal & SSR (SSR transfer state patterns use switchMap + isPlatformBrowser guards)
+
+Production readiness assessment:
+
+These operators are production-essential — a codebase that uses mergeMap for search or forkJoin with non-completing streams has silent race condition and hanging subscription bugs waiting to surface under real network conditions; mastering the operator selection rules here is a prerequisite for any HTTP-heavy Angular feature.
+
+Section 14 — Common Interview Questions
+Question 1
+"What is the difference between switchMap, mergeMap, and concatMap, and when would you use each?"
+Strong answer covers:
+
+switchMap: cancels the previous inner observable when a new source value arrives — use for search/autocomplete where only the latest result matters
+mergeMap: all inner observables run concurrently with no cancellation — use for independent parallel actions (liking posts, firing analytics events)
+concatMap: queues inner observables, processing one at a time in order — use for sequential write operations where order and completion matter
+Critical rule: never use switchMap for write operations (POST/PUT/DELETE) — it cancels in-flight requests
+Concrete examples for each
+
+Weak answers typically miss: The POST/PUT/DELETE rule for switchMap — most candidates know the search use case but don't know the danger for write operations.
+Difficulty: Mid/Senior
+
+Question 2
+"Why might a forkJoin never emit, and how would you debug it?"
+Strong answer covers:
+
+forkJoin requires all source observables to complete — it waits for completion, not just emission
+BehaviorSubject, Subject, combineLatest, and WebSocket streams never complete unless explicitly closed
+Debugging: add tap({ complete: () => console.log('completed') }) to each source
+Fix: use take(1) on non-completing sources, or switch to combineLatest if live streams are intended
+catchError on individual sources prevents one failure from silently killing all results
+
+Weak answers typically miss: The completion requirement — candidates often know forkJoin "combines" observables but don't know it specifically waits for completion, not just emission.
+Difficulty: Mid
+
+Question 3
+"A developer uses combineLatest to combine a search query stream with a data stream, but the component template never renders. What are the two most likely causes and how would you fix each?"
+Strong answer covers:
+
+Cause 1: one source uses Subject instead of BehaviorSubject — combineLatest requires every source to have emitted at least once; fix with BehaviorSubject or startWith('')
+Cause 2: the observable isn't subscribed to — the async pipe is missing in the template, or the subscribe() call is absent
+Secondary cause: debounceTime is set too high and the developer is testing before the debounce period elapses
+Mention tap() as the diagnostic tool to identify which source hasn't emitted
+
+Weak answers typically miss: The "all sources must have emitted at least once" requirement — candidates know combineLatest conceptually but miss this initialisation requirement.
+Difficulty: Mid/Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Using switchMap for a Form Save Action
+typescript// ANTI-PATTERN
+@Component({...})
+export class EditFormComponent {
+  private saveClicks$ = new Subject<FormData>();
+
+  constructor() {
+    this.saveClicks$.pipe(
+      switchMap(data => this.http.put('/api/record', data))  // ← wrong
+    ).subscribe();
+  }
+
+  onSave(data: FormData) { this.saveClicks$.next(data); }
+}
+Why it seems fine: switchMap is the "correct" HTTP operator from the search pattern. The form saves correctly in testing where save clicks are spaced apart.
+What breaks in production: A user double-clicks "Save" or clicks Save while a slow network is still processing the first save. switchMap cancels the first PUT request mid-flight. The server may have partially written the first save's data. The user receives one success response and assumes both were saved — but the first save's data is lost or corrupted.
+Correct pattern:
+typescript// Use exhaustMap (ignore new clicks while save is in progress)
+// or concatMap (queue saves and process sequentially):
+this.saveClicks$.pipe(
+  exhaustMap(data => this.http.put('/api/record', data))
+  // exhaustMap: if a save is in progress, ignore new save clicks entirely
+)
+
+Anti-Pattern 2 — forkJoin with a Store Observable
+typescript// ANTI-PATTERN
+ngOnInit() {
+  forkJoin([
+    this.http.get('/api/config'),          // completes ✓
+    this.userStore.currentUser$            // BehaviorSubject — never completes ✗
+  ]).subscribe(([config, user]) => {
+    // Never fires. No error. Silent hang.
+    this.initDashboard(config, user);
+  });
+}
+Why it seems fine: forkJoin is described as "combining observables" — using it with a store stream seems like combining config data with user data, which is exactly what the code intends.
+What breaks in production: The subscription never fires. The dashboard never initialises. The user sees a blank or perpetual loading state. No error appears in the console because forkJoin is not throwing — it's genuinely waiting for currentUser$ to complete, which it never will.
+Correct pattern:
+typescript// Use combineLatest if the user$ is a live stream:
+combineLatest([
+  this.http.get('/api/config').pipe(shareReplay(1)),
+  this.userStore.currentUser$
+]).pipe(
+  take(1),   // complete after first combined emission if one-shot behaviour is needed
+  takeUntilDestroyed(this.destroyRef)
+).subscribe(([config, user]) => {
+  this.initDashboard(config, user);
+});
+
+Anti-Pattern 3 — Nested subscribe() for Sequential Async Operations
+typescript// ANTI-PATTERN: nested subscribes
+@Component({...})
+export class OrderComponent implements OnInit {
+  private destroyRef = inject(DestroyRef);
+
+  ngOnInit() {
+    this.route.paramMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(params => {
+        const orderId = params.get('id');
+        // Inner subscribe — NOT connected to outer's takeUntilDestroyed
+        this.orderService.getOrder(orderId).subscribe(order => {
+          this.order = order;
+          // Third level — completely unmanaged lifecycle
+          this.orderService.getRelatedProducts(order.categoryId).subscribe(products => {
+            this.related = products;
+          });
+        });
+      });
+  }
+}
+Why it seems fine: It works correctly and reads sequentially — "get the params, then get the order, then get related products." Mirrors familiar Promise .then() chains.
+What breaks at scale: The inner subscriptions have no connection to takeUntilDestroyed. When the component is destroyed, the outer subscription is cleaned up but the two inner subscriptions continue running. On a route with heavy navigation (back/forward in a product catalogue), each visit to this component adds two more leaked subscriptions that never clean up. In long sessions this accumulates into significant memory and callback overhead.
+Correct pattern:
+typescriptngOnInit() {
+  this.route.paramMap.pipe(
+    switchMap(params =>
+      this.orderService.getOrder(params.get('id')!).pipe(
+        switchMap(order =>
+          this.orderService.getRelatedProducts(order.categoryId).pipe(
+            map(products => ({ order, products }))
+          )
+        )
+      )
+    ),
+    takeUntilDestroyed(this.destroyRef)  // ONE cleanup point covers the entire chain
+  ).subscribe(({ order, products }) => {
+    this.order = order;
+    this.related = products;
+  });
+}
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet — RxJS Operators in Depth
+Core concept in one sentence:
+
+Flattening operators (switchMap, mergeMap, concatMap) define what happens to the previous inner observable when a new source value arrives — cancel it, run it concurrently, or queue behind it — and that single decision determines whether your async logic is correct or silently broken.
+Key rules:
+
+switchMap = cancel previous — use for search, autocomplete, route-driven data loading; never for writes
+mergeMap = run all concurrently — use for independent fire-and-forget actions (likes, analytics)
+concatMap = queue strictly — use for sequential writes, ordered uploads
+forkJoin = wait for all to complete — use only with completing observables (HttpClient); never with BehaviorSubject
+combineLatest = latest from all, fires on any change — every source must have emitted at least once (use BehaviorSubject or startWith)
+Never nest subscribe() inside subscribe() — use a flattening operator; one takeUntilDestroyed covers the whole chain
+
+The single most important Angular rule:
+
+Never use switchMap for POST/PUT/DELETE operations — it cancels in-flight write requests on double-click or rapid re-trigger, silently corrupting or losing data.
+
+Operator selection at a glance:
+ScenarioOperatorSearch / autocompleteswitchMap + debounceTime + distinctUntilChangedLoad multiple resources in parallel before renderingforkJoin (with per-source catchError)Combine live filter streamscombineLatest (all sources must be BehaviorSubject)Independent concurrent writesmergeMapSequential ordered writesconcatMapIgnore new triggers while one is activeexhaustMapSuppress rapid emissionsdebounceTime
+
+Topic 46 — RxJS Operators in Depth (REVISED)
+Audit findings applied: Constructor injection in examples (#3) → verified section by section below. tap for state updates where Signals would now be cleaner (#11) → identified and corrected. All other sections checked for audit-flagged drift.
+Pre-audit verification result: Every code example in the original Topic 46 delivery already used inject() field initializers — zero constructor injection was present. The audit item #3 is a false positive for this topic, same as Topic 45. This is confirmed below for transparency. The genuine finding is audit item #11 (tap for state updates) — identified in Section 8 Scenario 2 and Section 11.
+Sections changed: 8 (Scenario 2), 11, 12. All other sections kept verbatim.
+
+Sections 0–7 (unchanged — verbatim)
+(Difficulty Rating, Explanation, Connection to Prior Concepts, Code Examples, Before & After Refactor, Common Mistakes, Do's and Don'ts, Debugging Tips — all code in Sections 3–7 already used inject() exclusively: private http = inject(HttpClient), private destroyRef = inject(DestroyRef), private userStore = inject(UserStore), private service = inject(ProductPageService), private route = inject(ActivatedRoute). Zero constructor parameters present. No tap for state mutation present in these sections — tap appeared only in debugging diagnostics with tap({ complete: () => console.log(...) }), which is correct usage.)
+
+Section 8 — Real-World Applications (REWRITTEN — Scenario 2 only; Scenario 1 unchanged)
+Scenario 1 — Route-Driven Data Loading with switchMap + forkJoin (unchanged — verbatim)
+typescript@Injectable({ providedIn: 'root' })
+export class ProductPageService {
+  private http = inject(HttpClient);
+
+  loadPage(productId: number): Observable<ProductPageData> {
+    return forkJoin({
+      product: this.http.get<Product>(`/api/products/${productId}`)
+        .pipe(catchError(() => of(null))),
+      reviews: this.http.get<Review[]>(`/api/products/${productId}/reviews`)
+        .pipe(catchError(() => of([]))),
+      related: this.http.get<Product[]>(`/api/products/${productId}/related`)
+        .pipe(catchError(() => of([])))
+    });
+  }
+}
+
+@Component({ standalone: true, imports: [AsyncPipe] })
+export class ProductDetailComponent {
+  private service    = inject(ProductPageService);
+  private route      = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
+
+  pageData$: Observable<ProductPageData> = this.route.paramMap.pipe(
+    map(params => +params.get('id')!),
+    distinctUntilChanged(),
+    switchMap(id => this.service.loadPage(id)),
+    takeUntilDestroyed(this.destroyRef)
+  );
+}
+// switchMap wrapping forkJoin: if the user navigates from product 1 to product 2
+// before product 1's three requests complete, switchMap cancels all three
+// and starts the three requests for product 2 immediately.
+
+Scenario 2 — Real-Time Dashboard with combineLatest + debounceTime (REWRITTEN — original used tap to update a loading signal from inside the RxJS pipeline, which the audit flags as the anti-pattern; state mutations that touch signals should go through the signal's own write methods, not through side-effectful tap calls embedded in observable chains)
+A monitoring dashboard combines a live WebSocket stream of server metrics with user-controlled filter settings. The view updates whenever metrics change or the user adjusts filters.
+typescript// metrics-dashboard.service.ts
+@Injectable({ providedIn: 'root' })
+export class MetricsDashboardService {
+  private ws = inject(WebSocketService);
+
+  // ── Filter state — signals own their own mutations ──────────────────────
+  // These are signals, not Subjects, because their only consumers are the
+  // template and this combineLatest pipeline — no need for a Subject.
+  // The template writes to them directly via (change) event bindings.
+  readonly timeRange$    = new BehaviorSubject<'1h' | '6h' | '24h'>('1h');
+  readonly serverFilter$ = new BehaviorSubject<string>('all');
+
+  // ── Loading state as a signal, NOT mutated via tap() ────────────────────
+  // The audit finding: the original Scenario 2 used
+  //   tap(() => this.isLoading.set(true))
+  // at the start of the pipeline and
+  //   tap(() => this.isLoading.set(false))
+  // after the map — i.e. using tap() as a state-mutation mechanism embedded
+  // inside a reactive pipeline.
+  //
+  // Why this is wrong:
+  //   tap() fires on every emission, including replays, retries, and test
+  //   scheduler ticks. It conflates "I received a value" with "loading is done"
+  //   in a way that breaks under race conditions (two sources emit in the same
+  //   tick) and makes the loading state invisible to unit tests that don't
+  //   subscribe to the full pipeline. It's also the pattern that makes RxJS
+  //   code hard to read — side effects hidden inside value-transformation chains.
+  //
+  // The signal-native replacement: loading state is owned by a signal and
+  // written to from explicit, named methods — never from tap().
+  readonly isLoading = signal(false);
+
+  readonly filteredMetrics$: Observable<DashboardData> = combineLatest([
+    this.ws.connect('/metrics'),   // emits ServerMetric[] every 5 seconds
+    this.timeRange$,
+    this.serverFilter$
+  ]).pipe(
+    debounceTime(50),              // if multiple sources emit within 50ms, process once
+    map(([metrics, range, serverFilter]) => {
+      // Pure value transformation only — no tap() side effects here
+      return {
+        metrics: metrics
+          .filter(m => serverFilter === 'all' || m.serverId === serverFilter)
+          .filter(m => isWithinRange(m.timestamp, range)),
+        summary:     computeSummary(metrics),
+        lastUpdated: new Date()
+      };
+    }),
+    shareReplay(1)                 // share the latest value with multiple async pipe subscribers
+  );
+
+  // ── Explicit loading control — signal written from named methods ─────────
+  // Called from the component when the user triggers a manual refresh.
+  // The loading state is a concern of the *caller*, not of the pipeline.
+  startRefresh(): void {
+    this.isLoading.set(true);
+  }
+
+  finishRefresh(): void {
+    this.isLoading.set(false);
+  }
+}
+typescript// metrics-dashboard.component.ts
+@Component({
+  standalone: true,
+  imports: [AsyncPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (service.isLoading()) {
+      <app-spinner />
+    }
+
+    @if (service.filteredMetrics$ | async; as data) {
+      <app-metrics-grid [metrics]="data.metrics" />
+      <app-summary-bar  [summary]="data.summary" />
+      <span>Updated: {{ data.lastUpdated | date:'shortTime' }}</span>
+    }
+
+    <select (change)="service.timeRange$.next($any($event.target).value)">
+      <option value="1h">Last hour</option>
+      <option value="6h">Last 6 hours</option>
+      <option value="24h">Last 24 hours</option>
+    </select>
+
+    <button (click)="refresh()">Refresh</button>
+  `
+})
+export class DashboardComponent {
+  protected service = inject(MetricsDashboardService);
+
+  refresh(): void {
+    // Loading state is updated from the component's explicit action —
+    // never from a tap() buried inside the service's pipeline.
+    // This makes the state transition visible, testable, and not
+    // entangled with how many emissions combineLatest happened to produce.
+    this.service.startRefresh();
+    this.service.filteredMetrics$.pipe(
+      take(1),
+      takeUntilDestroyed(inject(DestroyRef))
+    ).subscribe(() => this.service.finishRefresh());
+  }
+}
+Why this matters — tap() for state mutation vs. explicit signal writes:
+tap() for state mutation (original — wrong)Signal write from named method (corrected)When state changesOn every emission, including replays and retriesOnly from explicit, named call sitesTestabilityRequires subscribing to full pipeline in tests to observe state changeState is a plain signal — assert store.isLoading() directlyRace condition behaviourTwo concurrent emissions both flip isLoading — order undefinedCaller controls transitions — no surprise flipsReadabilitySide effect hidden inside value-transformation chainState mutations are named, explicit, and co-located with the intent
+
+Section 9 — Practice Exercises (unchanged — verbatim)
+(All three exercises already instruct the use of inject() and signal-based state — no tap-for-state-mutation pattern was suggested.)
+
+Section 10 — Key Takeaways (unchanged — verbatim)
+(No tap-for-mutation or constructor-injection content was present in the original takeaways.)
+
+Section 11 — Thought-Provoking Question + Answer (REWRITTEN — new question targeting the tap() anti-pattern that the audit flags, since the original Q&A was about HTTP cancellation only)
+Question: You're building a search component. Every time the user types, you want to: show a loading spinner, fire the HTTP search, then hide the spinner. The "obvious" RxJS approach is to use tap() to set a loading signal before and after the switchMap. What's wrong with that, and what's the correct approach in modern Angular?
+Answer:
+The tap()-for-state-mutation pattern is one of the most widespread anti-patterns in Angular RxJS code — it looks clean, reads linearly, and works in simple cases. Understanding exactly where it breaks is what separates mid-level from senior Angular developers.
+The conceptual explanation:
+tap() is a side-effect operator — it runs a function for every emission without transforming the value. The problem with using it to mutate state (including signal writes) is that it ties state transitions to emission events rather than to intent. Here's what that means in practice:
+typescript// The "obvious" approach — looks fine, breaks in subtle ways
+this.results$ = this.query$.pipe(
+  debounceTime(300),
+  tap(() => this.isLoading.set(true)),   // fires on every debounced emission
+  switchMap(q =>
+    this.http.get<Result[]>('/api/search', { params: { q: q } }).pipe(
+      catchError(() => of([]))
+    )
+  ),
+  tap(() => this.isLoading.set(false))   // fires when switchMap emits
+);
+Three specific failure modes:
+Failure 1 — switchMap cancellation leaves loading stuck. When the user types a second character before the first HTTP response arrives, switchMap cancels the first inner observable. The second tap() (which sets isLoading to false) only runs when the current inner observable emits — meaning if the user types rapidly and then stops, the spinner shows correctly. But if the user types and then clears the input, switchMap cancels the last request and the filter(q => q.length >= 2) (if present) prevents a new emission — so the second tap() never runs and the loading spinner stays forever. The state machine has leaked into an invalid state.
+Failure 2 — Replay and multicasting break the state. If results$ is shared via shareReplay(1), a late subscriber receives the last cached emission immediately — triggering the second tap() (loading false) without ever triggering the first (loading true). The spinner was never shown for the new subscriber even though data was "loading" from its perspective.
+Failure 3 — Untestability. To assert isLoading transitions correctly in a test, you must subscribe to the full results$ pipeline and manage its timing. A simple unit test like expect(component.isLoading()).toBe(false) becomes entangled with fakeAsync, tick(300), and emission sequencing.
+The Angular-specific correct approach — signals own their state, RxJS owns its values:
+typescript// search.component.ts
+@Component({ standalone: true, imports: [AsyncPipe] })
+export class SearchComponent {
+  private http       = inject(HttpClient);
+  private destroyRef = inject(DestroyRef);
+
+  readonly query$     = new Subject<string>();
+  readonly isLoading  = signal(false);
+  readonly hasError   = signal(false);
+
+  readonly results$: Observable<Result[]> = this.query$.pipe(
+    debounceTime(300),
+    distinctUntilChanged(),
+    filter(q => q.length >= 2),
+    // switchMap's subscribe = "a search started"
+    // switchMap's inner observable completing = "this search finished"
+    // Neither of these maps cleanly to a tap() call — the lifecycle is
+    // richer than "emission in, emission out"
+    switchMap(q => {
+      // State mutation is explicit, co-located with the action that caused it,
+      // and not entangled with how many emissions the outer pipeline produced
+      this.isLoading.set(true);
+      this.hasError.set(false);
+
+      return this.http.get<Result[]>('/api/search', { params: { q } }).pipe(
+        tap({ complete: () => this.isLoading.set(false) }), // lifecycle hook, not emission hook
+        catchError(() => {
+          this.isLoading.set(false);
+          this.hasError.set(true);
+          return of([]);
+        })
+      );
+    }),
+    takeUntilDestroyed(this.destroyRef)
+  );
+}
+The practical rule: tap() is correct for observation (logging, debugging, analytics) and for lifecycle hooks (tap({ complete: ... }) to clean up after a stream finishes). It is wrong for state mutation that has a defined start event and a defined end event — those transitions belong to explicitly named signal writes called from the places in the code that represent the actual intent. In modern Angular, the clean split is: RxJS pipelines transform and transport values; signals own and publish state.
+
+Section 12 — Related Topics to Learn Next (REWRITTEN — added tap anti-pattern cross-reference)
+ES6/JS Concepts:
+
+AbortController and AbortSignal — the browser APIs that underpin switchMap's HTTP cancellation; understanding them gives insight into exactly when and how cancellation propagates to the server
+Promise.all() vs Promise.allSettled() — the Promise equivalents of forkJoin; knowing both helps when bridging RxJS and Promise-based code
+
+TypeScript Concepts:
+
+Conditional types for observable typing — building typed wrappers around forkJoin and combineLatest results using ObservedValueOf<T> and mapped types; makes complex pipeline return types readable
+
+Angular-Specific Concepts:
+
+Topic 47 — Testing Angular Components — fakeAsync and tick() are the primary tools for testing debounceTime and switchMap pipelines; the signal-based loading state pattern from Section 11 makes those tests dramatically simpler — asserting component.isLoading() directly vs. orchestrating full pipeline subscriptions
+Topic 48 — Testing Services & HTTP — provideHttpClient() + provideHttpClientTesting() and HttpTestingController for testing HTTP operator pipelines; this is the direct testing companion to Topic 46
+exhaustMap — the fourth flattening operator not covered in depth here; it ignores new source values while an inner observable is active (the "submit button" operator — ignore double-clicks while a save is in progress); pairs naturally with the signal-based loading state pattern: set isLoading(true) before exhaustMap, clear it in the inner pipe's completion/error handlers
+shareReplay(1) — prevents multiple subscribers from triggering multiple HTTP calls; Section 11 explains why tap()-for-state combined with shareReplay(1) breaks in specific ways that explicit signal writes do not
+toSignal() from @angular/core/rxjs-interop — the Angular-native bridge that converts an Observable into a Signal; the cleanest way to consume a switchMap/forkJoin result in a component that also needs to read the value synchronously or in a computed()
+
+
+Sections 13–16 (unchanged — verbatim)
+(Study Plan Checkpoint, Interview Questions, Anti-Patterns, Mental Model Summary — the original anti-patterns already correctly identify nested subscribe(), wrong operator selection, and forkJoin with non-completing streams. No tap-for-mutation pattern appeared in these sections and no constructor injection was present.)
+
+Summary of changes made to Topic 46:
+
+Sections 0–7, 9–10, 13–16 → kept verbatim (constructor injection audit item #3 confirmed as false positive — every original code block already used inject())
+Section 8, Scenario 1 → kept verbatim
+Section 8, Scenario 2 → rewritten — removed tap() for loading state mutation, replaced with explicit signal writes from named methods, added a comparison table explaining the difference
+Section 11 → entirely new Q&A targeting the tap()-for-state-mutation anti-pattern directly — the core audit finding (#11) for this topic
+Section 12 → added toSignal() and cross-references to the signal/tap split as new Related Topics entries
+

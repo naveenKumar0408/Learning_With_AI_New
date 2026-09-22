@@ -1,0 +1,91 @@
+Question 1 — Complete topic list
+Can you give me the full list of topics you covered across all 8 chats? Specifically:
+ES6/JS Foundations (Topics 1–11):
+Topic 1 — let / const / var
+Topic 2 — Block Scope & Hoisting
+Topic 3 — Closures & Lexical Scope
+Topic 4 — Arrow Functions & this Binding
+Topic 5 — The Event Loop & Call Stack
+Topic 6 — Callback Functions
+Topic 7 — Pass by Value vs Pass by Reference
+Topic 8 — Promises & async/await
+Topic 9 — Array Methods
+Topic 10 — Destructuring & Spread Operator
+Topic 11 — Template Literals
+TypeScript Foundations (Topics 12–19):
+Topic 12 — Modules & Imports/Exports
+Topic 13 — TypeScript Interfaces & Types
+Topic 14 — readonly & Immutability Patterns
+Topic 15 — Access Modifiers (private, protected, public)
+Topic 16 — TypeScript Generics
+Topic 17 — TypeScript Decorators
+Topic 18 — Error Handling
+Topic 19 — Optional Chaining & Nullish Coalescing
+Angular Core — RxJS & Reactivity:
+Topic 20 — RxJS Subscription Management
+Topic 21 — takeUntilDestroyed & DestroyRef
+Topic 22 — async Pipe
+Topic 23 — Angular Signals (signal, computed, effect)
+Topic 24 — OnPush Change Detection
+Angular Core — Components & Architecture:
+Topic 25 — Component Lifecycle Hooks (ngOnInit, ngOnDestroy, ngOnChanges, ngAfterViewInit)
+Topic 26 — @Input() & @Output() in Depth
+Topic 27 — Services & Dependency Injection
+Topic 28 — Angular Template Syntax (interpolation, property binding, event binding, two-way binding)
+Topic 29 — Built-in Control Flow (@if, @for, @switch)
+Topic 30 — Built-in Directives (ngClass, ngStyle, ngTemplateOutlet)
+Topic 31 — Content Projection (ng-content)
+Topic 32 — ViewChild, ViewChildren, ContentChild
+Angular Core — Forms:
+Topic 33 — Reactive Forms (FormGroup, FormControl, FormArray)
+Topic 34 — Form Validation (built-in validators, custom validators, async validators)
+Topic 35 — Template-Driven Forms
+Angular Core — HTTP & Routing:
+Topic 36 — HttpClient & API Integration
+Topic 37 — HTTP Interceptors
+Topic 38 — Angular Router (routes, navigation, parameters)
+Topic 39 — Route Guards (CanActivate, CanDeactivate, Resolve)
+Topic 40 — Lazy Loading & Route-Based Code Splitting
+Angular Advanced:
+Topic 41 — Custom Directives
+Topic 42 — Custom Pipes
+Topic 43 — Angular Animations
+Topic 44 — State Management Patterns (service with Signal / BehaviorSubject)
+Topic 45 — Performance Optimisation (trackBy, pure pipes, memoisation, deferrable views)
+Topic 46 — RxJS Operators in Depth (switchMap, mergeMap, concatMap, forkJoin, combineLatest, debounceTime)
+Topic 47 — Testing Angular Components (TestBed, ComponentFixture, fakeAsync)
+Topic 48 — Testing Services & HTTP (HttpClientTestingModule, spies)
+Topic 49 — Angular CDK (Overlay, DragDrop, VirtualScroll)
+Topic 50 — Angular Universal & SSR
+NgRx & Component Store — Topic Roadmap
+Topic 51 — NgRx Core Concepts (Store, Actions, Reducers, Selectors)
+The foundational mental model: unidirectional data flow, immutable state, and why the four pieces exist as separate concepts rather than one object.
+Topic 52 — NgRx Effects
+Side effects outside the reducer: HTTP calls, navigation, analytics, and the operators that make Effects safe (concatMap vs switchMap vs exhaustMap in the Effects context).
+Topic 53 — NgRx Selectors In Depth
+Memoised projector functions, selector composition, createSelectorFactory, and why selectors are the single most performance-critical piece of an NgRx app.
+Topic 54 — NgRx Entity
+EntityState, EntityAdapter, and CRUD operations without boilerplate — the pattern that replaces manual array manipulation in reducers.
+Topic 55 — NgRx Component Store
+Local ephemeral state for a single component tree: when to use Component Store instead of the global Store, the updater/effect/select API, and the lifecycle tie-in.
+Topic 56 — NgRx SignalStore (@ngrx/signals)
+The Signal-native alternative to Component Store: signalStore, withState, withComputed, withMethods — and when to choose SignalStore over Component Store or global Store.
+Topic 57 — NgRx Router Store
+Connecting the Angular Router to the NgRx Store: serialising route params and query params as state, and selecting navigation data without injecting ActivatedRoute everywhere.
+Topic 58 — NgRx Testing (Store, Effects, Selectors, Component Store)
+MockStore, provideMockStore, overriding selectors, testing Effects with hot/cold observables, and testing Component Store in isolation.
+Topic 59 — NgRx Best Practices & Architecture Patterns
+Feature state organisation, action hygiene (one action per event), avoiding selector waterfalls, the facade pattern, and the rules that separate maintainable NgRx from spaghetti NgRx.
+
+Question 3 — The 8 chats breakdown
+
+Learning with Claude - 1 to 19,25,26 - 1 to 13 section
+Learning Angular 20,21,22,23,24,27 - All 16 Sections
+Angular template syntax fundamentals - 28,29,30,31,32 - All 16 Sections
+Reactive forms with FormGroup and FormControl - 33,34,35,36,37 - All 16 Sections
+Angular router setup and navigation - 38,39,40,41 - All 16 Sections
+Custom pipes in Angular - 42,43,44,45,46,47, - All 16 Sections
+Testing services with HttpClientTestingModule - 48,49,50,51,52,53 All 16 Sections
+NgRx Entity and EntityAdapter patterns - 54,55,56,57,58 - All 16 Sections
+
+

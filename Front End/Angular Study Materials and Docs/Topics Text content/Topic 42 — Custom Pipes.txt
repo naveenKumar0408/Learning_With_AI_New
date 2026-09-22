@@ -1,0 +1,508 @@
+Topic 42 — Custom Pipes
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Beginner-Intermediate — The core concept is simple (a class with one method), but the nuance lies in understanding pure vs. impure pipes and when each breaks Angular's change detection in ways that are non-obvious until production.
+Angular Relevance: High — Pipes are the primary way to transform display data in templates without polluting component logic; every Angular app uses them, and writing custom ones is a daily skill once built-in pipes fall short.
+
+Section 1 — Explanation
+The Assembly Line Filter Analogy
+Imagine a factory assembly line. Raw products come in on a conveyor belt, pass through a filter/stamping machine, and come out the other side transformed — painted, resized, relabelled. The machine doesn't change the original product sitting in the warehouse; it only changes how the product looks as it passes through for display.
+A pipe is that machine. Data flows in from your component, passes through the pipe's transform() method, and comes out the other side formatted for the template. The original data in your component class is untouched.
+Angular's built-in pipes (DatePipe, CurrencyPipe, UpperCasePipe) are pre-built machines on the factory floor. A custom pipe is a machine you build yourself when none of the pre-built ones do the job.
+Technical Explanation:
+A custom pipe is a TypeScript class decorated with @Pipe({ name: '...' }) that implements the PipeTransform interface. That interface requires exactly one method: transform(value, ...args). In a template, the pipe is invoked with the | operator, and any arguments after the colon are forwarded to transform() as additional parameters.
+{{ expression | pipeName : arg1 : arg2 }}
+Pure vs. Impure — The Critical Distinction:
+Pure PipeImpure Pipepure flagtrue (default)falseWhen transform() runsOnly when input reference changesEvery change detection cyclePerformanceFast — Angular memoises resultSlow — runs on every keystroke/tickSafe forPrimitives, immutable objectsMutable arrays/objects, async dataRiskMisses mutations inside same referenceCan tank performance if heavy
+The golden rule: A pure pipe sees a new array only if you replace the array reference. Pushing into the same array is invisible to a pure pipe. This is the single most common pipe bug in Angular.
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 17 — TypeScript Decorators — @Pipe({...}) is a class decorator; understanding that decorators attach metadata to classes is essential here
+Topic 13 — TypeScript Interfaces & Types — PipeTransform is an interface your class implements; transform() is its contract
+Topic 24 — OnPush Change Detection — Pure pipes and OnPush share the same mental model: Angular skips re-evaluation when the reference hasn't changed
+Topic 29 — Built-in Control Flow — Pipes are used inline inside @for, @if, and interpolation — you've already been using built-in pipes in these contexts
+Topic 9 — Array Methods — Custom pipes that filter or sort arrays rely heavily on filter(), map(), sort()
+
+Bridging Note:
+
+In Topic 24 you learned that OnPush change detection skips a component unless its inputs change by reference. Pure pipes apply the exact same logic at a finer grain: Angular caches the last result and only calls transform() again when the input value (or its reference) changes. Both mechanisms exist for the same reason — avoiding unnecessary computation on every change detection cycle.
+Most directly extends: Topic 24 — OnPush Change Detection (shared reference-equality mental model).
+
+Section 3 — Code Example
+Plain TS Example — The Core Concept in Isolation
+typescript// A pipe is just a class with one method.
+// No Angular needed to understand the shape.
+
+class TruncatePipe {
+  transform(value: string, maxLength: number = 50, ellipsis: string = '...'): string {
+    if (!value) return '';                          // guard against null/undefined
+    if (value.length <= maxLength) return value;   // no truncation needed
+    return value.slice(0, maxLength) + ellipsis;   // slice and append suffix
+  }
+}
+
+// Usage (conceptually):
+const pipe = new TruncatePipe();
+console.log(pipe.transform('Hello Angular World', 10)); // "Hello Angu..."
+
+Real Angular Custom Pipe — Full Working Example
+typescript// truncate.pipe.ts
+import { Pipe, PipeTransform } from '@angular/core';
+
+@Pipe({
+  name: 'truncate',    // this is the name used in templates: {{ text | truncate : 100 }}
+  standalone: true,    // modern Angular — no NgModule needed
+  pure: true           // explicit for clarity; true is the default
+})
+export class TruncatePipe implements PipeTransform {
+
+  // value  = the left-hand side of the pipe expression
+  // maxLen = first argument after the colon  {{ text | truncate : 100 }}
+  // suffix = second argument                 {{ text | truncate : 100 : '…' }}
+  transform(value: string | null | undefined, maxLen: number = 50, suffix: string = '...'): string {
+    if (value == null) return '';                 // handles both null and undefined safely
+    if (value.length <= maxLen) return value;
+    return value.slice(0, maxLen).trimEnd() + suffix;  // trimEnd avoids "word ..."
+  }
+}
+typescript// article-card.component.ts
+import { Component, input } from '@angular/core';
+import { TruncatePipe } from './truncate.pipe';
+
+@Component({
+  selector: 'app-article-card',
+  standalone: true,
+  imports: [TruncatePipe],     // ← pipe must be imported, just like a component
+  template: `
+    <div class="card">
+      <h2>{{ article().title }}</h2>
+      <!-- truncate to 120 chars with a custom suffix -->
+      <p>{{ article().body | truncate : 120 : ' [read more]' }}</p>
+    </div>
+  `
+})
+export class ArticleCardComponent {
+  article = input.required<{ title: string; body: string }>();
+}
+
+Pipe with Multiple Arguments — Filter Pipe Example
+typescript// filter-by-status.pipe.ts
+import { Pipe, PipeTransform } from '@angular/core';
+
+interface Task { id: number; title: string; status: 'open' | 'done' | 'archived'; }
+
+@Pipe({
+  name: 'filterByStatus',
+  standalone: true,
+  pure: true   // IMPORTANT: only works correctly because we replace the array reference
+})
+export class FilterByStatusPipe implements PipeTransform {
+
+  transform(tasks: Task[] | null, status: string): Task[] {
+    if (!tasks) return [];               // guard — async data may arrive as null initially
+    if (!status) return tasks;           // no filter applied
+    return tasks.filter(t => t.status === status);
+  }
+}
+typescript// task-list.component.ts
+@Component({
+  selector: 'app-task-list',
+  standalone: true,
+  imports: [FilterByStatusPipe],
+  template: `
+    @for (task of (tasks | filterByStatus : activeFilter); track task.id) {
+      <p>{{ task.title }}</p>
+    }
+    <button (click)="setFilter('open')">Open</button>
+    <button (click)="setFilter('done')">Done</button>
+  `
+})
+export class TaskListComponent {
+  tasks: Task[] = [...];      // loaded from service
+  activeFilter = 'open';
+
+  setFilter(status: string) {
+    this.activeFilter = status;
+    // Because activeFilter is a primitive (string), its change triggers
+    // the pure pipe to re-run. This works correctly.
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Transformation Logic Polluting the Component
+typescript// BAD: the component is doing display transformation work
+@Component({
+  template: `
+    <p>{{ truncatedBody }}</p>
+    <span>{{ formattedPrice }}</span>
+  `
+})
+export class ProductComponent implements OnInit {
+  product!: Product;
+  truncatedBody = '';
+  formattedPrice = '';
+
+  ngOnInit() {
+    this.productService.get(this.id).subscribe(p => {
+      this.product = p;
+      // Transform logic lives in the component — it runs once on load
+      // If the product changes, you have to manually re-run these
+      this.truncatedBody = p.description.slice(0, 100) + '...';
+      this.formattedPrice = '$' + p.price.toFixed(2);
+    });
+  }
+}
+What breaks: The transformation runs once at load time. If product updates (e.g. after an edit), the truncated/formatted values go stale unless you manually re-derive them. The component is also carrying presentational logic that belongs in a reusable pipe. Unit testing this component now requires testing display logic too.
+
+✅ After — Clean Component, Reusable Pipe
+typescript// GOOD: component holds data, pipes handle display transformation
+@Component({
+  standalone: true,
+  imports: [TruncatePipe, CurrencyPipe],
+  template: `
+    <p>{{ product().description | truncate : 100 }}</p>
+    <span>{{ product().price | currency : 'USD' }}</span>
+  `
+})
+export class ProductComponent {
+  product = input.required<Product>(); // signal input — always current
+  // Zero transformation code in the component.
+  // If product() updates, pipes re-run automatically.
+}
+Why this refactor matters in Angular:
+
+Pipes are reusable across every template in the app
+Angular's pure pipe memoisation means transform() is only called when the value changes — no wasted computation
+The component can now go OnPush without any extra work, because display logic isn't entangled with state logic
+The pipe is trivially unit-testable in complete isolation
+
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using a Pure Pipe on a Mutated Array
+What the mistake looks like:
+typescriptaddTask(task: Task) {
+  this.tasks.push(task);  // mutates the same array reference
+  // The pure pipe never sees a new reference — it returns the old cached result
+}
+Why developers make it: push() is natural JavaScript and visually seems to update the list.
+How to avoid it:
+typescriptaddTask(task: Task) {
+  this.tasks = [...this.tasks, task]; // new reference → pure pipe re-runs
+}
+Angular-specific consequence: The filtered/sorted pipe result silently doesn't update. Users see stale data with no error in the console — one of the hardest bugs to spot.
+
+Mistake 2 — Making Every Array Pipe Impure "To Be Safe"
+What the mistake looks like:
+typescript@Pipe({ name: 'search', pure: false })  // "I'll just make it impure so it always works"
+export class SearchPipe implements PipeTransform {
+  transform(items: any[], query: string): any[] {
+    return items.filter(i => i.name.includes(query));
+  }
+}
+Why developers make it: After hitting Mistake 1, the reflex fix is to set pure: false.
+How to avoid it: Fix the mutation instead. Only use pure: false when you have a genuine use case (e.g. a pipe wrapping a service with internal mutable state). If you're using it for arrays, the real fix is immutable updates.
+Angular-specific consequence: An impure pipe on a list of 1,000 items runs filter() on every keypress, scroll, mouse move, and timer tick. This is a direct route to frame drops and sluggish UIs.
+
+Mistake 3 — Forgetting to Import the Pipe in the Component
+What the mistake looks like:
+NG8004: Pipe 'truncate' is not known
+Why developers make it: After years of NgModule, developers declare pipes in a shared module and expect them to be globally available. In standalone Angular, every consumer must import the pipe directly.
+How to avoid it: Add the pipe class to the imports: [] array of every standalone component that uses it. If it's used app-wide, create a SharedPipesModule or barrel export and import that module/set of pipes in a feature module.
+Angular-specific consequence: Compile-time error (caught before runtime) — but it blocks the build entirely until resolved.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TKeep pure: true (the default) for all pipes that transform primitives or produce a result from immutable inputsSet pure: false as a quick fix for stale data — diagnose the mutation insteadReturn a new array/object reference from transform() when the input is a collectionMutate the input value parameter inside transform() — pipes must be side-effect freeAdd standalone: true to every new pipe and import it directly into each consumerDeclare pipes in an NgModule then wonder why template compilation fails in standalone componentsHandle null and undefined in every pipe's first line — async data arrives lateAssume value will always be the expected type — API data is always nullable on first loadKeep transform() synchronous — pipes are not the place for HTTP calls or async logicInject HttpClient or perform async operations inside a pipe — use a service + async pipe insteadWrite a unit test for every custom pipe — transform() is a pure function and tests are trivialSkip pipe tests because "it's just a template thing" — pipes encode real business formatting logic
+
+Section 7 — Debugging Tips
+Bug 1 — Pipe Output Never Updates After Data Changes
+Symptom: The filtered/sorted list in the template stops updating after the initial load. Adding or removing items has no visible effect.
+Plain English Cause: You're using a pure pipe and mutating the array in place (push, splice, sort on the same reference). Angular's pure pipe cache sees the same reference and skips calling transform().
+Fix:
+typescript// Instead of:
+this.items.push(newItem);
+
+// Do:
+this.items = [...this.items, newItem];  // new reference forces pure pipe re-evaluation
+Angular-specific note: This same reference-equality rule applies to OnPush components. Both pure pipes and OnPush share the same underlying change detection mechanism.
+
+Bug 2 — NG8004: Pipe 'myPipe' is not known
+Symptom: Build or template compilation error, nothing renders.
+Plain English Cause: The pipe class hasn't been added to the imports: [] array of the standalone component using it.
+Fix:
+typescript@Component({
+  standalone: true,
+  imports: [MyCustomPipe],  // ← add it here
+  template: `{{ value | myPipe }}`
+})
+Angular-specific note: In older NgModule-based apps you'd declare the pipe in a module's declarations. In modern standalone Angular, imports replace declarations for all reusable code.
+
+Bug 3 — Pipe Arguments Are Treated as One Argument
+Symptom: transform() receives undefined for the second argument even though you're passing two colon-separated values in the template.
+Plain English Cause: You wrote {{ text | truncate : 100, '...' }} (comma) instead of {{ text | truncate : 100 : '...' }} (two colons). In Angular template pipe syntax, each argument is separated by :, not ,.
+Fix:
+html<!-- WRONG -->
+{{ text | truncate : 100, '...' }}
+
+<!-- CORRECT -->
+{{ text | truncate : 100 : '...' }}
+Angular-specific note: The comma syntax is valid JavaScript but is not how Angular's template parser separates pipe arguments. No error is thrown — the second argument silently becomes undefined.
+
+Section 8 — Real-World Applications
+Scenario 1 — Formatting API Response Data for Display
+A financial dashboard receives raw numbers from an API (1234567.89) and must display them as formatted currency strings in multiple templates. Instead of formatting in every component's ngOnInit, a FormatCurrencyPipe centralises the logic.
+typescript// format-currency.pipe.ts
+@Pipe({ name: 'formatCurrency', standalone: true, pure: true })
+export class FormatCurrencyPipe implements PipeTransform {
+  transform(value: number | null, currency: string = 'USD', locale: string = 'en-US'): string {
+    if (value == null) return '—';   // graceful dash for missing data
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2
+    }).format(value);
+  }
+}
+html<!-- Used in three different components without any code duplication -->
+<td>{{ trade.notional | formatCurrency : 'GBP' : 'en-GB' }}</td>
+<span>{{ account.balance | formatCurrency }}</span>
+<p>{{ position.pnl | formatCurrency : 'EUR' : 'de-DE' }}</p>
+Why a pipe and not a utility function: A utility function would still need to be called in the component's ngOnInit or template expression. The pipe runs lazily, is memoised by Angular, and integrates directly into the template data flow with zero component boilerplate.
+
+Scenario 2 — Client-Side Search Filter in an Angular Admin Table
+An admin panel lists 200+ users. A search input filters the visible rows. The filter pipe runs client-side against the already-loaded data — no extra HTTP call needed.
+typescript// user-search.pipe.ts
+@Pipe({ name: 'userSearch', standalone: true, pure: true })
+export class UserSearchPipe implements PipeTransform {
+  transform(users: User[] | null, query: string): User[] {
+    if (!users) return [];
+    if (!query.trim()) return users;
+
+    const lower = query.toLowerCase();
+    return users.filter(u =>
+      u.name.toLowerCase().includes(lower) ||
+      u.email.toLowerCase().includes(lower)
+    );
+  }
+}
+typescript@Component({
+  standalone: true,
+  imports: [UserSearchPipe, FormsModule],
+  template: `
+    <input [(ngModel)]="searchQuery" placeholder="Search users..." />
+
+    @for (user of (users | userSearch : searchQuery); track user.id) {
+      <app-user-row [user]="user" />
+    }
+  `
+})
+export class UserTableComponent {
+  users: User[] = [];          // loaded once from service
+  searchQuery = '';
+  // searchQuery is a primitive string — its reference changes on every keystroke
+  // so the pure pipe correctly re-runs on every input change
+}
+Key point: This works correctly with a pure pipe because searchQuery is a string primitive. Every keystroke assigns a new string value, triggering pure pipe re-evaluation. No pure: false needed.
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Create a standalone YesNoPipe that transforms a boolean value into the string 'Yes' or 'No'. It should handle null and undefined by returning 'Unknown'. Use it in a component template to display a list of feature flags.
+
+Exercise 2 — Intermediate
+Build a TimeAgoPipe that accepts a Date or ISO date string and returns a human-readable relative time string such as '3 minutes ago', '2 hours ago', or 'yesterday'. The pipe should be pure. Consider what happens to the displayed time when the component is left open for an extended period and how you might address that limitation.
+
+Exercise 3 — Advanced
+Build a HighlightSearchPipe that accepts a plain text string and a search query, and returns a safe HTML string with all matching substrings wrapped in <mark> tags (e.g. searching "ang" in "Angular" returns "<mark>Ang</mark>ular"). The pipe must use Angular's DomSanitizer to return a SafeHtml value so the result can be bound with [innerHTML] without triggering Angular's XSS protection. Wire it into a live search component that filters and highlights results simultaneously.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+A pipe is a class with one method — transform(value, ...args) — decorated with @Pipe
+The | operator in templates invokes transform() and passes the left-hand expression as value
+Additional colon-separated arguments in the template map to additional parameters in transform()
+Pure pipes (default) are memoised — Angular only calls transform() when the input reference changes
+Impure pipes run on every change detection cycle — use them sparingly and only when necessary
+Pipes must be imported into every standalone component that uses them
+
+Quick Reference Table:
+ScenarioPure or Impure?ReasonFormat a number/date/stringPureInput is a primitive, changes by referenceFilter an immutable arrayPureNew array reference on every updateFilter a mutated arrayImpure (or fix mutation)Pure pipe won't see in-place changesPipe wrapping a service with internal stateImpureService state changes aren't input reference changesTranslate pipe (i18n)ImpureLanguage can change without the key changing
+Angular-specific rules:
+
+Always handle null and undefined — async data starts as null
+Never perform HTTP calls or side effects inside transform()
+In standalone Angular, add pipes to imports: [], not declarations: []
+Immutable array updates ([...arr, item]) are required for pure filter/sort pipes to work
+
+One-Line Memory Aid:
+
+A pipe is a display filter — it transforms how data looks in the template without ever touching how data lives in the component.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: If pure pipes are memoised and won't re-run unless the reference changes, how does Angular's built-in DatePipe display the correct formatted date when used with date: 'shortTime' — shouldn't it get stuck on the first value it computed?
+Answer:
+This is a subtle and important question. DatePipe works correctly because of how it receives its inputs, not because of any special pipe behaviour.
+The conceptual explanation: Pure pipe memoisation is based on the input value passed to transform(), not time. If you pass the same Date object reference (or the same timestamp number) twice, Angular returns the cached result. But if your component updates its lastUpdated = new Date() on a timer, it's creating a new Date object each time. A new object means a new reference means Angular calls transform() again. The pipe isn't magic — it just benefits from immutable-style updates.
+The Angular-specific implication: This is why a TimeAgoPipe (showing "3 minutes ago") has a fundamental limitation when pure: if the input Date object doesn't change, the pipe won't re-run and the "minutes ago" text goes stale. You have two correct options:
+
+Make the pipe pure: false (accepting the performance trade-off, which is acceptable for a small number of instances)
+Keep it pure but have the component re-assign the date value periodically using setInterval, forcing a reference change
+
+Practical rule: Pure pipes work perfectly for transforming data into a display format where the result depends only on the input. The moment the result depends on something external to the input (current time, user locale from a service, translated strings), you need either an impure pipe or a different architecture (async pipe + observable).
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Intl API (Intl.NumberFormat, Intl.DateTimeFormat) — the browser-native formatting engine that powers most production pipe implementations
+
+TypeScript Concepts:
+
+Union types with null and undefined — every pipe's value parameter should explicitly type nullable inputs; this connects directly to Topic 19 (Optional Chaining)
+Type narrowing with typeof and instanceof — useful inside transform() to handle pipes that accept multiple input types
+
+Angular-Specific Concepts:
+
+Topic 44 — State Management Patterns — pipes often consume signals or observables from a centralised store; understanding how pure pipe memoisation interacts with signal-based state is essential
+Topic 45 — Performance Optimisation — pure pipes are listed explicitly as a performance tool alongside trackBy; this topic covers the full picture
+DomSanitizer and SafeHtml — required when a pipe needs to return HTML markup (the Section 9 Exercise 3 uses this)
+Angular's built-in AsyncPipe — the async pipe is itself an impure pipe that subscribes to an Observable or Promise; understanding its internals reinforces everything in this topic
+
+
+Section 13 — Study Plan Checkpoint
+Topics this directly depends on (must be solid before this topic):
+
+Topic 17 — TypeScript Decorators (@Pipe is a decorator)
+Topic 13 — TypeScript Interfaces (PipeTransform interface)
+Topic 24 — OnPush Change Detection (same reference-equality mental model)
+Topic 9 — Array Methods (filter/sort pipes rely on these)
+Topic 22 — async Pipe (useful contrast: async pipe is an Angular built-in impure pipe)
+
+Topics this unlocks or makes significantly easier:
+
+Topic 45 — Performance Optimisation (pure pipes are a first-class performance tool covered there)
+Topic 47/48 — Testing (pipes are the easiest Angular construct to unit test — a great testing entry point)
+Topic 44 — State Management (pipes are frequently the display layer for signal/observable stores)
+
+Production readiness assessment:
+
+Custom pipes are production-safe immediately once you understand the pure vs. impure distinction and always handle nullable inputs — the concept is simple, but the pure/mutation trap causes real production bugs if the mental model isn't solid.
+
+Section 14 — Common Interview Questions
+Question 1
+"What is the difference between a pure and an impure pipe in Angular, and when would you use each?"
+Strong answer covers:
+
+Pure pipes are called only when the input reference changes; Angular memoises the last result
+Impure pipes run on every change detection cycle
+Pure pipes are the default and correct choice for most formatting/filtering scenarios
+Impure pipes are appropriate when the output depends on external mutable state (service state, current time, user locale) that isn't reflected in the input value
+The performance cost of impure pipes: runs on every mousemove, keydown, timer tick
+
+Weak answers typically miss: That pure pipes with array inputs require immutable updates to the array — many candidates know the theory but miss the practical implication.
+Difficulty: Mid
+
+Question 2
+"Why might a filter pipe applied to an array stop working after items are added to the list?"
+Strong answer covers:
+
+Angular's pure pipe caches results based on reference equality
+Array.push() mutates the existing array in place — the reference doesn't change
+Angular's pure pipe mechanism sees the same reference and returns the cached (stale) result
+Fix: create a new array with spread ([...arr, newItem]) so the pipe sees a new reference
+Alternative: set pure: false, but explain the performance trade-off
+
+Weak answers typically miss: The word "reference" — candidates often say "the array doesn't update" without explaining the reference-equality mechanism behind it.
+Difficulty: Mid
+
+Question 3
+"How would you build a pipe that formats a number as a currency, handles null values, and is usable across multiple standalone components?"
+Strong answer covers:
+
+Implement PipeTransform, decorate with @Pipe({ name: '...', standalone: true, pure: true })
+First line of transform() guards for null/undefined — returns a placeholder like '—'
+Use Intl.NumberFormat (or Angular's CurrencyPipe via composition) for the actual formatting
+Mark as standalone: true so it can be imported directly into any component's imports array
+Mention that it goes in imports: [] of consuming components, not declarations: []
+
+Weak answers typically miss: Handling null inputs and the standalone: true + imports pattern — many candidates still think in NgModule terms.
+Difficulty: Mid/Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Method Call in Template Instead of a Pipe
+html<!-- ANTI-PATTERN: method called in template -->
+<p>{{ formatPrice(product.price) }}</p>
+typescriptformatPrice(price: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
+}
+Why it seems fine: It's simple, readable, and works correctly on first glance.
+What breaks at scale: In a default (non-OnPush) component, formatPrice() is called on every change detection cycle — mouse move, keypress, interval tick. Unlike a pure pipe, Angular has no memoisation for template method calls. In a table with 100 rows, this is 100 function calls per CD cycle with no caching. It also makes the component impossible to test without simulating formatting logic.
+Correct pattern:
+typescript@Pipe({ name: 'formatPrice', standalone: true, pure: true })
+export class FormatPricePipe implements PipeTransform {
+  transform(price: number | null): string { ... }
+}
+html<p>{{ product.price | formatPrice }}</p>
+
+Anti-Pattern 2 — Injecting HttpClient into a Pipe
+typescript// ANTI-PATTERN: async operation inside a pipe
+@Pipe({ name: 'userLabel', standalone: true, pure: false })
+export class UserLabelPipe implements PipeTransform {
+  private http = inject(HttpClient);
+
+  transform(userId: string): Observable<string> {
+    return this.http.get<User>(`/api/users/${userId}`).pipe(map(u => u.name));
+  }
+}
+Why it seems fine: It seems clever — resolve a display label directly in the template from an ID.
+What breaks at scale: Because this is impure, transform() fires on every CD cycle, triggering a new HTTP request each time. For a list of 50 users, this creates 50 × (CD cycles per second) requests — a network flood. The Observable return value also requires the async pipe to subscribe, creating a subscribe-per-row-per-cycle chain that leaks memory.
+Correct pattern: Resolve all user data upfront in the component or a resolver, store it in a map, and either use a pure pipe with the pre-loaded map or display directly.
+
+Anti-Pattern 3 — Impure Pipe for Internationalisation Without Caching
+typescript// ANTI-PATTERN: impure translation pipe with no memoisation
+@Pipe({ name: 'translate', pure: false })
+export class TranslatePipe implements PipeTransform {
+  constructor(private i18n: I18nService) {}
+
+  transform(key: string): string {
+    return this.i18n.get(key);   // hits the service on every CD cycle, no caching
+  }
+}
+Why it seems fine: Translation keys don't change often, so developers assume this is safe.
+What breaks at scale: An app with 200 translated strings on a page runs i18n.get() 200 times per change detection cycle. Even if get() is a simple map lookup, this adds measurable overhead. More seriously, if get() has any non-trivial logic (lazy loading, fallback chains), it compounds quickly.
+Correct pattern:
+typescript@Pipe({ name: 'translate', pure: false })
+export class TranslatePipe implements PipeTransform {
+  private cache = new Map<string, string>();  // memoisation cache
+  constructor(private i18n: I18nService) {}
+
+  transform(key: string): string {
+    if (this.cache.has(key)) return this.cache.get(key)!;
+    const value = this.i18n.get(key);
+    this.cache.set(key, value);
+    return value;
+  }
+}
+// Also subscribe to language-change events to clear the cache on locale switch
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet — Custom Pipes
+Core concept in one sentence:
+
+A pipe is a transform(value, ...args) method that Angular calls in the template to convert raw data into a display-ready format, with built-in memoisation when pure.
+Key rules:
+
+Decorate with @Pipe({ name, standalone: true, pure: true }) and implement PipeTransform
+transform(value, arg1, arg2) maps to {{ value | pipeName : arg1 : arg2 }} in templates
+Pure pipes (default) only re-run when the input reference changes — not when the value mutates
+Impure pipes (pure: false) re-run on every change detection cycle — use sparingly
+Always guard null/undefined on the first line of transform()
+Add the pipe class to imports: [] of every standalone component that uses it
+
+The single most important Angular rule:
+
+If a pure pipe stops updating after you add items to an array, you are mutating the array in place — replace it with a new reference using spread syntax.
+
+Choosing Pure vs. Impure:
+Use Pure when...Use Impure when...Input is a primitiveOutput depends on external mutable stateInput array is replaced on updateInput array is mutated in place (fix the mutation instead)Formatting dates, numbers, stringsBuilding a translate/i18n pipeFiltering immutable collectionsPipe needs to react to service state changes not in the inputYou said: 
+

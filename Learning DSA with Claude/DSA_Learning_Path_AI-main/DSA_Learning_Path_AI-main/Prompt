@@ -1,0 +1,69 @@
+LEARNING ORDER PROMPT
+
+You are teaching me a single topic from my DSA learning roadmap. I'm preparing for 
+coding interviews (LeetCode-style), using C# for all examples since I'm already 
+building C#/.NET fluency in parallel. My Big-O/complexity intuition is currently 
+weak, so don't assume I can analyze complexity on sight yet.
+
+TOPIC: [paste the exact topic/subtopic name and number from the DSA roadmap]
+
+PRIOR TOPICS ALREADY LEARNED: [list topics covered so far, or say "see conversation 
+history" if continuing in the same chat]
+
+Teach me this topic with the following rules:
+
+1. SCOPE DISCIPLINE: Cover exactly what this topic needs for interview-level mastery 
+   — no more, no less. Don't drift into research-paper-level depth or rare variants 
+   unless I've flagged this as a high-importance topic.
+
+2. CONNECT TO PRIOR KNOWLEDGE: Briefly note how this topic builds on what I've 
+   already learned (1-2 sentences).
+
+3. CORE EXPLANATION: Explain what the structure/algorithm does and the specific 
+   problem it solves — what becomes possible or efficient because it exists. Use a 
+   concrete analogy only if it genuinely clarifies something non-obvious.
+
+4. COMPLEXITY ANALYSIS (mandatory, every topic): State time and space complexity for 
+   its key operations, and — critically — walk through WHY, not just the result. 
+   Since my complexity intuition is weak, don't just state "O(log n)"; show me how 
+   to derive it by reasoning through the structure/algorithm's behavior.
+
+5. PATTERN RECOGNITION: Tell me the signal(s) in a problem statement that suggest 
+   "this topic applies here" (e.g. "sorted array + searching for a target" suggests 
+   binary search). This is the single most useful skill for interviews — don't skip 
+   it.
+
+6. C# IMPLEMENTATION: Give me a clean, minimal C# implementation of the core 
+   structure/algorithm (not a full solved problem yet — just the mechanism itself).
+
+7. WORKED EXAMPLE: Walk through one small example step-by-step (e.g. trace what 
+   happens to the data structure/algorithm state at each step), so I can see it 
+   operate, not just read the final code.
+
+8. COMMON MISCONCEPTIONS & MISTAKES: List the specific, concrete ways people 
+   misunderstand or misapply this topic in interviews — e.g. off-by-one errors, 
+   wrong complexity assumptions, applying the wrong variant of the structure, 
+   missing edge cases (empty input, duplicates, single element).
+
+9. PRACTICE PROBLEMS: Give me 2-3 real problems for this topic, referencing actual 
+   platforms/problem names where applicable (e.g. "LeetCode #1, Two Sum"), ordered 
+   easy → harder. Don't give me the solution — let me attempt them first.
+
+10. HIGH-IMPORTANCE FLAG: If this topic is one that shows up disproportionately 
+    often in real interviews (e.g. arrays/strings, hash maps, trees, graphs, dynamic 
+    programming), explicitly tell me so and why it deserves extra repetition beyond 
+    just the practice problems above.
+
+11. FORMAT: Use clear structure, but scale depth to the topic's real interview 
+    weight — a frequently-tested topic (e.g. hash maps) deserves full depth; a 
+    rarely-tested one (e.g. a specific tree variant) should be more concise.
+
+12. If my topic name is ambiguous, or has a prerequisite I haven't listed as already 
+    learned, ask one clarifying question before teaching — otherwise proceed.
+
+End by confirming what kinds of problems I should now be able to recognize and 
+solve on my own, so I can self-check before moving to the next topic.
+
+
+
+

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Angular Mastery Plan · 6 Weeks</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #161616;
+    --border: #1e1e1e;
+    --text: #e8e8e8;
+    --muted: #555;
+    --angular: #DD0031;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', 'Fira Code', 'Courier New', monospace;
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── TOP NAV ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .logo {
+    width: 30px; height: 30px; background: var(--angular); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 15px; color: #fff; flex-shrink: 0;
+  }
+  .topbar-title { font-size: 11px; color: #666; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabs { display: flex; gap: 4px; flex-shrink: 0; }
+  .tab {
+    padding: 6px 14px; border-radius: 4px; border: 1px solid #333;
+    background: transparent; color: #555; cursor: pointer;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    font-family: inherit; transition: all 0.15s; white-space: nowrap;
+  }
+  .tab.active { background: #e8e8e8; color: #0a0a0a; border-color: #e8e8e8; }
+
+  /* ── LAYOUT ── */
+  .layout { display: flex; min-height: calc(100vh - 59px); }
+
+  /* ── WEEK SIDEBAR ── */
+  .sidebar {
+    width: 180px; border-right: 1px solid var(--border);
+    padding: 16px 0; flex-shrink: 0; overflow-y: auto;
+  }
+  .week-btn {
+    width: 100%; padding: 12px 16px; background: transparent;
+    border: none; border-left: 3px solid transparent;
+    color: #3a3a3a; cursor: pointer; text-align: left;
+    font-family: inherit; font-size: 11px; letter-spacing: 0.05em;
+    transition: all 0.15s; display: block;
+  }
+  .week-btn.active { background: #141414; }
+  .week-btn .wnum { font-weight: 700; margin-bottom: 3px; font-size: 11px; }
+  .week-btn .wtitle { font-size: 10px; opacity: 0.65; line-height: 1.35; }
+
+  /* ── MAIN CONTENT ── */
+  .main { flex: 1; padding: 28px 24px; overflow-y: auto; max-width: 820px; }
+
+  .week-badge {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 3px 10px; border-radius: 3px; color: #0a0a0a;
+    letter-spacing: 0.1em; margin-bottom: 8px;
+  }
+  .week-hours { font-size: 11px; color: #444; margin-left: 8px; }
+  .week-title { font-size: 22px; font-weight: 700; color: #f0f0f0; letter-spacing: -0.3px; margin-bottom: 4px; }
+  .week-theme { font-size: 12px; color: var(--muted); font-style: italic; margin-bottom: 24px; }
+
+  .section-label {
+    font-size: 10px; color: #3a3a3a; letter-spacing: 0.12em;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+
+  /* ── TOPIC CARDS ── */
+  .topics { display: flex; flex-direction: column; gap: 2px; margin-bottom: 24px; }
+  .topic-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px 14px;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .topic-num { font-size: 10px; font-weight: 700; min-width: 18px; padding-top: 2px; flex-shrink: 0; }
+  .topic-name { font-size: 12px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px; }
+  .topic-detail { font-size: 11px; color: #4a4a4a; line-height: 1.65; }
+
+  /* ── EXERCISE BOX ── */
+  .exercise-box {
+    border-radius: 6px; padding: 16px 18px; margin-bottom: 16px;
+    border: 1px solid; background: #0d1a0d;
+  }
+  .exercise-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .exercise-text { font-size: 12px; color: #999; line-height: 1.75; }
+
+  /* ── INSIGHT BOX ── */
+  .insight-box {
+    background: #13100a; border: 1px solid #2a2200;
+    border-radius: 6px; padding: 14px 16px;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .insight-icon { font-size: 15px; flex-shrink: 0; }
+  .insight-label {
+    font-size: 10px; color: #c8a020; letter-spacing: 0.1em;
+    text-transform: uppercase; margin-bottom: 5px;
+  }
+  .insight-text { font-size: 11px; color: #6a5a30; line-height: 1.7; }
+
+  /* ── PROJECTS TAB ── */
+  .projects-wrap { padding: 28px 24px; max-width: 860px; }
+  .projects-header { margin-bottom: 28px; }
+  .projects-header h2 { font-size: 20px; font-weight: 700; color: #f0f0f0; margin-bottom: 6px; }
+  .projects-header p { font-size: 12px; color: #444; }
+  .project-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .project-card {
+    background: #0f0f0f; border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; transition: border-color 0.2s;
+  }
+  .project-header {
+    width: 100%; padding: 16px 18px; background: transparent; border: none;
+    cursor: pointer; display: flex; align-items: center; gap: 12px;
+    text-align: left; font-family: inherit;
+  }
+  .project-emoji { font-size: 20px; flex-shrink: 0; }
+  .project-meta { flex: 1; min-width: 0; }
+  .project-badges { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; flex-wrap: wrap; }
+  .level-badge {
+    font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 2px;
+    letter-spacing: 0.08em; white-space: nowrap;
+  }
+  .proj-num { font-size: 9px; color: #2a2a2a; }
+  .project-title { font-size: 13px; font-weight: 600; color: #e8e8e8; }
+  .chevron { color: #2a2a2a; font-size: 14px; transition: transform 0.2s; flex-shrink: 0; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .project-body { padding: 0 18px 18px; border-top: 1px solid #1a1a1a; display: none; }
+  .project-body.open { display: block; }
+  .project-desc { font-size: 12px; color: #666; line-height: 1.8; margin: 14px 0; }
+  .concepts-label { font-size: 10px; color: #2a2a2a; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .concepts-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .concept-tag {
+    font-size: 10px; color: #555; background: var(--surface2);
+    border: 1px solid #222; border-radius: 3px; padding: 3px 8px;
+  }
+  .why-box { border-left: 2px solid; padding: 10px 12px; border-radius: 0 4px 4px 0; background: #0a0a0a; }
+  .why-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .why-text { font-size: 11px; color: #4a4a4a; display: inline; }
+
+  /* ── MOBILE ── */
+  @media (max-width: 640px) {
+    .topbar { padding: 12px 14px; }
+    .topbar-title { display: none; }
+    .sidebar { display: none; }
+    .mobile-week-nav {
+      display: flex; overflow-x: auto; gap: 6px;
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .mobile-week-nav::-webkit-scrollbar { display: none; }
+    .mobile-week-btn {
+      flex-shrink: 0; padding: 7px 14px; border-radius: 20px;
+      border: 1px solid #2a2a2a; background: transparent;
+      color: #444; font-family: inherit; font-size: 11px;
+      cursor: pointer; white-space: nowrap; transition: all 0.15s;
+    }
+    .mobile-week-btn.active { color: #0a0a0a; font-weight: 700; }
+    .main { padding: 20px 14px; }
+    .week-title { font-size: 18px; }
+    .projects-wrap { padding: 20px 14px; }
+  }
+  @media (min-width: 641px) {
+    .mobile-week-nav { display: none; }
+  }
+
+  /* ── HIDDEN / SHOWN ── */
+  .page { display: none; }
+  .page.active { display: block; }
+  #plan-page { display: flex; flex-direction: column; }
+  #plan-page.active { display: flex; }
+  .plan-inner { display: flex; flex: 1; }
+
+  .week-content { display: none; }
+  .week-content.active { display: block; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">A</div>
+    <span class="topbar-title">Angular Mastery Plan · 6 Weeks</span>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('plan')">Plan</button>
+    <button class="tab" onclick="showTab('projects')">Projects</button>
+  </div>
+</div>
+
+<!-- ══════════ PLAN PAGE ══════════ -->
+<div id="plan-page" class="page active">
+
+  <!-- Mobile horizontal week nav -->
+  <nav class="mobile-week-nav" id="mobileNav"></nav>
+
+  <div class="plan-inner">
+    <!-- Desktop sidebar -->
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <!-- Week content panels -->
+    <main class="main" id="mainContent"></main>
+  </div>
+</div>
+
+<!-- ══════════ PROJECTS PAGE ══════════ -->
+<div id="projects-page" class="page">
+  <div class="projects-wrap">
+    <div class="projects-header">
+      <h2>5 Projects · Beginner → Advanced</h2>
+      <p>Build these after your 6-week plan. Each one stretches you further. Don't skip — difficulty is the point.</p>
+    </div>
+    <div class="project-list" id="projectList"></div>
+  </div>
+</div>
+
+<script>
+const weeks = [
+  {
+    week:1, title:"Angular Foundations & Mental Model", theme:"Understand how Angular thinks",
+    hours:"10–12 hrs", color:"#C8F96B",
+    topics:[
+      {name:"Angular CLI & Project Structure", detail:"ng new, folder anatomy (app/, environments/, assets/), angular.json, what each generated file does and why."},
+      {name:"Modules (NgModule) — the old glue", detail:"What NgModule is, declarations vs imports vs providers vs bootstrap. Even though standalone is the future, you'll encounter NgModule in every existing codebase."},
+      {name:"Standalone Components (Angular 17+)", detail:"The modern default. How standalone:true removes the need for NgModule for most things. Know both — prefer standalone for new code."},
+      {name:"Components — the core building block", detail:"@Component decorator, selector, template, styles. Component lifecycle overview (ngOnInit, ngOnDestroy are the two you'll use 80% of the time)."},
+      {name:"Template Syntax essentials", detail:"Interpolation {{ }}, property binding [prop], event binding (event), two-way binding [(ngModel)]. These four cover almost everything."},
+      {name:"TypeScript in Angular context", detail:"Interfaces for models, type-safe @Input/@Output, strict mode basics. Since you have theoretical TS knowledge, focus on Angular-specific patterns."},
+    ],
+    exercise:"Build a simple Profile Card component with @Input() props for name, role, and avatar. Display it three times in AppComponent with different data.",
+    keyInsight:"Angular is opinionated by design. Stop fighting its structure — learn to leverage it. The CLI is your best friend.",
+  },
+  {
+    week:2, title:"Component Communication & Directives", theme:"Make components talk to each other",
+    hours:"10–12 hrs", color:"#6BF9C8",
+    topics:[
+      {name:"@Input() & @Output()", detail:"Parent → Child with @Input(). Child → Parent with @Output() and EventEmitter. This is 90% of component communication you'll do daily."},
+      {name:"Built-in Control Flow (Angular 17+)", detail:"@if, @for, @switch in templates. These replaced *ngIf and *ngFor. Learn the new syntax — it's cleaner and performs better."},
+      {name:"Built-in Directives", detail:"ngClass, ngStyle for dynamic styling. The structural directives *ngIf and *ngFor (legacy) — you'll still encounter them in older code."},
+      {name:"Content Projection (ng-content)", detail:"How to make wrapper/layout components that accept arbitrary content. The Angular equivalent of React's children prop."},
+      {name:"ViewChild & ElementRef", detail:"Accessing child components or DOM elements programmatically. When to use it and when NOT to (prefer data-driven approaches)."},
+    ],
+    exercise:"Build a reusable Card List component. Parent passes an array of items via @Input(). Each card has a Delete button that emits the item id via @Output(). Parent removes it from the array.",
+    keyInsight:"@Input/@Output is the data flow backbone. Master unidirectional data flow first — it prevents 80% of state bugs.",
+  },
+  {
+    week:3, title:"Services, DI & State", theme:"Centralize logic, share data",
+    hours:"10–12 hrs", color:"#6BC8F9",
+    topics:[
+      {name:"Services & @Injectable()", detail:"What a service is, why it exists, how to generate one with CLI. The Single Responsibility Principle in Angular — components display, services do logic."},
+      {name:"Dependency Injection (DI)", detail:"How Angular's DI system works. providedIn: 'root' vs component-level providers. Understanding the injector hierarchy is crucial for debugging."},
+      {name:"Signals (Angular 17+) — the modern state", detail:"signal(), computed(), effect(). This is Angular's answer to reactive state management. Far simpler than RxJS for most use cases. Learn this deeply."},
+      {name:"RxJS Fundamentals (just enough)", detail:"Observable, Subject, BehaviorSubject. The pipe() operator, switchMap, map, tap, takeUntilDestroyed. You need a working understanding, not mastery."},
+      {name:"HttpClient & API calls", detail:"Injecting HttpClient, making GET/POST/PUT/DELETE calls, handling errors with catchError. Setting up provideHttpClient() in app.config.ts."},
+    ],
+    exercise:"Build a Todo Service with signal-based state (todos array as a signal). Add methods: addTodo(), removeTodo(), toggleComplete(). Inject it into two separate components — one shows the list, one shows the count. Watch them stay in sync.",
+    keyInsight:"Signals are the future of Angular reactivity. Invest time here — they're simple, powerful, and reduce RxJS complexity by 60%.",
+  },
+  {
+    week:4, title:"Routing & Navigation", theme:"Build multi-page applications",
+    hours:"10–12 hrs", color:"#F96BC8",
+    topics:[
+      {name:"Angular Router setup", detail:"provideRouter() in app.config.ts, router-outlet, defining route configurations. Lazy loading with loadComponent() for standalone components."},
+      {name:"Route Parameters & Query Params", detail:"Dynamic routes (/product/:id), reading params with ActivatedRoute or the new inject(ActivatedRoute) pattern. Query params for filters/pagination."},
+      {name:"Programmatic Navigation", detail:"Router.navigate() and Router.navigateByUrl(). When to use routerLink vs programmatic navigation."},
+      {name:"Route Guards", detail:"canActivate for auth protection. canDeactivate for unsaved changes warnings. The functional guard pattern (Angular 15+) is cleaner than class-based."},
+      {name:"Nested Routes & Layout Components", detail:"Child routes, multiple router-outlets, creating shell layout components (header + sidebar + content). This is how real apps are structured."},
+    ],
+    exercise:"Build a 3-page app: Home, Products list, Product detail (/products/:id). Add a fake auth guard that redirects to Home if a 'loggedIn' signal in AuthService is false. Add a login button that sets it to true.",
+    keyInsight:"Lazy loading is non-negotiable in production. Every feature module/route should be lazy loaded — it directly impacts initial load performance.",
+  },
+  {
+    week:5, title:"Forms & Validation", theme:"Handle user input like a pro",
+    hours:"10–12 hrs", color:"#F9C86B",
+    topics:[
+      {name:"Reactive Forms (the one you'll use at work)", detail:"FormGroup, FormControl, FormArray. FormBuilder service. Reactive forms are explicit, testable, and scalable. This is what production Angular uses."},
+      {name:"Built-in Validators", detail:"Validators.required, min, max, minLength, maxLength, pattern, email. Composing multiple validators. Displaying validation errors in templates."},
+      {name:"Custom Validators", detail:"Writing reusable validator functions. Cross-field validation (e.g., password === confirmPassword). Async validators for server-side checks."},
+      {name:"Template-driven Forms (know, don't master)", detail:"NgModel, ngForm. Simpler but less scalable. You'll encounter these in legacy code. Know how to read and maintain them."},
+      {name:"Form Submission & HTTP integration", detail:"Handling submit events, disabling submit button during loading, success/error feedback, resetting forms. End-to-end form → API → response flow."},
+    ],
+    exercise:"Build a Registration Form: name, email, password, confirmPassword. Validate all fields including a password-match custom validator. On submit, call a mock API, show a loading spinner, then a success/error message.",
+    keyInsight:"Reactive Forms feel verbose at first but save you hours of debugging. The explicit control over state is worth the setup cost.",
+  },
+  {
+    week:6, title:"Production Patterns & Architecture", theme:"Write Angular the way teams do",
+    hours:"10–12 hrs", color:"#F96B6B",
+    topics:[
+      {name:"Pipes — built-in & custom", detail:"DatePipe, CurrencyPipe, AsyncPipe (crucial for Observables in templates), JsonPipe for debugging. Writing your own pure and impure pipes."},
+      {name:"Angular Interceptors", detail:"HTTP interceptors for adding auth headers, logging, global error handling, loading state. The functional interceptor pattern. Every real app uses these."},
+      {name:"Error Handling Strategy", detail:"Global error handler (ErrorHandler), HTTP error interceptor, user-facing error messages. How to handle errors gracefully without crashing the app."},
+      {name:"Performance: OnPush Change Detection", detail:"How Angular's change detection works. ChangeDetectionStrategy.OnPush — when and why. Signal-based components auto-optimize this."},
+      {name:"Feature-based Folder Structure", detail:"Organizing by feature, not type. /features/auth/, /features/products/. Shared module/folder patterns. This is how real teams structure Angular apps."},
+      {name:"Testing basics (Angular-specific)", detail:"TestBed, ComponentFixture, HttpClientTestingModule. Writing one component test and one service test. Enough to understand the testing culture."},
+    ],
+    exercise:"Refactor your Week 4–5 app: add an HTTP interceptor that logs every request and appends a fake Bearer token. Restructure folders to feature-based layout. Add OnPush to your list component. Write one test for your Todo service.",
+    keyInsight:"Architecture decisions made in week 1 haunt you in month 6. Feature folders, OnPush, and interceptors aren't optional in real apps — they're table stakes.",
+  },
+];
+
+const projects = [
+  {
+    level:"Beginner", num:1, title:"Personal Finance Tracker", emoji:"💰",
+    color:"#6BF9C8",
+    description:"A single-page app to track income and expense entries. Users can add transactions with a category, amount, and date. A summary panel shows total income, total expenses, and balance updated in real time.",
+    concepts:["Signals for state","@Input/@Output","Reactive Forms","ngClass for conditional styling","Pipes (currency, date)","Component decomposition"],
+    why:"Forces you to think in components and manage shared state with signals — the core Angular loop.",
+  },
+  {
+    level:"Beginner+", num:2, title:"GitHub User Explorer", emoji:"🔍",
+    color:"#C8F96B",
+    description:"Search any GitHub username and display their profile, repositories sorted by stars, and language breakdown. Click a repo to see its details. Uses the public GitHub REST API.",
+    concepts:["HttpClient & real API calls","Route params (/user/:username)","RxJS switchMap for search debouncing","Async pipe","Error handling UI","Loading states"],
+    why:"Bridges theory to real-world API integration — the skill gap most developers struggle with.",
+  },
+  {
+    level:"Intermediate", num:3, title:"Kanban Task Board", emoji:"🗂️",
+    color:"#6BC8F9",
+    description:"A Trello-style board with columns (To Do, In Progress, Done). Cards can be added, edited, deleted, and moved between columns. Data persists via a service. Multiple boards supported via routing.",
+    concepts:["Complex state with Signals","Drag and drop (CDK DragDrop)","Feature-based folder structure","Route guards","Custom pipes","Service abstraction layer"],
+    why:"Real-world complexity with drag-and-drop, multi-route navigation, and persistent state — a portfolio-ready project.",
+  },
+  {
+    level:"Intermediate+", num:4, title:"Full Auth + Dashboard App", emoji:"🔐",
+    color:"#F9C86B",
+    description:"Multi-page app with login/register (JWT auth), a protected dashboard, user profile settings, and role-based access (admin vs user). Includes a data table with sorting, filtering, and pagination.",
+    concepts:["HTTP Interceptors (auth headers)","Route Guards (canActivate)","Reactive Forms with async validators","OnPush change detection","BehaviorSubject for auth state","Role-based conditional rendering"],
+    why:"This is the architecture every professional Angular app uses. Building it yourself makes job interviews feel easy.",
+  },
+  {
+    level:"Advanced", num:5, title:"Real-time Collaborative Notes App", emoji:"📝",
+    color:"#F96B6B",
+    description:"A Google Docs-lite app where users can create, edit, and delete notes with real-time updates via WebSockets or Firebase. Notes support rich text. Includes user presence indicators.",
+    concepts:["WebSockets / Firebase integration","RxJS advanced operators (merge, combineLatest)","Optimistic UI updates","NgRx or Signals store for complex state","Component library integration","Virtual scrolling via CDK"],
+    why:"Pushes you into real-time systems, advanced state management, and performance territory — the stuff that separates senior developers.",
+  },
+];
+
+let activeWeek = 0;
+
+function buildSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mobileNav = document.getElementById('mobileNav');
+  weeks.forEach((w, i) => {
+    // Desktop
+    const btn = document.createElement('button');
+    btn.className = 'week-btn' + (i === 0 ? ' active' : '');
+    btn.style.borderLeftColor = i === 0 ? w.color : 'transparent';
+    btn.style.color = i === 0 ? w.color : '';
+    btn.innerHTML = `<div class="wnum">WEEK ${w.week}</div><div class="wtitle">${w.title}</div>`;
+    btn.onclick = () => selectWeek(i);
+    sidebar.appendChild(btn);
+    // Mobile
+    const mbtn = document.createElement('button');
+    mbtn.className = 'mobile-week-btn' + (i === 0 ? ' active' : '');
+    mbtn.style.borderColor = i === 0 ? w.color : '';
+    mbtn.style.background = i === 0 ? w.color + '22' : '';
+    mbtn.style.color = i === 0 ? w.color : '';
+    mbtn.textContent = `Wk ${w.week}`;
+    mbtn.onclick = () => selectWeek(i);
+    mobileNav.appendChild(mbtn);
+  });
+}
+
+function buildWeekContent() {
+  const main = document.getElementById('mainContent');
+  weeks.forEach((w, i) => {
+    const div = document.createElement('div');
+    div.className = 'week-content' + (i === 0 ? ' active' : '');
+    div.id = 'week-' + i;
+    div.innerHTML = `
+      <div>
+        <span class="week-badge" style="background:${w.color}">${'WEEK ' + w.week}</span>
+        <span class="week-hours">${w.hours}</span>
+      </div>
+      <div class="week-title">${w.title}</div>
+      <div class="week-theme">${w.theme}</div>
+      <div class="section-label">Core Topics</div>
+      <div class="topics">
+        ${w.topics.map((t,j) => `
+          <div class="topic-card">
+            <span class="topic-num" style="color:${w.color}">${String(j+1).padStart(2,'0')}</span>
+            <div>
+              <div class="topic-name">${t.name}</div>
+              <div class="topic-detail">${t.detail}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="exercise-box" style="border-color:${w.color}33; border-left:3px solid ${w.color}">
+        <div class="exercise-label" style="color:${w.color}">Weekly Build Exercise</div>
+        <div class="exercise-text">${w.exercise}</div>
+      </div>
+      <div class="insight-box">
+        <span class="insight-icon">💡</span>
+        <div>
+          <div class="insight-label">Key Insight</div>
+          <div class="insight-text">${w.keyInsight}</div>
+        </div>
+      </div>
+    `;
+    main.appendChild(div);
+  });
+}
+
+function selectWeek(i) {
+  activeWeek = i;
+  const w = weeks[i];
+  // Sidebar buttons
+  document.querySelectorAll('.week-btn').forEach((b, j) => {
+    b.classList.toggle('active', j === i);
+    b.style.borderLeftColor = j === i ? weeks[j].color : 'transparent';
+    b.style.color = j === i ? weeks[j].color : '';
+  });
+  // Mobile buttons
+  document.querySelectorAll('.mobile-week-btn').forEach((b, j) => {
+    b.classList.toggle('active', j === i);
+    b.style.borderColor = j === i ? weeks[j].color : '#2a2a2a';
+    b.style.background = j === i ? weeks[j].color + '22' : '';
+    b.style.color = j === i ? weeks[j].color : '#444';
+  });
+  // Content panels
+  document.querySelectorAll('.week-content').forEach((c, j) => {
+    c.classList.toggle('active', j === i);
+  });
+  // Scroll mobile nav to show active
+  const mobileNav = document.getElementById('mobileNav');
+  const activeBtn = mobileNav.children[i];
+  if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+}
+
+function buildProjects() {
+  const list = document.getElementById('projectList');
+  projects.forEach((p, i) => {
+    const card = document.createElement('div');
+    card.className = 'project-card';
+    card.innerHTML = `
+      <button class="project-header" onclick="toggleProject(${i}, this)">
+        <span class="project-emoji">${p.emoji}</span>
+        <div class="project-meta">
+          <div class="project-badges">
+            <span class="level-badge" style="color:${p.color};background:${p.color}18">${p.level.toUpperCase()}</span>
+            <span class="proj-num">PROJECT ${p.num}</span>
+          </div>
+          <div class="project-title">${p.title}</div>
+        </div>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="project-body" id="proj-body-${i}">
+        <p class="project-desc">${p.description}</p>
+        <div class="concepts-label">Concepts Reinforced</div>
+        <div class="concepts-tags">
+          ${p.concepts.map(c => `<span class="concept-tag">${c}</span>`).join('')}
+        </div>
+        <div class="why-box" style="border-left-color:${p.color}">
+          <span class="why-label" style="color:${p.color}">Why this project · </span>
+          <span class="why-text">${p.why}</span>
+        </div>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function toggleProject(i, btn) {
+  const body = document.getElementById('proj-body-' + i);
+  const chevron = btn.querySelector('.chevron');
+  const card = btn.closest('.project-card');
+  const isOpen = body.classList.toggle('open');
+  chevron.classList.toggle('open', isOpen);
+  card.style.borderColor = isOpen ? projects[i].color + '44' : 'var(--border)';
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  if (tab === 'plan') {
+    document.querySelector('.tab:first-child').classList.add('active');
+    document.getElementById('plan-page').classList.add('active');
+  } else {
+    document.querySelector('.tab:last-child').classList.add('active');
+    document.getElementById('projects-page').classList.add('active');
+  }
+}
+
+buildSidebar();
+buildWeekContent();
+buildProjects();
+</script>
+</body>
+</html>

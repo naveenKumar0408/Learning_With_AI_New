@@ -1,0 +1,577 @@
+Topic 35 — Template-Driven Forms
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Beginner-Intermediate — The template syntax is approachable, but understanding why it works — and where it breaks down compared to Reactive Forms — requires a solid mental model of how Angular's directive system binds to an implicit form model behind the scenes.
+Angular Relevance: High — Template-Driven Forms are the right tool for simple, low-logic forms. You'll encounter them in legacy codebases, third-party component libraries, and anywhere rapid prototyping matters. Understanding them also sharpens your mental model of Reactive Forms by contrast.
+
+Section 1 — Explanation
+The Verbal Instructions Analogy
+Recall the Blueprint Analogy from Topic 33. Template-Driven Forms are the other approach — the Verbal Instructions approach.
+Instead of drawing a blueprint in TypeScript before construction begins, you walk onto the site and tell Angular what to build by annotating the HTML directly: "This input is called username. Make it required. Minimum 3 characters." Angular listens, builds the form model for you behind the scenes, and keeps it in sync with the template.
+Simple shed? Verbal instructions work great. You barely need a blueprint.
+
+Complex skyscraper with dynamic floors? You'll wish you had a blueprint. That's when Reactive Forms win.
+Template-Driven Forms are Angular saying: "You describe the form in HTML — I'll create the model." Reactive Forms are you saying: "I'll create the model in TypeScript — you just connect the template to it."
+
+Technical Explanation:
+When you add FormsModule and use ngModel on an input, Angular automatically:
+
+Creates a FormControl for that input behind the scenes
+Creates a FormGroup for the enclosing <form> element (via the NgForm directive)
+Registers each ngModel control into that implicit group using the name attribute
+Keeps the DOM value and the implicit model in sync (two-way binding)
+
+You don't see the FormControl objects — Angular manages them. You interact with the model through template reference variables (#myForm="ngForm") and the ngModel directive.
+Template-DrivenReactiveForm model created byAngular (implicit, in template)You (explicit, in TypeScript)Primary moduleFormsModuleReactiveFormsModuleTwo-way binding[(ngModel)] — built inManual (formControlName + event)ValidationHTML attributes + directive-basedValidator functions in TypeScriptAccess in componentVia @ViewChild or template refDirect property accessTestabilityHarder (requires DOM)Easy (pure TypeScript)Best forSimple, low-logic formsComplex, dynamic, testable formsChange detectionRelies on ngModel dirty checkingExplicit observable streams
+
+Section 2 — Connection to Prior Concepts
+Directly builds on:
+
+Topic 33 — Reactive Forms — Template-Driven Forms create the same FormControl / FormGroup tree, just implicitly; understanding the Reactive approach makes the implicit model visible
+Topic 26 — @Input() & @Output() — [(ngModel)] is syntactic sugar for [ngModel] (Input) + (ngModelChange) (Output) — the banana-in-a-box pattern
+Topic 28 — Angular Template Syntax — ngModel, ngForm, ngSubmit are all template directives
+Topic 25 — Component Lifecycle Hooks — ngAfterViewInit is needed if you access NgForm via @ViewChild before the view is ready
+Topic 32 — ViewChild — The primary way to access the implicit form model from the component class
+
+Bridging note: Topic 26 explained that [(x)] is shorthand for [x]="value" (xChange)="value = $event". [(ngModel)]="username" is exactly this — [ngModel] sets the input value, (ngModelChange) writes back to the component property. Understanding this demystifies how two-way binding works under the hood.
+Extends most directly: Topic 33 — Reactive Forms, because Template-Driven Forms are the same underlying model (FormControl, FormGroup) surfaced through a different API.
+
+Section 3 — Code Example
+Plain concept — what [(ngModel)] actually desugars to
+html<!-- These two are identical: -->
+
+<!-- Shorthand (banana-in-a-box) -->
+<input [(ngModel)]="username" />
+
+<!-- Longhand (what Angular actually executes) -->
+<input [ngModel]="username" (ngModelChange)="username = $event" />
+typescript// In the component class — just a plain property, no FormControl needed
+export class MyComponent {
+  username = ''; // Angular keeps this in sync with the input automatically
+}
+
+Real Angular Component — Complete Template-Driven Form
+typescript// contact-form.component.ts
+import { Component, ViewChild } from '@angular/core';
+import { FormsModule, NgForm } from '@angular/forms';
+import { CommonModule } from '@angular/common';
+
+interface ContactFormData {
+  name:    string;
+  email:   string;
+  message: string;
+  consent: boolean;
+}
+
+@Component({
+  selector: 'app-contact-form',
+  standalone: true,
+  imports: [FormsModule, CommonModule],
+  template: `
+    <!--
+      #contactForm="ngForm" — creates a template reference variable
+      pointing to the NgForm directive Angular auto-attaches to <form> elements.
+      This gives us access to the implicit form model in the template.
+    -->
+    <form #contactForm="ngForm" (ngSubmit)="onSubmit(contactForm)">
+
+      <!-- name attribute is REQUIRED — it registers the control in NgForm -->
+      <label>Name</label>
+      <input
+        name="name"
+        [(ngModel)]="formData.name"
+        required
+        minlength="2"
+        #nameField="ngModel"
+      />
+      <!--
+        #nameField="ngModel" — template ref to this specific control's NgModel.
+        Gives access to .valid, .invalid, .touched, .errors etc. in the template.
+      -->
+      @if (nameField.invalid && nameField.touched) {
+        <small>
+          @if (nameField.errors?.['required'])  { Name is required }
+          @if (nameField.errors?.['minlength']) {
+            Minimum {{ nameField.errors?.['minlength'].requiredLength }} characters
+          }
+        </small>
+      }
+
+      <label>Email</label>
+      <input
+        name="email"
+        type="email"
+        [(ngModel)]="formData.email"
+        required
+        email
+        #emailField="ngModel"
+      />
+      @if (emailField.invalid && emailField.touched) {
+        <small>
+          @if (emailField.errors?.['required']) { Email is required }
+          @if (emailField.errors?.['email'])    { Must be a valid email address }
+        </small>
+      }
+
+      <label>Message</label>
+      <textarea
+        name="message"
+        [(ngModel)]="formData.message"
+        required
+        minlength="10"
+        #messageField="ngModel"
+      ></textarea>
+      @if (messageField.invalid && messageField.touched) {
+        <small>Message must be at least 10 characters</small>
+      }
+
+      <!-- Checkbox — same pattern, value is boolean -->
+      <label>
+        <input
+          name="consent"
+          type="checkbox"
+          [(ngModel)]="formData.consent"
+          required
+          #consentField="ngModel"
+        />
+        I agree to the terms
+      </label>
+      @if (consentField.invalid && consentField.touched) {
+        <small>You must accept the terms</small>
+      }
+
+      <!--
+        contactForm.invalid — uses the NgForm ref to check overall validity.
+        contactForm.submitted — true after first submit attempt.
+      -->
+      <button type="submit" [disabled]="contactForm.invalid">Send</button>
+    </form>
+
+    <!-- Debug panel -->
+    <pre>Value: {{ contactForm.value | json }}</pre>
+    <pre>Valid: {{ contactForm.valid }}</pre>
+  `
+})
+export class ContactFormComponent {
+  // Plain component properties — no FormControl, no FormGroup needed
+  formData: ContactFormData = {
+    name:    '',
+    email:   '',
+    message: '',
+    consent: false
+  };
+
+  // ngForm is passed in from the template on submit
+  onSubmit(form: NgForm): void {
+    if (form.invalid) return;
+    console.log('Submitted:', this.formData);
+    // Reset after submit — clears values AND resets dirty/touched/pristine
+    form.reset();
+  }
+}
+
+Accessing NgForm from the component class via @ViewChild
+typescriptimport { Component, ViewChild, AfterViewInit } from '@angular/core';
+import { FormsModule, NgForm } from '@angular/forms';
+
+@Component({
+  selector: 'app-edit-profile',
+  standalone: true,
+  imports: [FormsModule],
+  template: `
+    <form #profileForm="ngForm" (ngSubmit)="onSubmit()">
+      <input name="bio" [(ngModel)]="bio" required />
+      <button type="submit">Save</button>
+    </form>
+  `
+})
+export class EditProfileComponent implements AfterViewInit {
+  // @ViewChild gives class-level access to NgForm
+  // Note: not available until ngAfterViewInit
+  @ViewChild('profileForm') profileForm!: NgForm;
+
+  bio = '';
+
+  ngAfterViewInit() {
+    // ✅ Pre-populate the form with saved data after the view is ready
+    // Use setTimeout to avoid ExpressionChangedAfterItHasBeenChecked error
+    setTimeout(() => {
+      this.profileForm.setValue({ bio: 'Loaded from server' });
+    });
+  }
+
+  onSubmit() {
+    if (this.profileForm.invalid) return;
+    console.log(this.profileForm.value);
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Missing name attribute, broken registration
+html<!-- WRONG: no name attribute — Angular can't register this control in NgForm -->
+<form #myForm="ngForm" (ngSubmit)="onSubmit(myForm)">
+  <input [(ngModel)]="email" required />
+  <button type="submit">Submit</button>
+</form>
+What breaks:
+
+Angular throws: If ngModel is used within a form tag, either the name attribute must be set or the form control must be defined as 'standalone' in ngModelOptions
+The control is never registered in NgForm — myForm.value is {}
+myForm.valid is always true because no controls are tracked
+
+
+✅ After — Correct name attribute added
+html<form #myForm="ngForm" (ngSubmit)="onSubmit(myForm)">
+  <!-- name="email" registers this control under the key 'email' in NgForm -->
+  <input name="email" [(ngModel)]="email" required #emailRef="ngModel" />
+  @if (emailRef.invalid && emailRef.touched) {
+    <small>Email is required</small>
+  }
+  <button type="submit" [disabled]="myForm.invalid">Submit</button>
+</form>
+Why this matters in Angular: The name attribute is the registration key. Without it, the control is invisible to the parent NgForm — the form's aggregate validity, value, and dirty state are all wrong. This is the most common beginner mistake with Template-Driven Forms.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Forgetting the name attribute on ngModel inputs
+What the mistake is: Using [(ngModel)] without name="fieldName" inside a <form> element.
+Why developers make it: [(ngModel)] works fine outside a form (standalone two-way binding), so developers assume it works the same inside one. It doesn't — inside a form, name is the registration key.
+How to avoid it: Every [(ngModel)] inside a <form> must have a name attribute. Make it a personal code-review rule: no ngModel without name.
+Angular-specific consequence: Angular throws a runtime error. If somehow bypassed, the NgForm.value object is empty — submitted data is lost silently.
+
+Mistake 2 — Trying to access NgForm before ngAfterViewInit
+What the mistake is:
+typescript@ViewChild('myForm') myForm!: NgForm;
+
+ngOnInit() {
+  this.myForm.setValue({ name: 'Loaded' }); // ❌ myForm is undefined here
+}
+Why developers make it: ngOnInit is habitually "where setup happens." Developers forget that @ViewChild queries aren't resolved until after the view is initialised.
+How to avoid it: Always use @ViewChild-based NgForm access in ngAfterViewInit, and wrap setValue/patchValue calls in setTimeout() to avoid ExpressionChangedAfterItHasBeenChecked errors.
+Angular-specific consequence: TypeError: Cannot read properties of undefined at runtime. The form never gets pre-populated.
+
+Mistake 3 — Confusing ngModel (Template-Driven) with formControlName (Reactive)
+What the mistake is: Mixing FormsModule directives (ngModel) with ReactiveFormsModule directives (formControlName) in the same form, or importing the wrong module.
+Why developers make it: Both achieve input binding. Developers new to Angular don't yet distinguish which system each directive belongs to.
+How to avoid it: Pick one approach per form. Template-Driven → FormsModule + ngModel + name. Reactive → ReactiveFormsModule + formControlName + no name needed.
+Angular-specific consequence: Mixing them produces confusing errors like ngModel cannot be used to register form controls with a parent formGroup directive or controls silently not binding.
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TImport FormsModule in standalone component imports (or the NgModule)Import ReactiveFormsModule when using Template-Driven Forms — wrong moduleAlways add name="fieldName" to every ngModel input inside a <form>Use ngModel inside a form without a name attributeUse template reference variables (#field="ngModel") for per-field error displayTry to access field state from the component class without @ViewChildPass the NgForm reference into onSubmit(form: NgForm) via the templateIgnore the NgForm reference and manually validate in the submit handlerUse form.reset() after successful submit to clear state and mark pristineManually clear formData properties — leaves dirty/touched state staleUse Reactive Forms when logic is complex, dynamic, or needs unit testingUse Template-Driven Forms for forms with dynamic fields, cross-field validation, or async checks
+
+Section 7 — Debugging Tips
+Bug 1 — ngModel not updating the component property
+Symptom: The input renders correctly but this.formData.name never updates when the user types.
+Plain English cause: One of two issues: (a) FormsModule is not imported, so ngModel is not recognised as a directive and silently degrades to a plain name attribute; or (b) the developer used [ngModel] (one-way, input only) instead of [(ngModel)] (two-way).
+Fix:
+typescript// 1. Ensure FormsModule is imported
+imports: [FormsModule]
+
+// 2. Use two-way binding syntax
+[(ngModel)]="formData.name"   // ✅ two-way
+[ngModel]="formData.name"     // ❌ one-way — reads but doesn't write back
+Angular-specific note: If FormsModule is missing, Angular silently ignores the directive — no error, just no binding. Always check imports first when ngModel seems inert.
+
+Bug 2 — ExpressionChangedAfterItHasBeenChecked when pre-populating via @ViewChild
+Symptom: Console error: ExpressionChangedAfterItHasBeenChecked when setting a form value in ngAfterViewInit.
+Plain English cause: Angular runs change detection after ngAfterViewInit. If you change form values synchronously during that hook, Angular detects that the expression changed after it already checked it — a violation of its unidirectional data-flow rule in dev mode.
+Fix:
+typescriptngAfterViewInit() {
+  // ✅ setTimeout pushes the update to the next change detection cycle
+  setTimeout(() => {
+    this.profileForm.setValue({ name: 'Pre-filled Name' });
+  });
+}
+Angular-specific note: This is a dev-mode-only error (production ignores it) but it signals a real timing issue. The setTimeout fix is idiomatic and widely accepted for this specific use case.
+
+Bug 3 — Validation errors not showing even when the field is invalid
+Symptom: The field is invalid but @if (field.invalid && field.touched) never renders the error.
+Plain English cause: The template reference variable is wrong. The developer wrote #nameField without ="ngModel" — this creates a ref to the DOM element, not the NgModel directive instance. element.touched is undefined.
+Fix:
+html<!-- ❌ Wrong: #nameField is the HTMLInputElement, not the NgModel -->
+<input name="name" [(ngModel)]="name" #nameField />
+
+<!-- ✅ Correct: #nameField="ngModel" is the NgModel directive instance -->
+<input name="name" [(ngModel)]="name" #nameField="ngModel" />
+Angular-specific note: This is a silent bug — no error, just missing validation UI. Always write #ref="ngModel" (with the ="ngModel" part) when you need access to the control's validity state.
+
+Section 8 — Real-World Applications
+Scenario 1 — Simple Newsletter Signup Form
+A marketing landing page needs a quick email signup. No complex validation, no dynamic fields, no testing requirements. Template-Driven Forms are perfect — minimal code, fast to write.
+typescript@Component({
+  selector: 'app-newsletter',
+  standalone: true,
+  imports: [FormsModule, CommonModule],
+  template: `
+    <form #signupForm="ngForm" (ngSubmit)="onSignup(signupForm)">
+      <input
+        name="email"
+        type="email"
+        [(ngModel)]="email"
+        required
+        email
+        placeholder="your@email.com"
+        #emailRef="ngModel"
+      />
+
+      @if (emailRef.invalid && (emailRef.touched || signupForm.submitted)) {
+        <small>
+          @if (emailRef.errors?.['required']) { Email is required }
+          @if (emailRef.errors?.['email'])    { Enter a valid email }
+        </small>
+      }
+
+      <button type="submit" [disabled]="signupForm.invalid || submitted">
+        {{ submitted ? 'Subscribed!' : 'Subscribe' }}
+      </button>
+    </form>
+  `
+})
+export class NewsletterComponent {
+  email     = '';
+  submitted = false;
+
+  onSignup(form: NgForm): void {
+    if (form.invalid) return;
+    // Call API...
+    this.submitted = true;
+    form.reset();
+  }
+}
+
+Scenario 2 — Edit Profile Form Pre-Populated from a Service
+A settings page loads the current user's profile and pre-populates a template-driven form for editing. Uses @ViewChild to access NgForm after the view initialises.
+typescript@Component({
+  selector: 'app-edit-profile',
+  standalone: true,
+  imports: [FormsModule, CommonModule],
+  template: `
+    <form #profileForm="ngForm" (ngSubmit)="onSave(profileForm)">
+      <input name="displayName" [(ngModel)]="profile.displayName"
+             required minlength="2" #nameRef="ngModel" />
+      @if (nameRef.invalid && nameRef.touched) {
+        <small>Display name must be at least 2 characters</small>
+      }
+
+      <input name="bio" [(ngModel)]="profile.bio" maxlength="160" />
+
+      <button type="submit" [disabled]="profileForm.invalid || profileForm.pristine">
+        Save Changes
+      </button>
+      <!-- pristine: disable Save if user hasn't changed anything yet -->
+    </form>
+  `
+})
+export class EditProfileComponent implements AfterViewInit {
+  @ViewChild('profileForm') profileForm!: NgForm;
+
+  profile = { displayName: '', bio: '' };
+
+  private userService = inject(UserService);
+
+  ngAfterViewInit() {
+    // Load saved profile and pre-populate the form
+    this.userService.getProfile().subscribe(data => {
+      setTimeout(() => {
+        // patchValue on NgForm — only updates the named controls that match
+        this.profileForm.setValue({
+          displayName: data.displayName,
+          bio:         data.bio ?? ''
+        });
+      });
+    });
+  }
+
+  onSave(form: NgForm) {
+    if (form.invalid) return;
+    this.userService.updateProfile(this.profile).subscribe(() => {
+      form.markAsPristine(); // re-disable Save button — no unsaved changes
+    });
+  }
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner:
+
+Create a standalone Angular component with a Template-Driven login form containing email and password fields. Both are required; email must be a valid email format; password must be at least 6 characters. Show inline error messages only after each field is touched. The submit button should be disabled when the form is invalid. Log the form value to the console on valid submit and reset the form.
+Exercise 2 — Intermediate:
+
+Build a "feedback" form with four fields: name (required), rating (a <select> with values 1–5, required), category (radio buttons: Bug / Feature / Other, required), and comment (textarea, required, min 20 characters). Display a live character count below the textarea showing how many characters remain until the minimum is met. Disable submit when invalid and show all errors if the user submits without touching fields (hint: use ngForm.submitted in addition to .touched).
+Exercise 3 — Advanced:
+
+Build an "edit account" form that pre-populates from a mock service using @ViewChild and ngAfterViewInit. The form has username, email, and timezone (a <select> populated from a list). After a successful "save" (simulate with a setTimeout), mark the form as pristine so the Save button re-disables. Implement an unsaved-changes guard: if profileForm.dirty is true and the user clicks a "Cancel" button, show a confirm() dialog before discarding changes and navigating away. Ensure the component uses the correct lifecycle hook for @ViewChild access and avoids ExpressionChangedAfterItHasBeenChecked errors.
+
+Section 10 — Key Takeaways
+Core concepts in plain English:
+
+Template-Driven Forms let Angular build the form model from your HTML — you describe the form in the template, Angular creates FormControl / FormGroup implicitly
+FormsModule must be imported — it provides NgForm, NgModel, and the built-in validation directives
+Every ngModel inside a <form> requires a name attribute — it's the registration key
+#formRef="ngForm" and #fieldRef="ngModel" are template reference variables giving access to form/control state in the template
+[(ngModel)] is two-way binding: [ngModel] sets the value, (ngModelChange) writes back
+Validation is applied via HTML attributes: required, minlength, maxlength, email, pattern
+
+Quick reference table:
+TaskTemplate-Driven syntaxTwo-way bind an input[(ngModel)]="property"Register control in NgFormname="fieldName" (required)Access form state in template#formRef="ngForm"Access control state in template#fieldRef="ngModel"Check if field is invalid + touchedfieldRef.invalid && fieldRef.touchedAccess specific errorfieldRef.errors?.['required']Submit handler(ngSubmit)="onSubmit(formRef)"Reset formformRef.reset()Access NgForm in class@ViewChild('formRef') form!: NgForm
+Angular-specific rules:
+
+Always import FormsModule, never ReactiveFormsModule, for Template-Driven Forms
+name attribute is mandatory for every ngModel inside a <form> — non-negotiable
+Use ngAfterViewInit (with setTimeout) to pre-populate via @ViewChild — never ngOnInit
+Use form.submitted in addition to .touched to show errors on attempted submit with untouched fields
+Prefer Reactive Forms for anything with dynamic fields, cross-field validation, async checks, or unit tests
+
+One-Line Memory Aid:
+
+Template-Driven Forms are Angular building the model for you from your HTML — you annotate, Angular constructs; the trade-off is less control, less testability, but much less code for simple cases.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: Both Template-Driven and Reactive Forms ultimately use the same FormControl and FormGroup classes under the hood. If the underlying model is identical, why does testing Template-Driven Forms require the DOM while Reactive Forms can be tested in pure TypeScript?
+Answer:
+Conceptual explanation: The difference isn't in the model — it's in who owns it and when it exists.
+In Reactive Forms, you create the FormGroup as a class property. It exists the moment the component class is instantiated — before any template, before any DOM. You can construct the component in a unit test, interact with formGroup.setValue(...), and check formGroup.valid without rendering a single pixel of HTML.
+In Template-Driven Forms, Angular creates the FormControl objects as it parses and renders the template. The NgModel directive, which creates the control, only runs during Angular's view initialisation pass. The implicit FormGroup managed by NgForm doesn't exist until the template is compiled and the view is attached. This means the form model has a DOM dependency by construction.
+Angular-specific implication: To unit test a Template-Driven Form, you need TestBed.createComponent(), fixture.detectChanges(), and DOM interactions to trigger ngModel registration. You can't shortcut to the model. Reactive Forms need none of this — you can test validators, value changes, and submit logic with zero DOM involvement.
+Practical rule: If a form will ever need automated unit tests (login forms, payment forms, registration forms — anything business-critical), use Reactive Forms. Reserve Template-Driven Forms for UI components where correctness is verified manually or through simple e2e tests. The testing story is the clearest tiebreaker between the two approaches.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts:
+
+Event delegation and DOM events — understanding what (ngSubmit) and (ngModelChange) actually fire under the hood
+
+TypeScript Concepts:
+
+@ViewChild typing — typing NgForm and NgModel references correctly with ! non-null assertion
+
+Angular-Specific Concepts:
+
+Topic 36 — HttpClient — the natural next step after forms is submitting form data to an API
+Topic 39 — Route Guards (CanDeactivate) — using form.dirty to prevent unsaved-changes navigation
+ngModelOptions — updateOn: 'blur' | 'submit' controls when ngModel syncs, reducing noisy live validation
+ControlValueAccessor — building a custom input component that works with both ngModel and formControlName
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 25 — Component Lifecycle Hooks (ngAfterViewInit for @ViewChild access)
+Topic 26 — @Input() & @Output() (the [(ngModel)] two-way binding pattern)
+Topic 28 — Angular Template Syntax (directives, template reference variables)
+Topic 32 — ViewChild (accessing NgForm from the class)
+Topic 33 — Reactive Forms (provides the mental model for what Angular creates implicitly)
+
+This topic unlocks or makes significantly easier:
+
+Topic 36 — HttpClient (submitting form data to an API)
+Topic 39 — Route Guards (dirty-check guard with CanDeactivate)
+Topic 47 — Testing Angular Components (understanding why TDF tests need the DOM makes TestBed usage clearer)
+
+Production readiness assessment: Template-Driven Forms are production-ready for simple, static forms — contact forms, login pages, newsletter signups. If you need dynamic fields, cross-field validators, async validators, or unit tests, switch to Reactive Forms. The honest rule is: if you're unsure which to use, use Reactive — it scales; Template-Driven doesn't.
+
+Section 14 — Common Interview Questions
+Question 1:
+
+"What is the difference between Template-Driven and Reactive Forms in Angular? When would you choose one over the other?"
+Strong answer covers:
+
+Template-Driven: implicit model, Angular creates FormControl/FormGroup from the template; Reactive: explicit model, developer creates the tree in TypeScript
+Template-Driven uses FormsModule + ngModel; Reactive uses ReactiveFormsModule + formControlName
+Reactive Forms are easier to unit test (no DOM required), support dynamic fields naturally, and scale better
+Template-Driven Forms are faster to write for simple, static forms with no logic
+Both use the same underlying AbstractControl model — only the authoring style differs
+
+Weak answer misses: That both systems use the same underlying FormControl/FormGroup classes — candidates often imply they are fundamentally different systems rather than different APIs over the same model.
+Difficulty: Junior–Mid
+
+Question 2:
+
+"In a Template-Driven Form, how do you access a specific field's validation state in the template, and what is the common mistake developers make?"
+Strong answer covers:
+
+Template reference variable with ="ngModel": #emailField="ngModel"
+Without ="ngModel", the ref points to the DOM element, not the NgModel directive
+Access errors via emailField.errors?.['required'], emailField.touched, emailField.invalid
+The name attribute must be present for the control to be registered in NgForm
+Common mistake: writing #emailField without ="ngModel" — ref is the HTMLInputElement, .touched is undefined
+
+Weak answer misses: The distinction between #ref (DOM element) and #ref="ngModel" (NgModel directive instance) — this is the defining gotcha of Template-Driven Form debugging.
+Difficulty: Junior
+
+Question 3:
+
+"How would you pre-populate a Template-Driven Form with data loaded from an API, and what pitfalls would you watch out for?"
+Strong answer covers:
+
+Use @ViewChild('formRef') form!: NgForm to get class-level access to the form
+NgForm is only available after ngAfterViewInit — not ngOnInit
+Wrap setValue/patchValue in setTimeout() to avoid ExpressionChangedAfterItHasBeenChecked
+Subscribe to the API call in ngAfterViewInit and apply the response to the form inside the setTimeout
+After saving, call form.markAsPristine() so the "unsaved changes" dirty state resets
+
+Weak answer misses: The setTimeout requirement and the reason for it — most candidates know to use ngAfterViewInit but don't know about the timing issue with ExpressionChangedAfterItHasBeenChecked.
+Difficulty: Mid
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Using Template-Driven Forms for dynamic or conditional field lists
+html<!-- ❌ Anti-pattern: trying to dynamically add fields in a Template-Driven Form -->
+@for (field of dynamicFields; track field.id) {
+  <input
+    [name]="field.id"
+    [(ngModel)]="field.value"
+    [required]="field.required"
+  />
+}
+Why it seems fine: Angular registers each ngModel dynamically as the loop renders. It works for simple cases.
+What breaks in production: Removing a field from dynamicFields doesn't cleanly deregister it from NgForm in all Angular versions. Validators bound via [required]="field.required" don't re-evaluate when field.required changes after initial render. NgForm.value may contain stale keys for removed fields. Cross-field validation is essentially impossible.
+Correct pattern: Switch to Reactive Forms with FormArray for any dynamic field scenario. This is exactly what FormArray was designed for — see Topic 33.
+
+Anti-Pattern 2 — Relying on [disabled]="form.invalid" as the only submit guard
+typescript// ❌ Anti-pattern: no server-side guard, disabled binding is the only protection
+onSubmit() {
+  // No validity check — trusts that the button was disabled
+  this.api.contact(this.formData).subscribe();
+}
+Why it seems fine: The button is disabled in the UI — users can't click it when the form is invalid. Seems safe.
+What breaks in production: The disabled attribute can be removed in browser DevTools in seconds. Automated testing tools and scripts can call onSubmit() directly. Invalid data reaches the API.
+Correct pattern:
+typescriptonSubmit(form: NgForm) {
+  if (form.invalid) {
+    form.control.markAllAsTouched(); // reveal all errors
+    return;
+  }
+  this.api.contact(this.formData).subscribe();
+}
+
+Anti-Pattern 3 — Mixing [(ngModel)] with Reactive Form directives
+html<!-- ❌ Anti-pattern: mixing both form systems in one form -->
+<form [formGroup]="myForm">
+  <!-- formControlName is Reactive -->
+  <input formControlName="email" />
+  <!-- ngModel is Template-Driven — conflicts with formGroup -->
+  <input name="phone" [(ngModel)]="phone" />
+</form>
+Why it seems fine: Both directives achieve input binding. Developers often don't realise they're from different systems.
+What breaks in production: Angular throws: It looks like you're using ngModel on the same form field as formControlName. Support for using the ngModel input property and ngModelChange event with reactive form directives has been deprecated in Angular v6 and removed in Angular v7+. The form is broken.
+Correct pattern: Pick one system per form and use it exclusively. If you have a [formGroup], every field uses formControlName. If you have a Template-Driven form, every field uses ngModel + name.
+
+Section 16 — Mental Model Summary
+Core concept in one sentence:
+
+Template-Driven Forms let Angular build the form model implicitly from your HTML using ngModel and NgForm directives — you annotate the template, Angular constructs the FormControl/FormGroup tree behind the scenes.
+Key rules:
+
+Import FormsModule (not ReactiveFormsModule) for Template-Driven Forms.
+Every [(ngModel)] inside a <form> must have a name attribute — it's the registration key.
+Use #ref="ngModel" (not just #ref) to access control state in the template.
+NgForm is only available after ngAfterViewInit — never access it in ngOnInit.
+Wrap setValue/patchValue calls in setTimeout() inside ngAfterViewInit to avoid ExpressionChangedAfterItHasBeenChecked.
+Always add a validity guard in onSubmit — never trust [disabled] alone.
+
+The single most important Angular rule:
+
+Template-Driven Forms do not scale — use them only for simple, static, low-logic forms; switch to Reactive Forms the moment you need dynamic fields, async validation, cross-field rules, or unit tests.
+
+Choosing between Template-Driven and Reactive:
+SignalUse Template-DrivenUse ReactiveForm complexitySimple, static fieldsDynamic, conditional fieldsValidation needsBuilt-in HTML attributesCustom, cross-field, asyncTesting requirementManual / e2e onlyUnit testableCode volumeMinimal TypeScript preferredMore TS, cleaner at scaleTeam familiarityRapid prototypingProduction-grade applications
+
+Say "next" for Topic 36 — HttpClient & API Integration, or "continue" if I stopped mid-topic.You said: NextNext

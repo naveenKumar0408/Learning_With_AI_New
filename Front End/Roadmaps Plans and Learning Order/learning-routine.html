@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learning Routine — Daily Study Plan</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: #2a2a38;
+    --border2: #1e1e2a;
+    --accent: #6ee7b7;
+    --accent2: #f59e0b;
+    --accent3: #818cf8;
+    --accent4: #fb7185;
+    --accent5: #38bdf8;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --muted2: #4a4a60;
+    --office: #6ee7b7;
+    --wfh: #818cf8;
+    --dsa: #f59e0b;
+    --mastery: #38bdf8;
+    --rest: #fb7185;
+    --weekend: #a78bfa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 60px 24px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    margin-bottom: 56px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 48px;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 4px 12px;
+    border-radius: 2px;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin-bottom: 14px;
+  }
+
+  h1 em {
+    color: var(--accent);
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-weight: 400;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    max-width: 580px;
+    line-height: 1.8;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 24px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .meta-label {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .meta-value {
+    font-size: 12px;
+    color: var(--accent2);
+    font-weight: 500;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section {
+    margin-bottom: 56px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .section-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── PHILOSOPHY BOX ── */
+  .philosophy {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 24px 28px;
+    margin-bottom: 48px;
+    position: relative;
+  }
+
+  .philosophy::before {
+    content: '\201C';
+    position: absolute;
+    top: -16px;
+    left: 20px;
+    font-family: 'Instrument Serif', serif;
+    font-size: 64px;
+    color: var(--accent);
+    opacity: 0.25;
+    line-height: 1;
+  }
+
+  .philosophy p {
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  /* ── WEEKLY TOTALS SUMMARY ── */
+  .totals-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 48px;
+  }
+
+  .total-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 18px 16px;
+    text-align: center;
+  }
+
+  .total-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .total-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* ── DAY TYPE CARDS ── */
+  .day-type-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 48px;
+  }
+
+  .day-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .day-card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .day-card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .day-badge {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .day-badge.office {
+    background: rgba(110,231,183,0.1);
+    color: var(--office);
+    border: 1px solid rgba(110,231,183,0.25);
+  }
+
+  .day-badge.wfh {
+    background: rgba(129,140,248,0.1);
+    color: var(--wfh);
+    border: 1px solid rgba(129,140,248,0.25);
+  }
+
+  /* ── TIMELINE BLOCKS ── */
+  .timeline {
+    padding: 8px 0;
+  }
+
+  .time-block {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .time-block:last-child {
+    border-bottom: none;
+  }
+
+  .time-col {
+    padding: 12px 16px;
+    border-right: 1px solid var(--border2);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .time-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--accent2);
+    line-height: 1.3;
+  }
+
+  .time-duration {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .block-col {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .block-type {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+    font-weight: 500;
+  }
+
+  .block-type.learn { color: var(--mastery); }
+  .block-type.dsa { color: var(--dsa); }
+  .block-type.work { color: var(--muted); }
+  .block-type.gym { color: var(--accent4); }
+  .block-type.rest { color: var(--muted2); }
+  .block-type.optional { color: var(--accent3); }
+  .block-type.deep { color: var(--accent); }
+  .block-type.review { color: var(--weekend); }
+  .block-type.buffer { color: var(--muted); }
+
+  .block-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .block-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .block-highlight {
+    background: rgba(110,231,183,0.04);
+    border-left: 2px solid var(--accent);
+  }
+
+  .block-wfh-deep {
+    background: rgba(129,140,248,0.06);
+    border-left: 2px solid var(--wfh);
+  }
+
+  .block-gym {
+    background: rgba(251,113,133,0.04);
+  }
+
+  .block-work {
+    background: rgba(255,255,255,0.01);
+  }
+
+  /* ── WEEKLY SCHEDULE TABLE ── */
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 48px;
+  }
+
+  .week-day {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 14px 10px;
+    text-align: center;
+  }
+
+  .week-day-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .week-day-name.office-day { color: var(--office); }
+  .week-day-name.wfh-day { color: var(--wfh); }
+  .week-day-name.weekend-day { color: var(--weekend); }
+  .week-day-name.rest-day { color: var(--muted); }
+
+  .week-tag {
+    font-size: 8px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: inline-block;
+    margin-bottom: 10px;
+  }
+
+  .week-tag.office { background: rgba(110,231,183,0.1); color: var(--office); }
+  .week-tag.wfh { background: rgba(129,140,248,0.1); color: var(--wfh); }
+  .week-tag.flex { background: rgba(167,139,250,0.1); color: var(--weekend); }
+  .week-tag.rest { background: rgba(251,113,133,0.1); color: var(--accent4); }
+
+  .week-sessions {
+    list-style: none;
+    text-align: left;
+  }
+
+  .week-sessions li {
+    font-size: 9px;
+    color: var(--muted);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border2);
+    line-height: 1.4;
+  }
+
+  .week-sessions li:last-child { border-bottom: none; }
+
+  .week-sessions li strong {
+    display: block;
+    font-size: 9px;
+    color: var(--text);
+    margin-bottom: 1px;
+  }
+
+  .week-total {
+    margin-top: 10px;
+    font-size: 9px;
+    color: var(--accent2);
+    font-weight: 500;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── SERIES ROTATION ── */
+  .rotation-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 48px;
+  }
+
+  .rotation-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+  }
+
+  .rotation-card.mastery { border-top: 2px solid var(--mastery); }
+  .rotation-card.dsa-card { border-top: 2px solid var(--dsa); }
+
+  .rotation-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .rotation-title.mastery { color: var(--mastery); }
+  .rotation-title.dsa { color: var(--dsa); }
+
+  .rotation-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border2);
+    align-items: flex-start;
+  }
+
+  .rotation-item:last-child { border-bottom: none; }
+
+  .rotation-day {
+    font-size: 9px;
+    color: var(--accent2);
+    font-weight: 500;
+    min-width: 28px;
+    padding-top: 1px;
+  }
+
+  .rotation-detail {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .rotation-detail strong {
+    color: var(--text);
+    display: block;
+    font-size: 10px;
+    margin-bottom: 1px;
+  }
+
+  /* ── LOG TEMPLATE ── */
+  .log-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent3);
+    padding: 24px 28px;
+    margin-bottom: 48px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .log-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent3);
+    margin-bottom: 16px;
+  }
+
+  .log-field {
+    margin-bottom: 12px;
+  }
+
+  .log-key {
+    font-size: 10px;
+    color: var(--accent);
+    margin-bottom: 3px;
+    letter-spacing: 0.05em;
+  }
+
+  .log-value {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    line-height: 1.6;
+  }
+
+  .log-note {
+    font-size: 10px;
+    color: var(--muted2);
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border2);
+    font-style: italic;
+  }
+
+  /* ── DEEP BLOCK BREAKDOWN ── */
+  .deep-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    margin-bottom: 48px;
+    overflow: hidden;
+  }
+
+  .deep-block-header {
+    padding: 16px 20px;
+    background: rgba(129,140,248,0.06);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .deep-block-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--wfh);
+    letter-spacing: 0.04em;
+  }
+
+  .deep-block-time {
+    font-size: 10px;
+    color: var(--accent2);
+  }
+
+  .deep-segment {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  .deep-segment:last-child { border-bottom: none; }
+
+  .seg-time {
+    padding: 14px 16px;
+    border-right: 1px solid var(--border2);
+    font-size: 10px;
+    color: var(--accent2);
+    display: flex;
+    align-items: center;
+    font-weight: 500;
+  }
+
+  .seg-content {
+    padding: 14px 16px;
+  }
+
+  .seg-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent3);
+    margin-bottom: 3px;
+  }
+
+  .seg-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .seg-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* ── RULES ── */
+  .rules-list {
+    counter-reset: rules;
+    list-style: none;
+    margin-bottom: 48px;
+  }
+
+  .rules-list li {
+    counter-increment: rules;
+    display: flex;
+    gap: 18px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+
+  .rules-list li::before {
+    content: counter(rules, decimal-leading-zero);
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--border);
+    flex-shrink: 0;
+    min-width: 32px;
+    line-height: 1.3;
+  }
+
+  .rule-text strong {
+    display: block;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .rule-text p {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  /* ── WEEKLY TOTALS TABLE ── */
+  .totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 48px;
+  }
+
+  .totals-table th {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .totals-table td {
+    font-size: 11px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border2);
+    color: var(--text);
+    vertical-align: middle;
+  }
+
+  .totals-table tr:last-child td {
+    border-bottom: none;
+    background: rgba(110,231,183,0.04);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .totals-table .day-type {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 2px;
+  }
+
+  .day-type.office { background: rgba(110,231,183,0.1); color: var(--office); }
+  .day-type.wfh { background: rgba(129,140,248,0.1); color: var(--wfh); }
+  .day-type.flex { background: rgba(167,139,250,0.1); color: var(--weekend); }
+  .day-type.rest { background: rgba(251,113,133,0.1); color: var(--accent4); }
+
+  /* ── COMMUTE BOX ── */
+  .commute-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 48px;
+  }
+
+  .commute-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+  }
+
+  .commute-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .commute-icon {
+    font-size: 18px;
+  }
+
+  .commute-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .commute-time {
+    font-size: 9px;
+    color: var(--accent2);
+    margin-top: 1px;
+  }
+
+  .commute-list {
+    list-style: none;
+  }
+
+  .commute-list li {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border2);
+    display: flex;
+    gap: 8px;
+    line-height: 1.45;
+  }
+
+  .commute-list li:last-child { border-bottom: none; }
+
+  .commute-list li::before {
+    content: '→';
+    color: var(--accent);
+    flex-shrink: 0;
+    font-size: 9px;
+    margin-top: 1px;
+  }
+
+  .commute-list li.no::before { content: '✕'; color: var(--accent4); }
+
+  /* ── MILESTONE BOXES ── */
+  .milestone-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 48px;
+  }
+
+  .milestone-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 18px;
+    text-align: center;
+  }
+
+  .milestone-week {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .milestone-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent2);
+    margin-bottom: 6px;
+  }
+
+  .milestone-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-size: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── ALERT BOX ── */
+  .alert {
+    background: rgba(251,113,133,0.06);
+    border: 1px solid rgba(251,113,133,0.2);
+    border-left: 3px solid var(--accent4);
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .alert strong { color: var(--accent4); }
+
+  .success {
+    background: rgba(110,231,183,0.06);
+    border: 1px solid rgba(110,231,183,0.2);
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .success strong { color: var(--accent); }
+
+  /* ── FADE ANIMATION ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade { animation: fadeUp 0.5s ease forwards; opacity: 0; }
+  .fade:nth-child(1) { animation-delay: 0.06s; }
+  .fade:nth-child(2) { animation-delay: 0.12s; }
+  .fade:nth-child(3) { animation-delay: 0.18s; }
+  .fade:nth-child(4) { animation-delay: 0.24s; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 680px) {
+    .day-type-grid { grid-template-columns: 1fr; }
+    .week-grid { grid-template-columns: repeat(4, 1fr); }
+    .rotation-grid { grid-template-columns: 1fr; }
+    .commute-grid { grid-template-columns: 1fr; }
+    .milestone-grid { grid-template-columns: 1fr; }
+    .totals-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header fade">
+    <div class="tag">Daily Learning System · Angular + DSA · 2026</div>
+    <h1>Your <em>Learning</em><br>Routine & <em>Study Plan</em></h1>
+    <p class="subtitle">A sustainable, burnout-proof daily system built around your hybrid work schedule, gym routine, and two active learning series — Frontend Mastery (Topics 60–82) and DSA Problem Solving (D1–D40).</p>
+    <div class="meta-row">
+      <div class="meta-item"><span class="meta-label">Work Model</span><span class="meta-value">Hybrid</span></div>
+      <div class="meta-item"><span class="meta-label">Learning Series</span><span class="meta-value">2 Active Tracks</span></div>
+      <div class="meta-item"><span class="meta-label">Daily Commitment</span><span class="meta-value">2 – 2.5 Hours</span></div>
+      <div class="meta-item"><span class="meta-label">Weekly Total</span><span class="meta-value">12 – 13 Hours</span></div>
+      <div class="meta-item"><span class="meta-label">Timeline</span><span class="meta-value">~6 Months</span></div>
+    </div>
+  </div>
+
+  <!-- PHILOSOPHY -->
+  <div class="philosophy fade">
+    <p>The developer who does 30 minutes every day for 6 months is not the same developer who started. The developer who does 3-hour sessions twice a week and burns out is exactly the same developer who started.</p>
+  </div>
+
+  <!-- SUMMARY TOTALS -->
+  <div class="totals-grid fade">
+    <div class="total-card">
+      <div class="total-num" style="color: var(--office);">2–2.5</div>
+      <div class="total-label">Hours<br>Office Days</div>
+    </div>
+    <div class="total-card">
+      <div class="total-num" style="color: var(--wfh);">2</div>
+      <div class="total-label">Hours<br>WFH Days</div>
+    </div>
+    <div class="total-card">
+      <div class="total-num" style="color: var(--weekend);">2</div>
+      <div class="total-label">Hours<br>Saturday</div>
+    </div>
+    <div class="total-card">
+      <div class="total-num" style="color: var(--accent2);">12–13</div>
+      <div class="total-label">Hours<br>Per Week</div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 01 — THE TWO DAY TYPES -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section fade">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <span class="section-title">The Two Day Types</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="day-type-grid">
+
+      <!-- OFFICE DAY -->
+      <div class="day-card">
+        <div class="day-card-header">
+          <span class="day-card-title" style="color:var(--office);">Office Day</span>
+          <span class="day-badge office">Commute-Powered</span>
+        </div>
+        <div class="timeline">
+          <div class="time-block block-highlight">
+            <div class="time-col">
+              <div class="time-label">6:00</div>
+              <div class="time-duration">45 min</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type rest">Morning</div>
+              <div class="block-title">Wake + Prep</div>
+              <div class="block-desc">Freshen up, breakfast. No screens, no learning. Body first.</div>
+            </div>
+          </div>
+          <div class="time-block block-highlight">
+            <div class="time-col">
+              <div class="time-label">7:00</div>
+              <div class="time-duration">1 hr</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type learn">Block 1 — Theory</div>
+              <div class="block-title">Morning Commute</div>
+              <div class="block-desc">Read current topic notes or documentation. Review yesterday's log. Absorb — do not produce.</div>
+            </div>
+          </div>
+          <div class="time-block block-work">
+            <div class="time-col">
+              <div class="time-label">11:00</div>
+              <div class="time-duration">8 hrs</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type work">Work</div>
+              <div class="block-title">Full Focus on Job</div>
+              <div class="block-desc">Your job is your live lab. Note any concept applied at work today.</div>
+            </div>
+          </div>
+          <div class="time-block block-highlight">
+            <div class="time-col">
+              <div class="time-label">7:00pm</div>
+              <div class="time-duration">1 hr</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type learn">Block 2 — Process</div>
+              <div class="block-title">Evening Commute</div>
+              <div class="block-desc">Write your own summary of the morning reading. Think through DSA approach mentally. Active recall — not new content.</div>
+            </div>
+          </div>
+          <div class="time-block block-gym">
+            <div class="time-col">
+              <div class="time-label">8:00pm</div>
+              <div class="time-duration">3 hrs</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type gym">Protected</div>
+              <div class="block-title">Gym + Dinner</div>
+              <div class="block-desc">Fully off. No learning. This is recovery. Non-negotiable.</div>
+            </div>
+          </div>
+          <div class="time-block">
+            <div class="time-col">
+              <div class="time-label">11:00pm</div>
+              <div class="time-duration">30 min</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type optional">Optional Only</div>
+              <div class="block-title">Night Micro Session</div>
+              <div class="block-desc">Only if genuinely alert. Write tomorrow's intention. 10-min note review. If tired — skip completely and sleep.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WFH DAY -->
+      <div class="day-card">
+        <div class="day-card-header">
+          <span class="day-card-title" style="color:var(--wfh);">WFH Day</span>
+          <span class="day-badge wfh">Morning-Powered</span>
+        </div>
+        <div class="timeline">
+          <div class="time-block block-wfh-deep">
+            <div class="time-col">
+              <div class="time-label">7:30</div>
+              <div class="time-duration">30 min</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type rest">Morning</div>
+              <div class="block-title">Wake + Settle</div>
+              <div class="block-desc">Wake 90 min earlier than current. Freshen up, coffee, breakfast before opening anything.</div>
+            </div>
+          </div>
+          <div class="time-block block-wfh-deep">
+            <div class="time-col">
+              <div class="time-label">8:00</div>
+              <div class="time-duration">90 min</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type deep">★ Deep Block</div>
+              <div class="block-title">Sacred Learning Block</div>
+              <div class="block-desc">Fresh mind, zero fatigue. The highest-value 90 minutes of your entire week. Full topic study + practice. See breakdown below.</div>
+            </div>
+          </div>
+          <div class="time-block">
+            <div class="time-col">
+              <div class="time-label">9:30</div>
+              <div class="time-duration">30 min</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type buffer">Buffer</div>
+              <div class="block-title">Transition to Work</div>
+              <div class="block-desc">Close learning material. Tea/coffee. Mental shift. Check Slack now — not before.</div>
+            </div>
+          </div>
+          <div class="time-block block-work">
+            <div class="time-col">
+              <div class="time-label">10:00</div>
+              <div class="time-duration">9 hrs</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type work">Work</div>
+              <div class="block-title">Full Focus on Job</div>
+              <div class="block-desc">Apply concepts where possible. Note any real-world usage in your daily log.</div>
+            </div>
+          </div>
+          <div class="time-block block-gym">
+            <div class="time-col">
+              <div class="time-label">8:00pm</div>
+              <div class="time-duration">3 hrs</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type gym">Protected</div>
+              <div class="block-title">Gym + Dinner</div>
+              <div class="block-desc">Fully off. Identical to office days. Recovery is non-negotiable.</div>
+            </div>
+          </div>
+          <div class="time-block block-highlight">
+            <div class="time-col">
+              <div class="time-label">11:00pm</div>
+              <div class="time-duration">30 min</div>
+            </div>
+            <div class="block-col">
+              <div class="block-type review">Not Optional</div>
+              <div class="block-title">Review & Log</div>
+              <div class="block-desc">Close the loop on your morning block. Write full learning log. Mandatory on WFH days — not optional.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 02 — WFH DEEP BLOCK BREAKDOWN -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <span class="section-title">WFH Deep Block — Internal Breakdown</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="deep-block">
+      <div class="deep-block-header">
+        <div class="deep-block-title">8:00 – 9:30am · 90 Minutes · Your Most Valuable Block</div>
+        <div class="deep-block-time">Fresh mind · Zero fatigue · Zero work pressure</div>
+      </div>
+
+      <div class="deep-segment">
+        <div class="seg-time">10 min</div>
+        <div class="seg-content">
+          <div class="seg-label">Review</div>
+          <div class="seg-title">Read Yesterday's Log</div>
+          <div class="seg-desc">Fix the one thing that was still unclear from last session. No new material yet. Start from solid ground, not confusion.</div>
+        </div>
+      </div>
+
+      <div class="deep-segment" style="background: rgba(129,140,248,0.03)">
+        <div class="seg-time">50 min</div>
+        <div class="seg-content">
+          <div class="seg-label">New Topic</div>
+          <div class="seg-title">Active Topic Study</div>
+          <div class="seg-desc">Work through the current topic from your master prompt response. Read actively — annotate, question, connect to prior knowledge. Never passive reading.</div>
+        </div>
+      </div>
+
+      <div class="deep-segment" style="background: rgba(110,231,183,0.03)">
+        <div class="seg-time">30 min</div>
+        <div class="seg-content">
+          <div class="seg-label">Practice</div>
+          <div class="seg-title">Independent Practice — No Googling</div>
+          <div class="seg-desc">
+            <strong>DSA days:</strong> Attempt the practice problem independently. No hints. 30 minutes with the problem — even if you produce nothing but confusion. The confusion is the work.<br><br>
+            <strong>Mastery Plan days:</strong> Write the code example from memory or build the small exercise from the topic.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 03 — COMMUTE LEARNING GUIDE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <span class="section-title">Commute Learning Guide</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="commute-grid">
+      <div class="commute-card">
+        <div class="commute-header">
+          <span class="commute-icon">🚌</span>
+          <div>
+            <div class="commute-title">Morning Commute — Block 1</div>
+            <div class="commute-time">7:00am · 1 hour · Theory & Absorption</div>
+          </div>
+        </div>
+        <ul class="commute-list">
+          <li>Read your notes from yesterday's topic</li>
+          <li>Read the current topic's documentation or concept</li>
+          <li>Review your previous practice exercise attempts</li>
+          <li>On DSA days — re-read the thinking walkthrough from the last D-topic</li>
+          <li class="no">Do not try to solve problems on the bus</li>
+          <li class="no">Do not try to write code on your phone</li>
+        </ul>
+      </div>
+      <div class="commute-card">
+        <div class="commute-header">
+          <span class="commute-icon">🚌</span>
+          <div>
+            <div class="commute-title">Evening Commute — Block 2</div>
+            <div class="commute-time">7:00pm · 1 hour · Processing & Recall</div>
+          </div>
+        </div>
+        <ul class="commute-list">
+          <li>Write your own summary of what you read in the morning — in your own words</li>
+          <li>DSA day: think through the practice problem mentally — approach only, no code</li>
+          <li>Mastery day: connect today's concept to something you did at work</li>
+          <li>Answer: "What did I read? What did I understand? What is still unclear?"</li>
+          <li class="no">Do not start new topics</li>
+          <li class="no">Do not just scroll — active recall only</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="success">
+      <strong>Why commute time is your secret weapon:</strong> Your 2 hours of daily commute on office days is 10 hours per week of learning time that most developers throw away on social media. Protecting it with the same seriousness as a scheduled meeting is the single habit that separates your timeline from everyone else's.
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 04 — WEEKLY SCHEDULE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <span class="section-title">Weekly Schedule — Series Rotation</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="week-grid">
+
+      <div class="week-day">
+        <div class="week-day-name office-day">MON</div>
+        <div class="week-tag office">Office</div>
+        <ul class="week-sessions">
+          <li><strong>Morning Commute</strong>Read Mastery Plan topic (60–82)</li>
+          <li><strong>Evening Commute</strong>Summarise & process it</li>
+          <li><strong>Night Micro</strong>Write tomorrow's intention</li>
+        </ul>
+        <div class="week-total">📘 Mastery Plan</div>
+      </div>
+
+      <div class="week-day">
+        <div class="week-day-name wfh-day">TUE</div>
+        <div class="week-tag wfh">WFH</div>
+        <ul class="week-sessions">
+          <li><strong>8:00–9:30am</strong>Full DSA topic + practice attempt</li>
+          <li><strong>11:00pm</strong>Log session — what clicked, what didn't</li>
+        </ul>
+        <div class="week-total">🧮 DSA Series</div>
+      </div>
+
+      <div class="week-day">
+        <div class="week-day-name office-day">WED</div>
+        <div class="week-tag office">Office</div>
+        <ul class="week-sessions">
+          <li><strong>Morning Commute</strong>Re-read Tuesday's DSA topic notes</li>
+          <li><strong>Evening Commute</strong>Think through DSA practice problem mentally</li>
+          <li><strong>Night Micro</strong>Write brute force in plain English</li>
+        </ul>
+        <div class="week-total">🧮 DSA Reinforced</div>
+      </div>
+
+      <div class="week-day">
+        <div class="week-day-name wfh-day">THU</div>
+        <div class="week-tag wfh">WFH</div>
+        <ul class="week-sessions">
+          <li><strong>8:00–9:30am</strong>Mastery Plan topic + code exercise</li>
+          <li><strong>11:00pm</strong>Log session</li>
+        </ul>
+        <div class="week-total">📘 Mastery Plan</div>
+      </div>
+
+      <div class="week-day">
+        <div class="week-day-name office-day">FRI</div>
+        <div class="week-tag office">Office</div>
+        <ul class="week-sessions">
+          <li><strong>Morning Commute</strong>Review only — no new topics</li>
+          <li><strong>Evening Commute</strong>Write week summary</li>
+          <li><strong>Night Micro</strong>Prepare next week's intentions</li>
+        </ul>
+        <div class="week-total">🔁 Review Only</div>
+      </div>
+
+      <div class="week-day">
+        <div class="week-day-name weekend-day">SAT</div>
+        <div class="week-tag flex">Flexible</div>
+        <ul class="week-sessions">
+          <li><strong>2 Hours</strong>Whichever series had a harder week</li>
+          <li><strong>Option A</strong>Retry DSA problems independently</li>
+          <li><strong>Option B</strong>Rebuild code example from memory</li>
+        </ul>
+        <div class="week-total">⚡ Catch-Up / Deep</div>
+      </div>
+
+      <div class="week-day">
+        <div class="week-day-name rest-day">SUN</div>
+        <div class="week-tag rest">Rest</div>
+        <ul class="week-sessions">
+          <li><strong>Full Rest</strong>No learning. No guilt.</li>
+          <li>Rest is when consolidation happens neurologically</li>
+        </ul>
+        <div class="week-total">😴 Full Recovery</div>
+      </div>
+
+    </div>
+
+    <div class="alert">
+      <strong>Friday Rule:</strong> Friday is never a new topic day. It is always review and consolidation. This is the rule that prevents the "I learned 10 things this week and retained none of them" problem. Only from clarity do you advance.
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 05 — SERIES ROTATION DETAIL -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <span class="section-title">Series Rotation — Detailed</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="rotation-grid">
+      <div class="rotation-card mastery">
+        <div class="rotation-title mastery">📘 Frontend Mastery Plan · Topics 60–82</div>
+        <div class="rotation-item">
+          <div class="rotation-day">MON</div>
+          <div class="rotation-detail"><strong>Morning Commute</strong>Read the current Mastery Plan topic from master prompt response</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">MON</div>
+          <div class="rotation-detail"><strong>Evening Commute</strong>Write your own summary. Connect to prior topics.</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">THU</div>
+          <div class="rotation-detail"><strong>WFH Deep Block</strong>Full topic study + code exercise in 90-minute block</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">FRI</div>
+          <div class="rotation-detail"><strong>Review Only</strong>Re-read this week's mastery topic. Fix what is unclear.</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">SAT</div>
+          <div class="rotation-detail"><strong>If needed</strong>Rebuild code example from memory. Apply to a real work scenario.</div>
+        </div>
+      </div>
+
+      <div class="rotation-card dsa-card">
+        <div class="rotation-title dsa">🧮 DSA Series · Topics D1–D40</div>
+        <div class="rotation-item">
+          <div class="rotation-day">TUE</div>
+          <div class="rotation-detail"><strong>WFH Deep Block</strong>Full DSA topic study + independent practice attempt (30 min solo)</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">TUE</div>
+          <div class="rotation-detail"><strong>Evening Log</strong>What clicked. What didn't. What tomorrow will clarify.</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">WED</div>
+          <div class="rotation-detail"><strong>Morning Commute</strong>Re-read Tuesday's DSA topic notes deeply</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">WED</div>
+          <div class="rotation-detail"><strong>Evening Commute</strong>Think through the practice problem approach — mentally only</div>
+        </div>
+        <div class="rotation-item">
+          <div class="rotation-day">SAT</div>
+          <div class="rotation-detail"><strong>If needed</strong>Re-attempt this week's practice problems from scratch. No notes.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 06 — DAILY LOG TEMPLATE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <span class="section-title">Daily Learning Log Template</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="log-box">
+      <div class="log-title">// Copy this into your notes app — fill it every session</div>
+
+      <div class="log-field">
+        <div class="log-key">DATE:</div>
+        <div class="log-value">[ date ]</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">SERIES:</div>
+        <div class="log-value">[ Mastery Plan · Topic 60–82 ] or [ DSA · D1–D40 ]</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">TOPIC:</div>
+        <div class="log-value">[ topic number and name ]</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">WHAT I COVERED:</div>
+        <div class="log-value">2–3 sentences in your own words. Not copied from notes. Your own language.</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">WHAT CLICKED:</div>
+        <div class="log-value">The one thing that finally made sense. Be specific — not "I understood signals", but "I understood WHY computed() re-runs only when its dependencies change."</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">WHAT IS STILL UNCLEAR:</div>
+        <div class="log-value">Be specific. Vague confusion cannot be resolved. "I don't understand effects" → "I don't understand why catchError must be inside switchMap not outside it."</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">APPLIED AT WORK TODAY:</div>
+        <div class="log-value">Any concept from this week's topics that appeared in your actual work code. Even noticing it counts.</div>
+      </div>
+      <div class="log-field">
+        <div class="log-key">TOMORROW'S INTENTION:</div>
+        <div class="log-value">Exactly what you will cover next session. One sentence. Specific enough that tomorrow-you knows exactly where to start.</div>
+      </div>
+
+      <div class="log-note">
+        ★ The "Still Unclear" field is the most important line in this log. It becomes the first thing you resolve in your next session — not something you carry forward indefinitely. This is the habit that separates developers who retain knowledge from those who feel like they are constantly relearning the same things.
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 07 — WEEKLY TOTALS -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <span class="section-title">Weekly Learning Hours</span>
+      <div class="section-line"></div>
+    </div>
+
+    <table class="totals-table">
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>Type</th>
+          <th>Primary Block</th>
+          <th>Series</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Monday</td>
+          <td><span class="day-type office">Office</span></td>
+          <td>2× commute blocks (1hr each)</td>
+          <td style="color:var(--mastery)">Mastery Plan</td>
+          <td>2 – 2.5 hrs</td>
+        </tr>
+        <tr>
+          <td>Tuesday</td>
+          <td><span class="day-type wfh">WFH</span></td>
+          <td>90-min deep block + 30-min log</td>
+          <td style="color:var(--dsa)">DSA Series</td>
+          <td>2 hrs</td>
+        </tr>
+        <tr>
+          <td>Wednesday</td>
+          <td><span class="day-type office">Office</span></td>
+          <td>2× commute blocks (1hr each)</td>
+          <td style="color:var(--dsa)">DSA Reinforced</td>
+          <td>2 – 2.5 hrs</td>
+        </tr>
+        <tr>
+          <td>Thursday</td>
+          <td><span class="day-type wfh">WFH</span></td>
+          <td>90-min deep block + 30-min log</td>
+          <td style="color:var(--mastery)">Mastery Plan</td>
+          <td>2 hrs</td>
+        </tr>
+        <tr>
+          <td>Friday</td>
+          <td><span class="day-type office">Office</span></td>
+          <td>2× commute blocks — review only</td>
+          <td style="color:var(--muted)">Review</td>
+          <td>2 hrs</td>
+        </tr>
+        <tr>
+          <td>Saturday</td>
+          <td><span class="day-type flex">Flexible</span></td>
+          <td>Catch-up or deep practice</td>
+          <td style="color:var(--weekend)">Either Series</td>
+          <td>2 hrs</td>
+        </tr>
+        <tr>
+          <td>Sunday</td>
+          <td><span class="day-type rest">Rest</span></td>
+          <td>Full recovery — no learning</td>
+          <td style="color:var(--muted)">—</td>
+          <td>0 hrs</td>
+        </tr>
+        <tr>
+          <td><strong>Weekly Total</strong></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td><strong>12 – 13 hrs</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 08 — THE 5 NON-NEGOTIABLE RULES -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">08</span>
+      <span class="section-title">The 5 Non-Negotiable Rules</span>
+      <div class="section-line"></div>
+    </div>
+
+    <ul class="rules-list">
+      <li>
+        <div class="rule-text">
+          <strong>Never move the gym</strong>
+          <p>It is your physical and mental recovery. Every developer who cuts recovery to study more ends up burning out and stopping entirely. The gym is not negotiable — it is what makes the rest of this sustainable.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-text">
+          <strong>Commute time is not wasted time</strong>
+          <p>Your 2 hours of daily commute on office days is 10 hours per week of learning time that most developers throw away on social media. Protect it with the same seriousness as a scheduled meeting.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-text">
+          <strong>The WFH morning block is sacred</strong>
+          <p>Do not let it drift to 10am. Do not let Slack pull you in early. Set a hard boundary: 8:00–9:30am is learning time. Your employer gets you from 10am. Those 90 minutes are the highest-value learning time in your entire week.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-text">
+          <strong>One topic per session, fully understood</strong>
+          <p>Never rush to the next topic because you finished early. If you finish with 20 minutes remaining — spend those 20 minutes writing it out in your own words or attempting the exercise again from scratch. Depth over speed, always.</p>
+        </div>
+      </li>
+      <li>
+        <div class="rule-text">
+          <strong>Friday is never a new topic day</strong>
+          <p>Friday is always review and consolidation. This is the rule that prevents the "I learned 10 things this week and retained none of them" problem. Review what you covered. Fix what is unclear. Only then are you ready for next week.</p>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 09 — MILESTONES -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">09</span>
+      <span class="section-title">6-Month Milestone Map</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="milestone-grid">
+      <div class="milestone-card">
+        <div class="milestone-week">Month 1 · Weeks 1–4</div>
+        <div class="milestone-title">Foundations Locked</div>
+        <div class="milestone-desc">Clean Code, SOLID, Design Patterns, Big O, Recursion (Topics 60–65). DSA Stage 1 complete — thinking framework built (D1–D6). Routine is now a habit.</div>
+      </div>
+      <div class="milestone-card">
+        <div class="milestone-week">Month 2 · Weeks 5–8</div>
+        <div class="milestone-title">Architecture + DSA Arrays</div>
+        <div class="milestone-desc">Angular Architecture topics complete (66–70). DSA Stage 2 in progress — Arrays, Strings, HashMaps, Sliding Window (D7–D12). First independent problem solved.</div>
+      </div>
+      <div class="milestone-card">
+        <div class="milestone-week">Month 3 · Weeks 9–12</div>
+        <div class="milestone-title">Performance + Core Patterns</div>
+        <div class="milestone-desc">Performance & Security track (71–74). DSA Stage 2 complete and Stage 3 beginning — Stacks, Binary Search, Recursion, Trees (D13–D19).</div>
+      </div>
+      <div class="milestone-card">
+        <div class="milestone-week">Month 4 · Weeks 13–16</div>
+        <div class="milestone-title">Auth + Graphs + DP</div>
+        <div class="milestone-desc">Auth Concepts + Implementation (75–76). A11y (77). DSA Stage 3 deep — Graphs, Dynamic Programming (D20–D28). Can solve medium problems independently.</div>
+      </div>
+      <div class="milestone-card">
+        <div class="milestone-week">Month 5 · Weeks 17–20</div>
+        <div class="milestone-title">System Design + Applied DSA</div>
+        <div class="milestone-desc">System Design topics (78). DSA Stage 4 — Applied Practice under timed conditions (D29–D36). Interview-ready for Tier C companies.</div>
+      </div>
+      <div class="milestone-card">
+        <div class="milestone-week">Month 6 · Weeks 21–24</div>
+        <div class="milestone-title">Interview Ready</div>
+        <div class="milestone-desc">Interview Prep topics (79–82). DSA Stage 5 — Frontend System Design (D37–D40). Portfolio polished. Mock interviews done. Ready to apply.</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- 10 — THE MISSED DAY RULE -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">10</span>
+      <span class="section-title">The Missed Day Protocol</span>
+      <div class="section-line"></div>
+    </div>
+
+    <div class="alert">
+      <strong>The only thing that derails this plan is not difficulty — it is skipping one day, feeling guilty, and then skipping another to avoid the guilt.</strong>
+    </div>
+
+    <div class="success">
+      <strong>The rule for a missed day:</strong> Acknowledge it in your log. Write one sentence: "Missed [date] — reason: [honest reason]." Start the next session exactly where you left off as if nothing happened. No catching up. No doubling sessions. No guilt spiral. Just continue. The chain is not broken by one missed day. It is broken by the decision to stop trying after a missed day.
+    </div>
+  </div>
+
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>Learning Routine · Angular + DSA · 2026 · Built for consistency over intensity</span>
+    <span>One topic. Every day. Six months. Done.</span>
+  </div>
+
+</div>
+</body>
+</html>

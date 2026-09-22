@@ -1,0 +1,70 @@
+Three important things to do in EVERY chat before pasting the prompt:
+Thing 1 — Say this first line before the prompt:
+
+"Do not start until I say GO. Read this entire instruction first."
+
+Then paste the prompt. Then say GO.
+This prevents Claude from starting before it has read all the instructions.
+Thing 2 — If the PDF build gets cut off mid-way:
+Say exactly this:
+
+"The build was cut off. Continue from where you stopped. Do not rebuild what is already done. Merge the completed parts and the remaining parts into one final PDF."
+
+Thing 3 — After the PDF is downloaded, verify it:
+Scroll to the last page and check the last topic is there. Scroll to the middle and spot-check one section. If anything is missing say:
+
+"Topic X is missing from the PDF. Add it and regenerate."
+
+
+PDF GENERATION PROMPT — USE THIS IN EVERY CHAT
+
+
+I need you to generate a PDF of all the topic content in this chat. Follow these instructions exactly.
+Content Rules:
+
+Include every single word of every response in this chat that contains topic content
+Do not summarise, shorten, paraphrase, or skip any section
+Do not include my questions or prompts — only the topic response content
+Preserve the exact order topics appeared in this chat
+If a topic was continued across multiple responses, combine them into one continuous section in the PDF
+
+Format Rules — Keep it Simple:
+
+Plain black text on white background — no colours, no styling, no decorative elements
+Use font size 11 for body text, Courier or Helvetica
+Section headers (Section 0, Section 1 etc.) in bold, slightly larger (13pt)
+Topic headers in bold, larger (15pt)
+Code blocks in Courier 9pt with a simple light grey background — nothing else
+No cover page graphics — just a plain text title page with the topic range and date
+Page numbers at the bottom centre — nothing else in the footer
+Standard A4 page with 2cm margins on all sides
+
+Structure of Each Topic in the PDF:
+TOPIC X — [TOPIC NAME]
+[Category] | [Difficulty] | [Relevance]
+─────────────────────────────────────
+
+Section 0 — Difficulty & Priority Rating
+[content]
+
+Section 1 — Explanation
+[content]
+
+Section 2 — Connection to Prior Concepts
+[content]
+
+... and so on through all sections this topic has ...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[page break before next topic]
+Build Instructions:
+
+Use Python and ReportLab
+Build the PDF in one script
+If the content is too long for one script, split into parts and merge at the end using pypdf
+Save the final file to /mnt/user-data/outputs/ with this naming format:
+Angular_Topics_[FIRST TOPIC NUMBER]_to_[LAST TOPIC NUMBER].pdf
+After building, tell me the total page count and confirm every topic is included
+
+Start immediately — do not ask clarifying questions. Read all the topic responses in this chat, build the PDF, and present it for download.
+

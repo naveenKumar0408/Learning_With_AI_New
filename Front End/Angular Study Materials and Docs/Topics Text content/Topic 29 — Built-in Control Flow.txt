@@ -1,0 +1,859 @@
+Topic 29 — Built-in Control Flow
+(@if, @for, @switch)
+
+Section 0 — Difficulty & Priority Rating
+Difficulty: Beginner-Intermediate — The syntax itself is straightforward, but understanding when Angular re-renders, how track works in @for, and why the new block syntax replaced structural directives requires understanding change detection and DOM reconciliation.
+Angular Relevance: Critical — Every Angular template that shows dynamic content uses control flow. You cannot build a real Angular app without @if and @for — they appear in virtually every component you will ever write.
+
+Section 1 — Explanation
+The Stage Manager Analogy
+Imagine a theatre stage manager with three tools:
+A spotlight — @if. The spotlight either illuminates a scene or it doesn't. When the condition is false, the scene doesn't just go dark — the actors leave the stage entirely. When the condition becomes true again, the actors walk back on and set up fresh. This is important: @if doesn't hide elements, it removes and recreates them in the DOM.
+A photocopier — @for. You hand the photocopier one template (one actor's script) and a list of 50 names, and it stamps out 50 copies — one for each name. Change the list, and it figures out the minimum number of copies to add, remove, or move to match the new list. The track instruction tells the photocopier how to recognise which copy is which so it doesn't reprint everything from scratch.
+A costume rack — @switch. The costume rack holds several outfits. Based on the character's role, exactly one outfit comes off the rack. Only one @case is ever active at a time.
+
+Technical Explanation
+Angular 17 introduced a new built-in control flow syntax directly in the template compiler. It replaces the older structural directives (*ngIf, *ngFor, *ngSwitch) with a cleaner block-based syntax that looks similar to JavaScript's own if/for/switch.
+Why the change?
+
+The old *ngIf and *ngFor required importing CommonModule or NgIf/NgFor — the new syntax is built into the compiler, no imports needed
+The new syntax supports type narrowing inside @if blocks (TypeScript knows the type is not null inside the block)
+@for now requires track, making the performance contract explicit rather than optional
+The block syntax is easier to read for developers who know JavaScript
+
+
+Quick Comparison — Old vs New:
+Old SyntaxNew SyntaxKey Difference*ngIf="cond"@if (cond) { }Type-narrowing, no import needed*ngIf="cond; else tmpl"@if (cond) { } @else { }Inline else, no ng-template needed*ngFor="let x of list; trackBy: fn"@for (x of list; track x.id) { }track is mandatory*ngFor="...; let i = index"@for (x of list; track x.id) { } // $index availableBuilt-in variables[ngSwitch] + *ngSwitchCase@switch (val) { @case (x) { } }Single block, no wrapper needed
+
+The Three Blocks in Detail
+@if — Conditional Rendering
+@if (condition) {
+  <!-- rendered when true -->
+} @else if (otherCondition) {
+  <!-- rendered when otherCondition true -->
+} @else {
+  <!-- rendered when all conditions false -->
+}
+Key behaviour: Angular removes the DOM nodes when the condition is false and creates them fresh when it becomes true. This means component lifecycle hooks run — ngOnInit fires every time the component enters the DOM, ngOnDestroy fires every time it leaves.
+Type narrowing: Inside @if (user) { }, TypeScript automatically knows user is not null or undefined — you don't need user!.name inside the block.
+
+@for — List Rendering
+@for (item of items; track item.id) {
+  <!-- rendered once per item -->
+} @empty {
+  <!-- rendered when items is empty or null -->
+}
+track is mandatory. It tells Angular how to identify each item across re-renders. Angular uses the tracked value to perform the minimum DOM operations needed when the list changes (add, remove, or move nodes rather than destroying and recreating the entire list).
+Built-in loop variables — available inside @for without declaration:
+VariableTypeMeaning$indexnumberCurrent iteration index (0-based)$firstbooleanTrue for the first item$lastbooleanTrue for the last item$evenbooleanTrue for even-index items$oddbooleanTrue for odd-index items$countnumberTotal number of items in the list
+
+@switch — Multi-Branch Rendering
+@switch (expression) {
+  @case (valueA) {
+    <!-- rendered when expression === valueA -->
+  }
+  @case (valueB) {
+    <!-- rendered when expression === valueB -->
+  }
+  @default {
+    <!-- rendered when no case matches -->
+  }
+}
+Uses strict equality (===). Only one @case renders at a time. Unlike JavaScript switch, there is no fallthrough — you don't need break.
+
+Section 2 — Connection to Prior Concepts
+Direct dependencies:
+
+Topic 28 — Angular Template Syntax: @if, @for, and @switch use the same template expression syntax — property bindings, interpolation, and event bindings live inside the control flow blocks
+Topic 24 — OnPush Change Detection: @if and @for interact directly with change detection — understanding when Angular re-evaluates these blocks requires knowing how change detection triggers
+Topic 25 — Component Lifecycle Hooks: @if adding/removing a child component causes ngOnInit and ngOnDestroy to fire — this is not obvious and causes real bugs
+Topic 23 — Angular Signals: @for re-renders when the signal array changes; @if re-evaluates when a signal value changes — control flow and signals are tightly integrated
+Topic 9 — Array Methods: The arrays you pass to @for are often the result of .filter(), .map(), .sort() — understanding array transformations is essential for dynamic lists
+
+Bridging note: In Topic 28 you learned that property binding and interpolation are how you connect TypeScript values to the DOM. Control flow is the layer above that — it determines whether and how many times those bindings are rendered at all. @if gates which bindings exist; @for multiplies them.
+Most directly extends: Topic 28 — Angular Template Syntax
+
+Section 3 — Code Example
+Plain JS — The Core Concept in Isolation
+javascript// What Angular's control flow is automating for you
+
+const items = ['Apple', 'Banana', 'Cherry'];
+const container = document.getElementById('list');
+
+// @for equivalent — manually stamping out DOM nodes
+items.forEach(item => {
+  const li = document.createElement('li');
+  li.textContent = item;
+  container.appendChild(li);
+});
+
+// Problem: if items changes, how do you update the DOM efficiently?
+// Do you blow away all nodes and rebuild? (Wasteful — loses focus, scroll position)
+// Do you diff the old and new list? (Complex — you have to write the diffing logic)
+// Angular's @for + track handles this diffing automatically.
+
+// @if equivalent
+const isLoggedIn = true;
+if (isLoggedIn) {
+  document.getElementById('welcome').style.display = 'block';
+  // But note: this just hides it. Angular @if actually removes the DOM node.
+}
+
+Real Angular Example
+typescript// dashboard.component.ts
+import { Component, signal, computed } from '@angular/core';
+
+interface User {
+  id: number;
+  name: string;
+  role: 'admin' | 'editor' | 'viewer';
+  isActive: boolean;
+}
+
+@Component({
+  selector: 'app-dashboard',
+  standalone: true,
+  // No CommonModule needed — @if/@for/@switch are built into the compiler
+  template: `
+    <!-- ══════════════════════════════════════════ -->
+    <!-- @if — CONDITIONAL RENDERING                -->
+    <!-- ══════════════════════════════════════════ -->
+
+    @if (isLoading()) {
+      <!-- Shown while data loads -->
+      <div class="spinner">Loading...</div>
+
+    } @else if (error()) {
+      <!-- Only shown when isLoading is false AND error is truthy -->
+      <div class="error-banner">
+        Error: {{ error() }}
+        <button (click)="retry()">Retry</button>
+      </div>
+
+    } @else if (users().length === 0) {
+      <!-- TypeScript knows users() is not null here — type narrowed -->
+      <p class="empty-state">No users found.</p>
+
+    } @else {
+      <!-- Main content — only shown when data is loaded and non-empty -->
+      <h2>Users ({{ users().length }})</h2>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- @for — LIST RENDERING                      -->
+      <!-- ══════════════════════════════════════════ -->
+
+      <ul>
+        @for (user of users(); track user.id) {
+          <!--
+            track user.id — Angular uses the id to identify this DOM node.
+            If the list reorders, Angular MOVES the existing node instead of
+            destroying and recreating it. Faster, and preserves focus/state.
+          -->
+
+          <li
+            [class.inactive]="!user.isActive"
+            [class.first-item]="$first"
+            [class.last-item]="$last"
+          >
+            <!-- $index, $first, $last, $even, $odd, $count are all available -->
+            <span class="index">{{ $index + 1 }} / {{ $count }}</span>
+
+            <strong>{{ user.name }}</strong>
+
+            <!-- ══════════════════════════════════════════ -->
+            <!-- @switch — MULTI-BRANCH RENDERING           -->
+            <!-- ══════════════════════════════════════════ -->
+
+            @switch (user.role) {
+              @case ('admin') {
+                <!-- Only rendered for admin users -->
+                <span class="badge badge-red">Admin</span>
+              }
+              @case ('editor') {
+                <span class="badge badge-blue">Editor</span>
+              }
+              @case ('viewer') {
+                <span class="badge badge-grey">Viewer</span>
+              }
+              @default {
+                <!-- Safety net — renders if role doesn't match any case -->
+                <span class="badge">Unknown</span>
+              }
+            }
+
+            <!-- @if inside @for — fully nestable -->
+            @if (user.isActive) {
+              <span class="status active">● Active</span>
+            } @else {
+              <span class="status inactive">○ Inactive</span>
+            }
+
+          </li>
+
+        } @empty {
+          <!--
+            @empty renders when the @for collection is empty OR null/undefined.
+            Much cleaner than wrapping the whole @for in an @if.
+          -->
+          <li class="no-results">No users match the current filter.</li>
+        }
+      </ul>
+    }
+  `
+})
+export class DashboardComponent {
+  // Signals — @if and @for automatically re-evaluate when these change
+  isLoading = signal(true);
+  error = signal<string | null>(null);
+  users = signal<User[]>([]);
+
+  constructor() {
+    // Simulate data load
+    setTimeout(() => {
+      this.isLoading.set(false);
+      this.users.set([
+        { id: 1, name: 'Alice Chen', role: 'admin', isActive: true },
+        { id: 2, name: 'Bob Smith', role: 'editor', isActive: true },
+        { id: 3, name: 'Carol White', role: 'viewer', isActive: false },
+      ]);
+    }, 1000);
+  }
+
+  retry(): void {
+    this.isLoading.set(true);
+    this.error.set(null);
+    // Re-trigger data load...
+  }
+}
+
+track In Depth — Why It Matters
+typescript@Component({
+  template: `
+    <!-- ❌ WRONG: track $index — tells Angular items are identified by position -->
+    <!-- If you insert an item at the start, Angular thinks ALL items changed -->
+    @for (item of items; track $index) {
+      <app-item [data]="item"></app-item>
+    }
+
+    <!-- ✅ CORRECT: track item.id — each item has a stable identity -->
+    <!-- Insert at start: only one new DOM node created, rest are moved -->
+    @for (item of items; track item.id) {
+      <app-item [data]="item"></app-item>
+    }
+
+    <!-- For primitive arrays (strings, numbers) — track the value itself -->
+    @for (name of names; track name) {
+      <li>{{ name }}</li>
+    }
+  `
+})
+export class TrackExampleComponent {
+  items = [
+    { id: 101, name: 'Widget A' },
+    { id: 102, name: 'Widget B' },
+    { id: 103, name: 'Widget C' },
+  ];
+
+  names = ['Alice', 'Bob', 'Carol'];
+
+  addItemAtStart(): void {
+    // With track item.id:
+    //   Angular sees: new id 100 at position 0, existing 101/102/103 moved
+    //   Result: 1 DOM node created, 3 moved → efficient
+
+    // With track $index:
+    //   Angular sees: position 0 changed (was 101, now 100)
+    //                 position 1 changed (was 102, now 101)
+    //                 position 2 changed (was 103, now 102)
+    //                 position 3 is new
+    //   Result: ALL 4 components re-rendered → wasteful
+
+    this.items = [{ id: 100, name: 'Widget New' }, ...this.items];
+  }
+}
+
+Section 4 — Before & After Refactor
+❌ Before — Old Structural Directive Syntax
+typescript// Old approach — still works but is the legacy pattern
+import { CommonModule } from '@angular/common';  // Required import
+
+@Component({
+  standalone: true,
+  imports: [CommonModule],  // Must import for *ngIf/*ngFor/*ngSwitch
+  template: `
+    <!-- Requires ng-template for else branch — verbose -->
+    <div *ngIf="isLoading; else content">Loading...</div>
+    <ng-template #content>
+      <div *ngIf="users.length > 0; else empty">
+
+        <!-- trackBy requires a separate method on the class -->
+        <div *ngFor="let user of users; trackBy: trackById; let i = index; let last = last">
+          {{ i }}: {{ user.name }}
+          <span *ngIf="last"> (last)</span>
+        </div>
+
+      </div>
+      <ng-template #empty>No users.</ng-template>
+    </ng-template>
+
+    <!-- ngSwitch requires three separate directives on two elements -->
+    <div [ngSwitch]="user.role">
+      <span *ngSwitchCase="'admin'">Admin</span>
+      <span *ngSwitchCase="'editor'">Editor</span>
+      <span *ngSwitchDefault>Viewer</span>
+    </div>
+  `
+})
+export class OldComponent {
+  isLoading = true;
+  users: User[] = [];
+
+  // trackBy required as a method — not co-located with the template
+  trackById(index: number, user: User): number {
+    return user.id;
+  }
+}
+What's wrong with this:
+
+Requires importing CommonModule (or individual NgIf, NgFor directives) — extra boilerplate
+The else branch requires a separate <ng-template #ref> — the two halves of the condition are not visually adjacent
+trackBy is a class method disconnected from the @for expression — easy to forget
+*ngSwitch splits the switch logic across a wrapper element and child elements using three different directives
+No TypeScript type narrowing inside *ngIf — you still need user!.property or the non-null assertion
+
+
+✅ After — New Built-in Control Flow
+typescript// New approach — Angular 17+
+@Component({
+  standalone: true,
+  imports: [],  // Nothing needed for control flow — it's built in
+  template: `
+    @if (isLoading) {
+      <div>Loading...</div>
+    } @else {
+      @if (users.length > 0) {
+
+        <!-- track is inline, co-located, mandatory — can't forget it -->
+        @for (user of users; track user.id; let i = $index; let last = $last) {
+          {{ i }}: {{ user.name }}
+          @if (last) { <span>(last)</span> }
+        } @empty {
+          <!-- @empty handles the empty case without a wrapping @if -->
+        }
+
+      } @else {
+        No users.
+      }
+    }
+
+    <!-- Switch is a single coherent block — no wrapper element needed -->
+    @switch (user.role) {
+      @case ('admin') { <span>Admin</span> }
+      @case ('editor') { <span>Editor</span> }
+      @default { <span>Viewer</span> }
+    }
+  `
+})
+export class NewComponent {
+  isLoading = true;
+  users: User[] = [];
+  // No trackBy method needed — track expression is inline
+}
+Why this matters in Angular: Fewer imports, better TypeScript integration, mandatory track prevents the most common @for performance mistake, and @else branches are co-located — easier to read and maintain at scale.
+
+Section 5 — Common Mistakes & Misconceptions
+Mistake 1 — Using track $index as the Default
+What the mistake looks like:
+html@for (item of items; track $index) {
+  <app-card [data]="item"></app-card>
+}
+Why developers make it: Angular requires track and $index is always available — so developers use it as the path of least resistance. It compiles without errors.
+How to avoid it: Always ask: "Does this item have a stable unique identifier?" If yes (item.id, item.uuid, item.slug), use that. Use track $index only for static lists that never change order, never have items inserted or removed mid-list, and don't contain stateful child components.
+Angular-specific consequence: When the list reorders or an item is inserted anywhere except the end, Angular treats every item at a changed position as a different item entirely. Every app-card at those positions is destroyed and recreated — firing ngOnInit again, losing any internal component state (open accordions, dirty form fields, scroll positions, animation states).
+
+Mistake 2 — Expecting @if to Hide Elements (Like display: none)
+What the mistake looks like:
+typescript// Developer wraps a component in @if, expecting it to "pause" rather than destroy
+@Component({
+  template: `
+    @if (showPanel) {
+      <!-- Developer expects panel to remember its state when showPanel flips back -->
+      <app-side-panel></app-side-panel>
+    }
+  `
+})
+Why developers make it: CSS developers default to thinking about display: none. jQuery developers use .hide(). Both preserve the element and its state. Developers assume @if is a smarter version of the same thing.
+How to avoid it: Understand the distinction: @if (false) removes the DOM node and destroys the component. @if (true) creates a new instance. If you need to preserve component state, use [hidden] or display: none via a CSS class binding instead, or lift the state out of the component into a service or parent signal.
+html<!-- Hides without destroying — component instance persists, state is preserved -->
+<app-side-panel [hidden]="!showPanel"></app-side-panel>
+
+<!-- OR — CSS class approach -->
+<app-side-panel [class.hidden]="!showPanel"></app-side-panel>
+Angular-specific consequence: ngOnInit fires every time @if becomes true — if ngOnInit triggers an HTTP call, you'll make a new API call every time the panel is shown.
+
+Mistake 3 — Forgetting That @if Removal Triggers Child ngOnDestroy
+What the mistake looks like:
+typescript// Child component has a subscription
+@Component({...})
+export class TimerComponent implements OnInit {
+  ngOnInit() {
+    // Developer forgets this fires again every time @if becomes true
+    interval(1000).subscribe(n => console.log(n));
+    // No unsubscribe — memory leak every time the component mounts
+  }
+}
+
+// Parent:
+// @if (showTimer) {
+//   <app-timer></app-timer>
+// }
+Why developers make it: The leak only happens when showTimer toggles multiple times — it often passes basic testing. The subscription leaks silently.
+How to avoid it: Treat every component wrapped in @if as a component that may be created and destroyed many times. Always use takeUntilDestroyed() (Topic 21) or DestroyRef for subscriptions in components that live inside conditional blocks.
+Angular-specific consequence: Each time @if shows the component, a new subscription is added to the previous ones. Memory usage grows linearly with each toggle, and multiple simultaneous subscriptions fire duplicate side effects (multiple API calls, multiple state updates, multiple console logs).
+
+Section 6 — Do's and Don'ts
+✅ DO❌ DON'TUse track item.id (stable unique identity) in @forUse track $index as a default for lists that change at runtimeUse @empty inside @for for clean empty-state handlingWrap @for in an @if (items.length > 0) just to handle the empty caseUse @if type narrowing — no ! assertions inside @if (obj) blocksAssert non-null with obj!.property inside an @if (obj) block — it's redundantUse [hidden]="condition" when you need to preserve component state across togglesUse @if when you actually want to hide-but-preserve — they are not the sameNest @if, @for, @switch freely — the block syntax is designed for compositionReach for old *ngIf/*ngFor in new Angular 17+ code — use the new syntax consistentlyKeep @switch for role/status/type enum branching where cases are distinct valuesUse @switch for range comparisons (> 10) — it uses ===, not range logic; use @if/@else if instead
+
+Section 7 — Debugging Tips
+Bug 1 — Component Re-initialises Every Time a Condition Toggles
+Symptom: ngOnInit fires multiple times for a child component. API calls trigger repeatedly. Component loses form state or animation progress every time it reappears.
+Cause: The component is wrapped in @if, and the condition is toggling. Every false → true transition destroys the old instance and creates a new one, triggering a full lifecycle from ngOnInit.
+Fix:
+html<!-- Option 1: Use [hidden] to preserve the instance -->
+<app-expensive-panel [hidden]="!isVisible"></app-expensive-panel>
+
+<!-- Option 2: Lift state out of the component into a parent signal or service -->
+<!-- The component can be destroyed — its data persists in the service -->
+Angular-specific note: This is especially important for form components inside @if. A form inside @if resets entirely when the condition becomes false then true again. If you want to preserve partial form state, either keep it outside the @if or store form values in a service.
+
+Bug 2 — @for List Not Updating When Array Is Mutated
+Symptom: You push a new item into an array (this.items.push(newItem)) but the @for list in the template doesn't update.
+Cause: Angular's change detection compares object references, not contents. If you mutate the same array reference (push, splice, sort in place), Angular doesn't detect a change because this.items === this.items is still true.
+Fix:
+typescript// ❌ Mutation — Angular doesn't see a change in default Zone.js apps with OnPush
+this.items.push(newItem);
+
+// ✅ Replace the reference — Angular sees a new array reference
+this.items = [...this.items, newItem];
+
+// ✅ With Signals — mutation detection is automatic
+this.items.update(current => [...current, newItem]);
+// OR
+this.items.set([...this.items(), newItem]);
+Angular-specific note: This bug is most common with OnPush components (Topic 24). In default change detection it sometimes works because Zone.js patches push — but it's unreliable and should never be relied upon. Always replace the reference or use Signals.
+
+Bug 3 — @switch @default Never Renders, Or Wrong @case Renders
+Symptom: The switch expression has a value, but either the wrong case renders or @default shows when it shouldn't.
+Cause: @switch uses strict equality (===). Type mismatches between the expression and the case value cause cases to never match.
+Fix:
+typescript// ❌ Role is a number, but cases are strings — strict equality fails
+// user.roleId = 1 (number)
+@switch (user.roleId) {
+  @case ('1') { <span>Admin</span> }  // '1' !== 1 — never matches
+}
+
+// ✅ Ensure types match
+@switch (user.roleId) {
+  @case (1) { <span>Admin</span> }    // 1 === 1 — matches
+}
+
+// ✅ Or switch on a string property that's actually a string
+@switch (user.role) {        // user.role = 'admin' (string)
+  @case ('admin') { ... }    // 'admin' === 'admin' — matches
+}
+Angular-specific note: TypeScript will often catch this at compile time if the switch expression and case values have explicit types. If you're using any or the values come from an API without type assertions, the mismatch is silent at compile time and only visible at runtime.
+
+Section 8 — Real-World Applications
+Scenario 1 — Notifications Feed With Status Badges (Angular-Specific)
+A notifications panel that renders a list of mixed notification types, each with its own layout based on type.
+typescriptinterface Notification {
+  id: string;
+  type: 'message' | 'alert' | 'success' | 'warning';
+  title: string;
+  body: string;
+  isRead: boolean;
+  timestamp: Date;
+}
+
+@Component({
+  selector: 'app-notifications',
+  standalone: true,
+  template: `
+    <div class="notifications-panel">
+      <h3>Notifications ({{ unreadCount() }})</h3>
+
+      @if (isLoading()) {
+        <div class="skeleton-loader">
+          @for (n of [1,2,3]; track n) {
+            <!-- Trick: loop over a static array for skeleton placeholders -->
+            <div class="skeleton-item"></div>
+          }
+        </div>
+
+      } @else {
+
+        @for (notification of notifications(); track notification.id) {
+
+          <div
+            class="notification-item"
+            [class.unread]="!notification.isRead"
+            (click)="markAsRead(notification.id)"
+          >
+            <!-- @switch determines the icon and colour for each type -->
+            @switch (notification.type) {
+              @case ('message') {
+                <span class="icon icon-message">💬</span>
+              }
+              @case ('alert') {
+                <span class="icon icon-alert">🚨</span>
+              }
+              @case ('success') {
+                <span class="icon icon-success">✅</span>
+              }
+              @case ('warning') {
+                <span class="icon icon-warning">⚠️</span>
+              }
+            }
+
+            <div class="content">
+              <strong>{{ notification.title }}</strong>
+              <p>{{ notification.body }}</p>
+
+              @if ($last) {
+                <!-- Show "load more" only after the last item -->
+                <button (click)="loadMore()">Load more</button>
+              }
+            </div>
+
+            @if (!notification.isRead) {
+              <span class="unread-dot"></span>
+            }
+
+          </div>
+
+        } @empty {
+          <div class="empty-state">
+            <p>You're all caught up! 🎉</p>
+          </div>
+        }
+
+      }
+    </div>
+  `
+})
+export class NotificationsComponent {
+  isLoading = signal(false);
+  notifications = signal<Notification[]>([]);
+  unreadCount = computed(() => this.notifications().filter(n => !n.isRead).length);
+
+  markAsRead(id: string): void {
+    this.notifications.update(list =>
+      list.map(n => n.id === id ? { ...n, isRead: true } : n)
+    );
+  }
+
+  loadMore(): void { /* fetch next page */ }
+}
+
+Scenario 2 — Permission-Gated UI
+A settings page where sections are conditionally shown based on user role.
+typescripttype Role = 'admin' | 'manager' | 'member';
+
+@Component({
+  selector: 'app-settings',
+  standalone: true,
+  template: `
+    <h1>Settings</h1>
+
+    <!-- Type narrowed: inside this block, currentUser is never null -->
+    @if (currentUser()) {
+
+      <!-- Show different settings sections based on role -->
+      @switch (currentUser()!.role) {
+
+        @case ('admin') {
+          <!-- Admin sees everything -->
+          <section>
+            <h2>System Configuration</h2>
+            <app-system-settings></app-system-settings>
+          </section>
+          <section>
+            <h2>User Management</h2>
+            <app-user-management></app-user-management>
+          </section>
+        }
+
+        @case ('manager') {
+          <!-- Managers see team settings but not system config -->
+          <section>
+            <h2>Team Settings</h2>
+            <app-team-settings></app-team-settings>
+          </section>
+        }
+
+        @default {
+          <!-- Regular members see only personal preferences -->
+          <section>
+            <h2>My Preferences</h2>
+            <app-personal-settings></app-personal-settings>
+          </section>
+        }
+
+      }
+
+      <!-- Billing section — shown to admin and manager only -->
+      @if (currentUser()!.role !== 'member') {
+        <section>
+          <h2>Billing</h2>
+          <app-billing></app-billing>
+        </section>
+      }
+
+    } @else {
+      <!-- currentUser is null — user not loaded yet or not authenticated -->
+      <app-loading-state message="Loading your settings..."></app-loading-state>
+    }
+  `
+})
+export class SettingsComponent {
+  currentUser = signal<{ role: Role; name: string } | null>(null);
+}
+
+Section 9 — Practice Exercises
+Exercise 1 — Beginner
+Build a standalone component called TodoList. It should have a todos array of objects with id, text, and completed properties. Use @for with proper track to render each todo. Use @if to show a checkmark next to completed items and an @empty block that displays "No todos yet!" when the array is empty. Add a button to add a new todo and verify the list updates correctly.
+
+Exercise 2 — Intermediate
+Build a StatusCard component that accepts a status input of type 'loading' | 'success' | 'error' | 'empty'. Use @switch to render a completely different layout for each status — loading shows a spinner, success shows a green checkmark with a message, error shows a red warning with a retry button, and empty shows an illustration and call-to-action text. In a parent component, cycle through all four statuses using a button to verify each branch renders correctly and transitions cleanly.
+
+Exercise 3 — Advanced
+Build a DataTable component that renders a list of employee records (id, name, department, salary, isActive). Use @for with track employee.id to render rows. Use @if/@else to show active vs inactive styling. Use $even/$odd to apply alternating row colours. Add a filterDepartment signal — when set, the table should only show employees from that department using a computed() signal for the filtered list. Add a sort button that reverses the list and verify that track employee.id correctly moves DOM nodes rather than recreating them (observe in DevTools Elements panel that rows move rather than flash).
+
+Section 10 — Key Takeaways
+Core Concepts:
+
+@if — conditionally creates or destroys DOM nodes; not the same as CSS hide/show; triggers full component lifecycle
+@for — renders a template once per item in a collection; requires track to identify items for efficient DOM reconciliation
+track — tells Angular how to identify items across re-renders; stable unique IDs (item.id) are almost always correct; $index is a performance trap for dynamic lists
+@empty — a companion block to @for that renders when the collection is empty; cleaner than a separate @if
+@switch — multi-branch rendering with strict equality (===); no fallthrough; @default is the catch-all
+Built-in variables in @for: $index, $first, $last, $even, $odd, $count — no declaration needed
+No imports needed — unlike *ngIf/*ngFor, the new syntax requires nothing in the imports array
+
+
+Quick Reference Table:
+BlockSyntaxDOM BehaviourKey Option@if@if (expr) { } @else { }Creates / destroys@else if for chaining@for@for (x of list; track x.id) { }Stamps per item@empty for empty state@switch@switch (val) { @case (x) { } }One branch active@default for fallback
+
+Angular-Specific Rules:
+
+@if destroys components — ngOnInit re-fires on every false → true transition
+Always track by a stable unique property, not $index, for lists that change at runtime
+@if type-narrows TypeScript — no ! assertions needed inside the block
+Do not mutate arrays in place with push/splice — replace the reference or use Signals
+@switch uses === — ensure expression and case value types match exactly
+
+One-Line Memory Aid:
+
+@if creates and destroys, @for stamps and tracks, @switch picks exactly one — together they control what exists, how many times, and which version.
+
+
+Section 11 — Thought-Provoking Question + Answer
+Question: @if (condition) removes the DOM node entirely when false, while [hidden]="condition" keeps it in the DOM but invisible. They both "hide" content from the user — so which one should you use, and does the choice actually matter at scale?
+Answer:
+The choice matters significantly at scale, and the right answer depends on what you're optimising for.
+Conceptual explanation: @if and [hidden] represent two different philosophies: existence vs visibility. @if says "this content doesn't exist right now." [hidden] says "this content exists but isn't visible right now." The DOM doesn't know about visibility — it only models existence. [hidden] is really display: none applied to an element that is fully parsed, mounted, and alive in the DOM tree.
+What this means in practice:
+
+A component inside @if (false) has no JavaScript instance, no subscriptions, no memory footprint, no change detection cost
+A component inside [hidden]="true" has a full live JavaScript instance — its ngOnInit has already run, its subscriptions are active, Angular's change detection still evaluates its bindings every cycle
+A complex component tree (imagine a data table with 200 rows, all [hidden]) is still fully rendered in memory and checked on every change detection cycle — it just isn't visible
+
+The Angular-specific implication:
+
+Use @if (default choice) when the hidden content is expensive to maintain, has side effects (API calls in ngOnInit), or is unlikely to be shown
+Use [hidden] only when you specifically need to preserve component state across visibility toggles and the component is cheap to keep alive — a simple filter panel that a user toggles frequently is a good candidate
+Never use [hidden] on large component subtrees as a performance shortcut — it's actually the expensive option
+
+Practical rule: Start with @if. Switch to [hidden] only when you've identified a specific state preservation need that can't be solved by lifting state up into a signal or service.
+
+Section 12 — Related Topics to Learn Next
+ES6/JS Concepts
+
+Array destructuring in loops — @for (let {id, name} of users; track id) uses destructuring directly in the loop expression
+
+TypeScript Concepts
+
+Type narrowing and control flow analysis — TypeScript's own narrowing mirrors what @if does in templates; understanding one deepens understanding of the other
+Discriminated unions — a natural fit for @switch — when your objects have a type field that narrows which properties exist
+
+Angular-Specific Concepts
+
+Topic 30 — Built-in Directives (ngClass, ngStyle, ngTemplateOutlet) — the next layer: now that you control whether and how many elements render, learn to control their dynamic styling
+Topic 31 — Content Projection (ng-content) — @if and @for inside projected content has specific behaviour worth understanding
+Topic 42 — Custom Pipes — pipes used inside @for expressions to transform displayed values; pure pipes are memoised which is important for performance inside loops
+Topic 45 — Performance Optimisation (deferrable views) — @defer is the control flow block you haven't seen yet; it lazy-loads content when it enters the viewport
+
+
+Section 13 — Study Plan Checkpoint
+This topic directly depends on:
+
+Topic 9 — Array Methods (arrays passed to @for are often .filter()/.map() results)
+Topic 23 — Angular Signals (signals as the data source for @if and @for)
+Topic 24 — OnPush Change Detection (control flow blocks and when they re-evaluate)
+Topic 25 — Component Lifecycle Hooks (@if triggers ngOnInit/ngOnDestroy)
+Topic 28 — Angular Template Syntax (bindings live inside control flow blocks)
+
+This topic unlocks:
+
+Topic 30 — Built-in Directives — directives like ngClass and ngStyle are used inside @for and @if blocks constantly
+Topic 31 — Content Projection — projected content often contains @if/@for blocks
+Topic 33 — Reactive Forms — form arrays and conditional form fields use @for and @if
+Topic 45 — Performance Optimisation — trackBy patterns, @defer (lazy control flow), and pure pipes in loops all build on this foundation
+
+Production readiness assessment: You are ready to use @if, @for, and @switch confidently in production — but commit to always using track item.id (not $index) and understanding the @if-destroys-vs-hidden-hides distinction before shipping components where state preservation matters.
+
+Section 14 — Common Interview Questions
+Question 1
+"What does the track expression do in Angular's @for block, and what happens if you always use track $index?"
+Strong answer covers:
+
+track gives Angular a way to identify each list item across re-renders by a stable key
+Angular uses it to perform DOM reconciliation — move/update existing nodes rather than destroy and recreate
+track $index tells Angular items are identified by position — insert at start causes all subsequent items to be treated as "changed"
+Consequence: child component state lost, ngOnInit re-fires, animations reset, performance degrades
+Correct approach: track item.id or another stable unique property
+
+Weak answers miss: That track $index isn't always wrong — for static, append-only lists it's acceptable. The real issue is dynamic reordering and insertion.
+Difficulty: Mid
+
+Question 2
+"What is the difference between using @if and [hidden] to conditionally show content in Angular? When would you choose one over the other?"
+Strong answer covers:
+
+@if (false) removes the DOM node entirely; destroys child component instances; ngOnDestroy fires
+[hidden] applies display: none; component instance stays alive; subscriptions, change detection, memory all still active
+@if is more efficient when content is rarely shown or has expensive ngOnInit side effects
+[hidden] preserves component state across toggles — better for UI panels the user switches between frequently
+Default choice should be @if; switch to [hidden] only for specific state-preservation needs
+
+Weak answers miss: That [hidden] is not inherently "better" for performance — it keeps everything alive and still gets change detection cycles.
+Difficulty: Mid
+
+Question 3
+"How does the new Angular 17 built-in control flow (@if, @for) differ from the old structural directives (*ngIf, *ngFor)? Why was the change made?"
+Strong answer covers:
+
+New syntax is compiled directly by the Angular template compiler — no CommonModule or NgIf/NgFor imports needed
+@if provides TypeScript type narrowing inside the block — old *ngIf did not
+@for makes track mandatory — old trackBy was optional and often forgotten, leading to silent performance issues
+@empty is a clean companion to @for — old approach required a separate *ngIf and ng-template
+The block syntax ({ }) is more readable and closer to JavaScript's native control flow syntax
+Old structural directives still work but are the legacy path — new code should use the block syntax
+
+Weak answers miss: The TypeScript type narrowing improvement, which is one of the most practically useful changes beyond just syntax preference.
+Difficulty: Mid-Senior
+
+Section 15 — Anti-Patterns to Avoid in Production
+Anti-Pattern 1 — Nested @for Without Proper Tracking on Both Levels
+html<!-- ❌ Anti-pattern: outer loop tracked, inner loop not — or both using $index -->
+@for (department of departments; track department.id) {
+  <h3>{{ department.name }}</h3>
+
+  @for (employee of department.employees; track $index) {
+    <!-- Inner loop uses $index — reorder employees and everything re-renders -->
+    <app-employee-row [employee]="employee"></app-employee-row>
+  }
+}
+Why it seems fine: The outer loop is correctly tracked. The inner loop's performance issue is hidden — developers only test with small lists, and track $index produces no errors or warnings.
+What breaks in production: With 50 departments × 20 employees each = 1,000 app-employee-row components, sorting employees by salary re-renders all 1,000 rows (firing ngOnInit 1,000 times) instead of moving the ~1,000 existing DOM nodes. Causes visible UI stutters on mid-range devices.
+Correct pattern:
+html@for (department of departments; track department.id) {
+  <h3>{{ department.name }}</h3>
+
+  @for (employee of department.employees; track employee.id) {
+    <app-employee-row [employee]="employee"></app-employee-row>
+  }
+}
+
+Anti-Pattern 2 — Complex Logic Directly in @if Conditions
+html<!-- ❌ Anti-pattern: business logic in the template expression -->
+@if (user && user.roles && user.roles.includes('admin') && !user.isSuspended && featureFlags.get('newDashboard')) {
+  <app-admin-dashboard></app-admin-dashboard>
+}
+Why it seems fine: It works correctly and is self-contained in the template. Developers coming from React JSX often write logic this way.
+What breaks in production: This condition is re-evaluated on every change detection cycle. It's hard to unit test (requires a full component fixture). It violates separation of concerns — template should express what to show, class should determine whether to show it. When the logic needs to change, you have to find it in HTML, not in your TypeScript.
+Correct pattern:
+typescript// Computed property in the class — evaluated once per change, easy to test
+get canAccessAdminDashboard(): boolean {
+  return (
+    !!this.user &&
+    this.user.roles?.includes('admin') === true &&
+    !this.user.isSuspended &&
+    this.featureFlags.get('newDashboard') === true
+  );
+}
+
+// Or with Signals:
+canAccessAdminDashboard = computed(() =>
+  !!this.user() &&
+  this.user()!.roles.includes('admin') &&
+  !this.user()!.isSuspended
+);
+html<!-- Template stays clean — reads a named property -->
+@if (canAccessAdminDashboard) {
+  <app-admin-dashboard></app-admin-dashboard>
+}
+
+Anti-Pattern 3 — Using @for Over Untracked Computed Arrays
+typescript// ❌ Anti-pattern: computed array returned from a method, tracked by $index
+@Component({
+  template: `
+    <!-- getVisibleItems() returns a new array reference every call -->
+    <!-- track $index makes every reorder destroy all components -->
+    @for (item of getVisibleItems(); track $index) {
+      <app-item [data]="item"></app-item>
+    }
+  `
+})
+export class BadListComponent {
+  private allItems = signal<Item[]>([]);
+
+  // Called on every change detection cycle — creates new array reference each time
+  getVisibleItems(): Item[] {
+    return this.allItems().filter(i => i.visible);
+  }
+}
+Why it seems fine: It reads cleanly and the filtering logic is centralised in the method. It produces the correct visual output.
+What breaks in production: The method runs on every change detection cycle (the Section 5 Mistake 3 problem). It returns a new array reference every time. With track $index, Angular sees a new list every cycle and re-renders all items on every unrelated change anywhere in the app. 100 items × 60hz = 6,000 component instances created and destroyed per second.
+Correct pattern:
+typescriptexport class GoodListComponent {
+  private allItems = signal<Item[]>([]);
+
+  // computed() is memoised — only recalculates when allItems() changes
+  // Returns the same reference between recalculations
+  visibleItems = computed(() => this.allItems().filter(i => i.visible));
+}
+html<!-- Uses a stable computed signal — and a stable track expression -->
+@for (item of visibleItems(); track item.id) {
+  <app-item [data]="item"></app-item>
+}
+
+Section 16 — Mental Model Summary
+30-Second Cheat Sheet
+Core concept: @if, @for, and @switch are Angular's built-in template compiler blocks that control whether DOM nodes exist, how many times they repeat, and which branch renders — with no imports required.
+Key rules:
+
+@if removes and recreates DOM nodes — it is not CSS hide/show; child ngOnInit fires each time
+@for requires track — use a stable unique property (item.id), not $index, for dynamic lists
+@empty pairs with @for — renders when the collection is empty, no separate @if needed
+@switch uses strict equality (===) — type mismatches cause silent case-miss bugs
+Built-in loop variables ($index, $first, $last, $even, $odd, $count) are available with no declaration
+No CommonModule or NgIf/NgFor imports needed — the new syntax is compiler-native
+
+The single most important Angular rule:
+
+Always track item.id in @for — track $index silently destroys and recreates every component when the list reorders, losing state and killing performance.
+
+
+@if vs [hidden] — When to Use Which:
+@if (cond)[hidden]="!cond"DOM node when hiddenRemovedPresent (display: none)Component instanceDestroyedAlivengOnInit on showFires each timeFires once everMemory/CD cost when hiddenZeroFull costState preserved when hiddenNoYesDefault choice?✅ YesOnly for state preservationYou said: Next

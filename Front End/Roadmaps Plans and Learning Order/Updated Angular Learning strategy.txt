@@ -1,0 +1,36 @@
+Learning Strategy
+One topic = one session = one small working piece of an app.
+Every topic you learn, you write code that runs. Not a full app — just the relevant slice. By the end of the roadmap, those slices connect into something real.
+No printing mid-way. Learn → build a small piece → note it for print later.
+
+The Revised Order (Foundation → Senior)
+Phase 1 — Angular's Core Mental Model
+These are the internals you're missing. Everything else depends on understanding these first.
+#TopicMust-Learn Sections1Standalone ComponentsWhat standalone means, imports array, no NgModule at all2Component ArchitectureInput/output with input()/output(), host element, lifecycle hooks (only ngOnInit, ngOnDestroy, afterNextRender)3Change DetectionDefault vs OnPush, what triggers detection, why OnPush matters for performance4Signalssignal(), computed(), effect(), update(), how signals replace zone-based detection5Dependency Injectioninject(), providedIn: 'root', service scope, injection tokens
+
+Phase 2 — Templates & Reactivity
+Once you know how components work internally, learn how they express themselves in the DOM.
+#TopicMust-Learn Sections6Template Syntax@if, @for, @switch, @defer — the new control flow only7PipesBuilt-in pipes, creating a custom pipe, pure vs impure8RxJS in Angular ContextObservable, Subject, BehaviorSubject, takeUntilDestroyed, the 5 operators you actually use: map, switchMap, combineLatest, debounceTime, catchError9Async PipeHow it handles subscription + cleanup, when to use it vs manual subscribe
+
+Phase 3 — Data & Communication
+How your app talks to the outside world and its own layers.
+#TopicMust-Learn Sections10HTTP ClientprovideHttpClient() + withFetch(), GET/POST with typed responses, error handling11Functional InterceptorsWhat they intercept, auth token pattern, error interceptor12Reactive FormsFormGroup, FormControl, FormBuilder, validators, form submission13Template-Driven FormsWhen to use over reactive, ngModel, validation
+
+Phase 4 — Navigation
+Routing is where senior candidates usually get tested hardest.
+#TopicMust-Learn Sections14Router SetupprovideRouter(), lazy loading with loadComponent, route params15Functional GuardscanActivate, canDeactivate, canMatch, resolver pattern16Router StateActivatedRoute, Router navigation, query params, child routes
+
+Phase 5 — State Management
+Only after you're solid on Signals and RxJS.
+#TopicMust-Learn Sections17Signals-Based StateService with signals as a store, computed() for derived state — this is what modern Angular uses18NgRx Signals StoresignalStore(), withState(), withComputed(), withMethods()19NgRx EffectscreateEffect(), when effects are still needed alongside signal store
+
+Phase 6 — Senior-Level Topics
+What separates mid from senior in interviews and at work.
+#TopicMust-Learn Sections20PerformancetrackBy in @for, OnPush strategy, @defer for lazy rendering, avoiding unnecessary re-renders21Custom DirectivesAttribute directive, structural directive, when to reach for a directive vs component22Content Projectionng-content, multi-slot projection, when to use it23Error Handling StrategyGlobal error handler, HTTP error interceptor, user-facing error patterns24Testing FundamentalsTestBed, component testing with signals, service testing — just enough to talk about it in interviews
+
+Session Format (Apply Every Time)
+
+Ask me to explain the topic — I'll cover the why, what, and how
+You build a small piece — I give you a starter prompt
+You paste what you built — I review and flag any anti-patterns
+Note it for print — once it's solid

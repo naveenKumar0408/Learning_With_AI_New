@@ -1,0 +1,104 @@
+Your path has three layers that run simultaneously:
+
+Layer 1 — Thinking Framework — how to approach any problem you've never seen before, before you know any algorithms at all
+Layer 2 — Pattern Library — the 15–20 problem patterns that cover 80% of what Tier C and B interviews actually test
+Layer 3 — Fluency Practice — daily repetition until pattern recognition becomes instinct, not recall
+
+
+The Complete DSA Topic List — 40 Topics
+Structured in 5 stages. Each stage builds directly on the previous. No stage-skipping.
+
+STAGE 1 — THINKING FOUNDATIONS (Topics D1–D6)
+Before any algorithm. Before any data structure. This is the layer every resource skips and every beginner needs most.
+Topic D1 — How to Read a Problem
+The exact process for reading a coding problem: extract inputs, extract outputs, identify constraints, write your own example before reading theirs, identify what "changes" and what "stays fixed." The skill that separates developers who start from those who freeze.
+Topic D2 — Brute Force First, Always
+Why the brute force solution is not the enemy — it is the starting point. How to always find a working solution before optimising. The "can I solve this with nested loops and not care about performance yet?" mindset that unlocks independent thinking.
+Topic D3 — How to Spot Patterns
+The 5 questions you ask every problem to identify which pattern family it belongs to. Covers the concept of pattern recognition itself — not the patterns yet, just the skill of asking the right questions.
+Topic D4 — Complexity Thinking in Practice
+How to reason about your solution's time and space complexity before writing a single line of code. Practical, not academic. Directly connects to Topic 63 (Big O) in your mastery plan.
+Topic D5 — The Problem Solving Framework
+A repeatable 6-step process: Read → Example → Brute Force → Optimise → Code → Test. Every problem you ever solve for the rest of your career uses this exact sequence. This is your north star topic.
+Topic D6 — Debugging Your Own Code
+How to trace through your own solution step by step, catch your own bugs before running the code, and think like the compiler. The skill that makes you interview-safe when your first attempt has a bug.
+
+STAGE 2 — FOUNDATIONS (Topics D7–D16)
+The data structures and basic patterns that everything else is built on.
+Topic D7 — Arrays & the Two Pointer Pattern
+The most fundamental data structure and its most powerful pattern. Covers: array traversal, in-place operations, two pointers moving toward each other, two pointers moving in the same direction.
+Topic D8 — Strings & String Manipulation
+String as a character array, common string operations, string comparison patterns, anagram detection, palindrome checking. High interview frequency for Tier C.
+Topic D9 — Hash Maps & Hash Sets
+O(1) lookup, frequency counting, duplicate detection, grouping problems. The single most useful data structure for interview problems. Connects to Topic 65 (Data Structures for Frontend).
+Topic D10 — The Sliding Window Pattern
+Fixed-size window, variable-size window, when to expand and when to shrink. Covers a family of problems that look completely different but all use the same underlying mechanic.
+Topic D11 — Prefix Sums
+Precomputation for range queries. Converts O(n) repeated range calculations to O(1). A pattern that appears frequently in medium problems disguised as something else.
+Topic D12 — Stacks & the Stack Pattern
+Stack as a data structure, LIFO thinking, valid parentheses family, monotonic stack concept. More interview-relevant than most developers realise.
+Topic D13 — Queues & the Queue Pattern
+Queue as a data structure, FIFO thinking, BFS foundation (covered properly in Stage 3), sliding window maximum.
+Topic D14 — Linked Lists
+Node structure, traversal, slow and fast pointers, cycle detection, reversal. Less common in frontend interviews but appears enough to warrant coverage.
+Topic D15 — Sorting — What You Actually Need to Know
+Not implementing sorting algorithms — understanding which sort to use when, what built-in sort does, and how sorted input changes your problem-solving options entirely.
+Topic D16 — Binary Search
+Not just "search a sorted array" — binary search as a thinking pattern for any problem where you can eliminate half the search space. The most underestimated pattern in Tier C/B interviews.
+
+STAGE 3 — CORE PATTERNS (Topics D17–D28)
+The 12 patterns that cover 80% of real interview problems at Tier C and the majority of Tier B medium-difficulty questions.
+Topic D17 — Recursion Foundations
+How recursive thinking works, the call stack mental model, base cases, recursive vs iterative, when recursion is the natural solution. Connects to Topic 64 (Recursion & Tree Traversal).
+Topic D18 — Trees — Structure & Traversal
+Binary tree structure, DFS (pre/in/post order), BFS level-order, tree height and depth. The foundation for all tree-based problems.
+Topic D19 — Trees — Common Problem Patterns
+Path problems, ancestor problems, tree validation, symmetric trees, diameter. Applying traversal to solve real problems.
+Topic D20 — Binary Search Trees
+BST properties, search/insert/delete, in-order traversal gives sorted output, BST validation. Bridges tree knowledge with binary search.
+Topic D21 — Graphs — Structure & Representation
+Adjacency list vs matrix, directed vs undirected, weighted vs unweighted. Building the mental model before any graph algorithm.
+Topic D22 — Graph Traversal — DFS & BFS
+Depth-first search and breadth-first search on graphs. Connected components, island counting problems, shortest path in unweighted graphs.
+Topic D23 — Dynamic Programming — The Mental Model
+What DP actually is: remembering answers to subproblems. Top-down (memoisation) vs bottom-up (tabulation). The decision of "is this a DP problem?" before any DP solution.
+Topic D24 — Dynamic Programming — 1D Problems
+Fibonacci, climbing stairs, house robber, coin change. The entry-level DP problems that build the pattern recognition for harder ones.
+Topic D25 — Dynamic Programming — 2D Problems
+Grid-based DP, unique paths, minimum path sum. The natural extension of 1D DP thinking to two dimensions.
+Topic D26 — Heaps & Priority Queues
+Min-heap and max-heap concept, when to reach for a heap, top-K problems, median of a stream. High Tier B relevance.
+Topic D27 — Backtracking
+Exploring all possibilities systematically, the decision tree mental model, permutations, combinations, subsets. The pattern that powers constraint-satisfaction problems.
+Topic D28 — Greedy Algorithms
+When locally optimal choices produce globally optimal solutions. Interval scheduling, activity selection, greedy vs DP decision framework.
+
+STAGE 4 — APPLIED PRACTICE (Topics D29–D36)
+Pattern recognition under pressure. This is where isolated knowledge becomes interview fluency.
+Topic D29 — Problem Classification Practice
+Given 20 unseen problems — classify each into its pattern family without solving it. Pure pattern recognition training. The skill that makes interviews feel familiar.
+Topic D30 — Two Pointer Problems — Applied
+10 two-pointer problems of increasing difficulty. Focus: identifying when two pointers apply, not just executing the pattern.
+Topic D31 — Sliding Window Problems — Applied
+10 sliding window problems. Focus: fixed vs variable window decision, edge cases.
+Topic D32 — Tree Problems — Applied
+10 tree problems mixing DFS, BFS, and BST patterns. Focus: choosing the right traversal for the problem.
+Topic D33 — Graph Problems — Applied
+10 graph problems. Focus: problem → graph translation (recognising when a problem is secretly a graph problem).
+Topic D34 — DP Problems — Applied
+10 DP problems from 1D through 2D. Focus: identifying the subproblem structure, not memorising solutions.
+Topic D35 — Mixed Pattern Problems
+10 problems that deliberately don't signal their pattern. Real interview simulation — no hints, full framework application.
+Topic D36 — Timed Practice Sessions
+The transition from "solve correctly" to "solve correctly under time pressure." Structure: 45 minutes, 2 problems, full debrief.
+
+STAGE 5 — SYSTEM DESIGN FOR TIER C/B (Topics D37–D40)
+Frontend-weighted system design. Not distributed systems theory — practical design thinking for senior frontend roles.
+Topic D37 — System Design Fundamentals
+The vocabulary and framework: requirements gathering, capacity estimation (light), high-level design, component breakdown. How to structure a 45-minute system design interview answer.
+Topic D38 — Frontend System Design Patterns
+Component architecture decisions, state management selection, API layer design, caching strategy, auth flow design. The system design questions that Angular-focused companies actually ask.
+Topic D39 — Designing Real Systems — Frontend Focus
+Worked examples: design a real-time dashboard, design a collaborative document editor, design an e-commerce product page with performance constraints. Full walkthroughs with decision justification.
+Topic D40 — System Design Interview Practice
+Mock system design questions with a structured response framework. Covers: how to ask clarifying questions, how to handle "it depends" answers confidently, how to draw the right level of detail.
